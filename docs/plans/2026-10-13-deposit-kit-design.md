@@ -387,6 +387,46 @@ withdrawals to external wallets, e.g. Coinbase India with a linked INR account),
 
 ---
 
+## 12a. Roadmap: our own deposit addresses
+
+v1 borrows Relay's deposit addresses, so Relay does detection, sweeping, routing and
+refunds. Owning the addresses is the next tier — what managed deposit products do.
+
+### What it takes
+
+| Piece | What it means |
+|---|---|
+| Address generation | A forwarder contract per account, deployed with CREATE2. The address is computable before deployment, so it can be shown immediately and deployed only when funds arrive. Same address on every EVM chain |
+| Detection (indexer) | Watch every supported chain for transfers to our addresses: `getLogs` with a cursor up to the `safe` block, or a provider stream |
+| Sweeping | Deploy the forwarder on first deposit and move funds out. Gas on every chain — funded gas wallets per chain |
+| Routing | Still needed. Call Relay / Across for the swap and bridge, or run our own liquidity |
+| Refunds and stuck funds | Wrong token, dust, failed swap, exchange senders — all ours |
+| Security | Contracts hold money: audits, key management for sweepers, rate limits |
+
+### What it buys
+
+- **One address per account for every chain and token**, not one per route.
+- **Detection independent of any router**, so routers become interchangeable.
+- **Control over fees and the experience**, and a treasury indexer that also reconciles
+  funds that arrived outside the widget.
+
+### How it fits the design
+
+It is another `PaymentRouter`: `depositAddress()` returns the CREATE2 address,
+`fills()` reads from our indexer, and the swap/bridge step calls Relay underneath.
+Workflows, store and widget do not change.
+
+### Plan
+
+1. **Stretch (post-v1):** testnet-only forwarder contract + cursor-based indexer on
+   Base Sepolia, wrapped as `ownAddresses({ route: relay() })`.
+2. **Later:** multi-chain detection, sweeper gas management, audit before any mainnet funds.
+
+**Why not in v1:** weeks of contract and backend work plus an audit, and unaudited
+contracts holding real funds are a liability. The `PaymentRouter` seam keeps the door open.
+
+---
+
 ## 13. Open questions
 
 - Treasury + recovery wallet address?
