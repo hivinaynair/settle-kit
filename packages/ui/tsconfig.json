@@ -1,0 +1,15 @@
+{
+  "extends": "../../tooling/typescript-config/react-library.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strictNullChecks": true,
+    // Vendored shadcn components: the upstream prop types (Radix, recharts,
+    // react-day-picker, sonner) are not written for this flag, and `ui:add` regenerates them.
+    "exactOptionalPropertyTypes": false
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "dist"]
+}

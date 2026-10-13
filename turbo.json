@@ -1,0 +1,39 @@
+{
+  "$schema": "https://turborepo.dev/schema.json",
+  "ui": "tui",
+  "tasks": {
+    "build": {
+      "dependsOn": ["^build"],
+      "inputs": ["$TURBO_DEFAULT$", ".env*"],
+      "outputs": [
+        ".next/**",
+        "!.next/cache/**",
+        "!.next/dev/**",
+        "app/.well-known/workflow/**",
+        "dist/**",
+        ".vercel/output/**"
+      ],
+      "env": ["NODE_ENV", "VERCEL", "SKIP_ENV_VALIDATION"],
+      "passThroughEnv": ["CI", "VERCEL_ENV", "VERCEL_URL", "VERCEL_REGION"]
+    },
+    "//#format-and-lint": {
+      "description": "Check for formatting and linting issues"
+    },
+    "//#format-and-lint:fix": {
+      "cache": false,
+      "description": "Format and lint the code and fix the issues"
+    },
+    "check-types": {
+      "dependsOn": ["^build"],
+      "passThroughEnv": ["SKIP_ENV_VALIDATION"]
+    },
+    "dev": {
+      "cache": false,
+      "persistent": true,
+      "dependsOn": ["^build"]
+    },
+    "add": {
+      "cache": false
+    }
+  }
+}

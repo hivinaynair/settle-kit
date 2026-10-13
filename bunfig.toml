@@ -1,0 +1,9 @@
+[install]
+# Vercel packs the traced function from this layout; the isolated linker's
+# symlinked store leaves external packages' own deps unresolvable at runtime.
+linker = "hoisted"
+
+[test]
+preload = ["./test/happydom.ts", "./test/setup.ts"]
+coverageSkipTestFiles = true
+pathIgnorePatterns = ["**/*.spec.ts"]

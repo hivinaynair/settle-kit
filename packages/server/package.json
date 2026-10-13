@@ -1,0 +1,21 @@
+{
+  "name": "@settle-kit/server",
+  "version": "0.0.0",
+  "description": "Durable deposit tracking: payment routers, workflows, exactly-once records.",
+  "type": "module",
+  "license": "MIT",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "check-types": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@settle-kit/core": "workspace:*"
+  },
+  "devDependencies": {
+    "@repo/typescript-config": "workspace:*",
+    "@types/bun": "^1.3.14",
+    "typescript": "5.9.2"
+  }
+}
