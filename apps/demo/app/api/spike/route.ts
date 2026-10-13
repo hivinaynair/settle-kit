@@ -1,10 +1,10 @@
 // SPIKE (2026-10-13): start and read runs of workflows/spike.ts. Delete with it.
 import { getRun, start } from "workflow/api";
-import { spikeDeposit } from "@/workflows/spike";
+import { type SpikeOptions, spikeDeposit } from "@/workflows/spike";
 
 export async function POST(request: Request) {
-  const { fillId } = (await request.json()) as { fillId: string };
-  const run = await start(spikeDeposit, [fillId]);
+  const { fillId, ...options } = (await request.json()) as { fillId: string } & SpikeOptions;
+  const run = await start(spikeDeposit, [fillId, options]);
   return Response.json({ runId: run.runId });
 }
 

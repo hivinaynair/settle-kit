@@ -1,27 +1,37 @@
 // SPIKE (2026-10-13): proves the Workflow SDK primitives the deposit pipeline needs,
-// under Bun. Delete once processDeposit exists.
+// under Bun and on Vercel. Delete once processDeposit exists.
 import { FatalError, getStepMetadata, sleep } from "workflow";
 
 type Poll = { attempt: number; status: "waiting" | "processing" | "filled" };
+export type SpikeOptions = {
+  /** Pause between polls in ms; 120_000 proves resume after the instance is gone. */
+  pollEveryMs?: number;
+  /** Kill the process inside a step on its first attempt. Vercel only — it kills a dev server. */
+  crashOnce?: boolean;
+  fatal?: boolean;
+};
 
 /** Shaped like processDeposit: poll a router until terminal, sleeping between polls. */
-export async function spikeDeposit(fillId: string) {
+export async function spikeDeposit(fillId: string, options: SpikeOptions = {}) {
   "use workflow";
 
-  const runtime = await whichRuntime();
+  const startedOn = await whereAmI();
   let poll: Poll = { attempt: 0, status: "waiting" };
   while (poll.status !== "filled") {
     poll = await pollRouter(fillId, poll.attempt + 1);
-    if (poll.status !== "filled") await sleep("2s");
+    if (poll.status !== "filled") await sleep(options.pollEveryMs ?? 2000);
   }
   const flaky = await flakyStep(fillId);
-  if (fillId === "fatal") await fatalStep();
-  return { fillId, runtime, polls: poll.attempt, flaky };
+  const crash = options.crashOnce ? await crashOnceStep() : undefined;
+  if (options.fatal) await fatalStep();
+  const finishedOn = await whereAmI();
+  return { fillId, startedOn, finishedOn, polls: poll.attempt, flaky, crash };
 }
 
-async function whichRuntime() {
+async function whereAmI() {
   "use step";
-  return typeof Bun === "undefined" ? `node ${process.version}` : `bun ${Bun.version}`;
+  const runtime = typeof Bun === "undefined" ? `node ${process.version}` : `bun ${Bun.version}`;
+  return { runtime, deployment: process.env.VERCEL_DEPLOYMENT_ID ?? "local", pid: process.pid };
 }
 
 async function pollRouter(fillId: string, attempt: number): Promise<Poll> {
@@ -37,6 +47,15 @@ async function flakyStep(fillId: string) {
   console.log(`[spike] flaky attempt ${attempt} (stepId ${stepId}) for ${fillId}`);
   if (attempt < 2) throw new Error("transient failure");
   return { attempt, stepId };
+}
+
+/** Dies mid-step on the first attempt — the closest thing to a crash on Vercel. */
+async function crashOnceStep() {
+  "use step";
+  const { attempt } = getStepMetadata();
+  console.log(`[spike] crashOnce attempt ${attempt} pid ${process.pid}`);
+  if (attempt === 1) process.exit(1);
+  return { attempt, pid: process.pid };
 }
 
 async function fatalStep(): Promise<never> {

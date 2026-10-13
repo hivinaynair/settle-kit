@@ -44,3 +44,4 @@ lefthook-local.yml
 # Workflow SDK
 .well-known/workflow
 .workflow-data
+.env*
