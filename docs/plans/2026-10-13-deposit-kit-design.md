@@ -24,9 +24,9 @@ things go wrong (wrong amount, slow fill, refund, a crashed server).
 - **For the developer:** one server package that tracks every deposit durably and tells
   your app "credit account X with Y" — once.
 
-Fun.xyz sells this as a managed product (Polymarket, Lighter, Ostium use it). Settle Kit
-is the open-source, self-hosted version: you run it in your own app, with your own
-database, and pay no fee on top of the router's.
+Managed deposit products exist, but they are closed, sales-led, and sit in the money
+path. Settle Kit is open source and self-hosted: you run it in your own app, with your
+own database, and pay no fee on top of the router's.
 
 ### Why it's credible
 
@@ -35,7 +35,7 @@ database, and pay no fee on top of the router's.
 | Swapping and bridging | **Relay** (solvers front liquidity on the destination chain) |
 | Durable tracking across crashes and deploys | **Workflow SDK** (proven on Vercel in S1) |
 | Exactly-once crediting | **Our database constraints** |
-| The experience | **Our widget** (modelled on Fun's states and copy) |
+| The experience | **Our widget** |
 
 We do not build a bridge, a wallet, or a blockchain indexer.
 
@@ -65,19 +65,18 @@ Learn these first; every later section uses them.
 
 ```mermaid
 flowchart LR
-  A[Choose method] --> B[Choose network + token]
-  B --> C{Method}
-  C -->|QR| D[Transfer screen: QR + address]
-  C -->|Wallet| E[Confirm + sign]
-  D --> F[Progress: detected → processing → credited]
+  A["Choose method"] --> B["Choose network and token"]
+  B --> C{"Method"}
+  C -->|QR| D["Transfer screen: QR and address"]
+  C -->|Wallet| E["Confirm and sign"]
+  D --> F["Progress: detected, processing, credited"]
   E --> F
-  F --> G[Result: credited / refunded / needs attention / failed]
+  F --> G["Result: credited, refunded, needs attention, failed"]
 ```
 
 Both paths end at **the same deposit address**. "Send from wallet" just sends the
 transfer the QR asks for — the quote even includes that exact transaction (S2).
-One lifecycle, two entry points. Fun does the same: every checkout is keyed by a
-deposit address.
+One lifecycle, two entry points.
 
 Screen inventory and error copy: §9.
 
@@ -87,20 +86,20 @@ Screen inventory and error copy: §9.
 
 ```mermaid
 flowchart TB
-  subgraph Browser
-    W[React widget<br/>@settle-kit/react] --> S[Deposit session<br/>@settle-kit/core]
+  subgraph browser["Browser"]
+    W["React widget · @settle-kit/react"] --> S["Deposit session · @settle-kit/core"]
   end
-  subgraph "Host app (Next.js)"
-    H[Route handlers<br/>@settle-kit/server] --> WF[Workflows]
-    H --> DB[(Postgres<br/>via DepositStore)]
+  subgraph host["Host app · Next.js"]
+    H["Route handlers · @settle-kit/server"] --> WF["Workflows"]
+    H --> DB[("Postgres via DepositStore")]
     WF --> DB
-    WF --> R[PaymentRouter<br/>relay]
-    WF --> V[Verifier<br/>viem]
-    WF --> CB[onEvent → host credits]
+    WF --> R["PaymentRouter · relay"]
+    WF --> V["Verifier · viem"]
+    WF --> CB["onEvent: host credits"]
   end
   S -->|HTTP| H
-  R -->|HTTPS| RelayAPI[(Relay API)]
-  V -->|RPC| Base[(Base chain)]
+  R -->|HTTPS| RelayAPI[("Relay API")]
+  V -->|RPC| BaseChain[("Base chain")]
 ```
 
 | Package | Runs in | Responsibility |
@@ -330,7 +329,7 @@ on the Postgres World can point workflow state at the same database.
 | `router_unavailable` | "Deposits are paused. Try again shortly." |
 | `invalid_config` | Thrown to the developer, never shown |
 
-Principles (taken from Fun's SDK copy): reassure once funds moved; no dead ends;
+Principles: reassure once funds moved; no dead ends;
 one noun per concept; refresh quotes silently.
 
 ---
@@ -383,8 +382,8 @@ The widget never talks to Relay directly.
 reconciliation cron, React Native, npm build step (packages export source until publish).
 
 **Improvements later:** direct execution (skip the deposit address for connected
-wallets, saves ~70k gas), SSE instead of polling, exchange connect (Coinbase India's
-withdrawal block is exactly why Fun built it), multi-router best-quote selection.
+wallets, saves ~70k gas), SSE instead of polling, exchange connect (some exchanges block
+withdrawals to external wallets, e.g. Coinbase India with a linked INR account), multi-router best-quote selection.
 
 ---
 
