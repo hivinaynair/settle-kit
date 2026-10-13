@@ -135,23 +135,41 @@ settle_kit_deposit_addresses
 settle_kit_deposits                              -- one row per fill
   id            text pk
   address_id    text → deposit_addresses
-  fill_id       text       -- Relay requestId
+  fill_id       text       -- Relay requestId, from /requests/v3 (never the quote-time id)
+  deposit_tx    text       -- the user's transfer into the deposit address (depositTxHash)
   status        text       -- waiting | processing | delayed | credited | refunded | failed | needs_attention
   amount_in     numeric    -- what the user sent (base units)
   amount_out    numeric    -- what actually arrived, from the receipt
   source_tx     text
   dest_chain_id int
   dest_tx       text
-  dest_log_index int       -- null for native ETH
+  dest_log_index int       -- null for native ETH (no log)
+  run_id        text       -- workflow run; null = not started yet (a sweep starts it)
   error_code    text
   created_at, updated_at timestamptz
   UNIQUE (router, fill_id)                       -- a fill is recorded once
-  UNIQUE (dest_chain_id, dest_tx, dest_log_index) -- a transfer is credited once
+  UNIQUE NULLS NOT DISTINCT (dest_chain_id, dest_tx, dest_log_index)
+                                                 -- a transfer is credited once, ETH included
+
+settle_kit_send_attempts                         -- wallet path only
+  id            text pk
+  address_id    text → deposit_addresses
+  attempt_key   text       -- created in the browser before the wallet opens
+  tx_hash       text       -- set once the wallet returns one
+  created_at    timestamptz
+  UNIQUE (attempt_key)
 ```
 
 **Why two unique keys:** `fill_id` stops the same Relay request from being recorded
 twice; the transfer key stops two different requests (or a bug) from claiming the
-same on-chain transfer. Learned from lesson 24 / S3.
+same on-chain transfer. Learned from lesson 24 / S3. **`NULLS NOT DISTINCT`** matters
+for native ETH: its log index is NULL, and plain `UNIQUE` treats two NULLs as different,
+so the same ETH transfer could be claimed twice (lesson 16c).
+
+**Why a send-attempt row:** if the wallet times out after sending, the browser doesn't
+know whether money left. The attempt key, saved before the wallet opens, lets the widget
+show "checking…" and look for fills at the address instead of offering a second send
+(lesson 31).
 
 **Why `numeric`, not float:** USDC has 6 decimals and ETH 18; floats lose cents.
 Store base units as `numeric`, convert with `bigint` in code (lesson 04).
@@ -193,6 +211,17 @@ v1 ships `relay({ apiKey, network })`:
 **Multiple routers:** config takes `routers: [relay()]` (an array from day one). The
 first router that supports a route issues its address, and **the address remembers
 its router forever** — fills must be tracked by the router that created the address.
+
+**Statuses:** Relay has eight; we map them in one place (lesson 16b §9): `waiting →
+waiting`; `depositing`, `pending`, `submitted → processing`; `delayed → delayed`;
+`success → filled`; `refund → refunded`; `failure → failed`.
+
+**Pagination:** `fills()` follows `/requests/v3`'s `continuation` cursor until it runs
+out. One page of 20 is not the whole history.
+
+**Never track the quote-time `requestId`.** If Relay requotes (different amount, a repeat
+deposit), the fill runs under a new id and the quote's id stays `waiting` forever.
+Fills are discovered only through `fills(address)`.
 
 **Errors:** Relay returns `{ message, errorCode }`. We map `errorCode`
 (`AMOUNT_TOO_LOW`, `INVALID_INPUT_CURRENCY`, …) to our `DepositErrorCode`; never parse
@@ -239,8 +268,11 @@ Late deposits aren't lost: `/requests/v3` returns history, so reopening the widg
 ```text
 loop: status = step router.status(fillId); sleep    until terminal or SLA (30 min → needs_attention)
 if filled:
-  step verify on chain   -- receipt success; USDC Transfer (or ETH value on testnet)
-                         -- to the treasury; block ≤ "safe"; returns amount_out
+  step verify on chain   -- receipt success; block ≤ "safe"; then
+                         --   USDC: exactly one Transfer from the USDC contract to the treasury
+                         --   ETH (testnet): tx.to == treasury, amount = tx.value
+                         --   anything else (e.g. ETH paid via a contract call) → needs_attention
+                         -- returns amount_out
   step record            -- UPDATE … SET status='credited' WHERE status<>'credited'
   step notify host       -- onEvent({ type: "deposit.credited", deposit })
 if refunded / failed:  record + notify
@@ -331,6 +363,16 @@ on the Postgres World can point workflow state at the same database.
 
 Principles: reassure once funds moved; no dead ends;
 one noun per concept; refresh quotes silently.
+
+### Two widget rules from the lessons
+
+- **Quote generations (lesson 30).** Every quote request carries a generation number.
+  If the user changes token, chain or account, the generation goes up and a late reply
+  for the old one is ignored. A stale price never overwrites the current one.
+- **No second send (lesson 31).** Before the wallet opens, the widget creates a send
+  attempt (attempt key). If the wallet times out or the page reloads, the widget shows
+  "Checking for your deposit…" and watches the address. It never offers "Send again"
+  while an attempt is unresolved. A clear wallet rejection is safe to retry.
 
 ---
 
