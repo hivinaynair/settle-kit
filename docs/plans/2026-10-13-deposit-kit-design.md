@@ -56,6 +56,7 @@ Learn these first; every later section uses them.
 | **Account** | The app's user. The SDK only sees an `accountId` string |
 | **Credit** | The app's record that an account received value. Off-chain, in the host's DB |
 | **Payment router** | Our interface over Relay (and later Across) |
+| **Accepted tokens** (`accept`) | Which tokens the widget offers the payer. `"stablecoins"` (default: USDC + USDT) or `"any"`. The destination is always the app's choice |
 | **Workflow / step** | Durable function / retried unit of work in the Workflow SDK |
 | **`safe` block** | A block the chain considers very unlikely to be reorged (~30 s behind head on Base) |
 
@@ -208,6 +209,23 @@ v1 ships `relay({ apiKey, network })`:
 `network: "testnet"` points at `api.testnets.relay.link` (Sepolia ↔ Base Sepolia,
 **ETH only** — no testnet USDC).
 
+**Accepted tokens.** Routers return every source they support; `createDeposits` filters
+them by `accept`. The router stays a plain adapter and the policy lives in one place.
+
+| `accept` | Offered | Why |
+|---|---|---|
+| `"stablecoins"` (default) | USDC, USDT on every chain the router supports | Pay $10, receive ~$10 minus fees. No price risk between quote and arrival |
+| `"any"` | Everything the router supports (ETH, SOL, …) | Crypto-native apps. Amounts vary with price; credit what arrived |
+
+Stablecoins are matched by symbol (`USDC`, `USDT`) in the router's own token list,
+which is curated, not user input. The testnet routes ETH only, so the testnet demo
+sets `accept: "any"` explicitly.
+
+*Alternative rejected:* USDC-only. On Relay it only turns features off. Without Relay it
+needs our own addresses, indexer and sweeper (§12a), and it drops USDT, the most used
+stablecoin. Card checkouts already cover USDC on one chain; "pay with what you hold" is
+the gap.
+
 **Multiple routers:** config takes `routers: [relay()]` (an array from day one). The
 first router that supports a route issues its address, and **the address remembers
 its router forever** — fills must be tracked by the router that created the address.
@@ -339,8 +357,8 @@ on the Postgres World can point workflow state at the same database.
 | Screen | Contents |
 |---|---|
 | Choose method | Wallet · Transfer crypto (QR) |
-| Choose network + token | From `router.sources()`; minimum per token |
-| Transfer (QR) | QR, address + copy, "Send only ETH on Sepolia", minimum, "auto-converts to …" |
+| Choose network + token | `router.sources()` filtered by `accept`; minimum per token |
+| Transfer (QR) | QR, address + copy, "Send only USDT on Arbitrum to this address", minimum, "auto-converts to …" |
 | Confirm (wallet) | You send / you receive ≈, fees, network switch, signature |
 | Progress | Detected → Processing → Credited, tx links, "Your funds are safe. You can close this." |
 | Result | Credited (actual amount) · Refunded (tx) · Needs attention (deposit id + support) · Failed (reason + retry) |
@@ -360,6 +378,10 @@ on the Postgres World can point workflow state at the same database.
 | `address_blocked` | "This address can't be used." + support |
 | `router_unavailable` | "Deposits are paused. Try again shortly." |
 | `invalid_config` | Thrown to the developer, never shown |
+
+**Amount wording.** Stablecoin → USDC: "You'll receive 9.96 USDC". Any other token:
+"You'll receive about 9.9 USDC. The final amount depends on the price when it arrives."
+The credit always uses the amount that actually arrived (§7).
 
 Principles: reassure once funds moved; no dead ends;
 one noun per concept; refresh quotes silently.
@@ -382,6 +404,7 @@ one noun per concept; refresh quotes silently.
 // server
 export const deposits = createDeposits({
   routers: [relay({ apiKey: env.RELAY_API_KEY, network: "testnet" })],
+  accept: "any",                // testnet routes ETH only; mainnet default is "stablecoins"
   destination: { chainId: 84532, token: NATIVE, recipient: env.TREASURY },
   recoveryAddress: env.RECOVERY_ADDRESS,
   limits: { minUsd: 2, maxUsd: 10 },
@@ -425,7 +448,10 @@ reconciliation cron, React Native, npm build step (packages export source until 
 
 **Improvements later:** direct execution (skip the deposit address for connected
 wallets, saves ~70k gas), SSE instead of polling, exchange connect (some exchanges block
-withdrawals to external wallets, e.g. Coinbase India with a linked INR account), multi-router best-quote selection.
+withdrawals to external wallets, e.g. Coinbase India with a linked INR account), multi-router best-quote selection,
+a CCTP router for USDC paid from a connected wallet (near-zero fee; wallet path only,
+since an exchange can't call a burn), Circle Gateway on the treasury side (move the
+app's USDC to any chain after it lands).
 
 ---
 
