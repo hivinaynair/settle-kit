@@ -43,6 +43,16 @@ The database stays the source of truth either way.
   `INVALID_INPUT_CURRENCY`. Map `errorCode`, never parse `message`.
 - No rate-limit headers on unauthenticated calls.
 
+### With the API key
+
+`GET /requests/v3?depositAddress=…` with `x-api-key` returns `{ requests: [] }` for an
+unused address. A request carries `id`, `status`, `depositAddress`,
+`duplicateDeposits`, **`supersededByRequestId`** (the re-quote chain), `refundTo`,
+`sender`, `recipient`, and `data.{inTxs,outTxs}[]` with `chainId`, `txHash`, `block`,
+`status`, plus `data.failReason` / `data.refundFailReason`. None of 20 sampled
+requests used a deposit address, so the deposit-address-specific fields still need
+a real deposit (S4). The key is set in Vercel (preview + production, encrypted).
+
 ## S3 · Verify a real fill on Base
 
 Took a recent successful Relay request to Base USDC; viem read the receipt:
