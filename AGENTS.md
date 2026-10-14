@@ -8,8 +8,9 @@ wallet or exchange, credited as USDC on Base. Users send to a reusable deposit a
 
 - Design: `docs/plans/2026-10-13-deposit-kit-design.md` (source of truth for scope,
   states, API). Evidence: `docs/spikes.md`. Task specs: `docs/tasks/`.
-- **Vinay writes the implementation code.** Agents write specs, review, research and
-  run spikes unless asked otherwise.
+- **Agents implement tasks; Vinay monitors and must be able to explain every line.**
+  One task per branch/PR, small commits, and a plain-words "what and why" after each
+  step (decisions, trade-offs, rejected options).
 - Docs are edited by more than one AI tool. Re-read a file right before editing it,
   make targeted edits, and don't commit others' uncommitted changes without asking.
 
