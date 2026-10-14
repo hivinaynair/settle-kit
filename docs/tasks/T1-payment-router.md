@@ -15,8 +15,9 @@ what arrives at it"). Removed: `depositAddress()` and `Route.minimum` (deposit m
 later), `sources()` (routes come from our manifest), `quote()` (returns with deposit
 mode), `status()` (`fills` already carries status), native ETH (v1 is USDC-only),
 `recoveryAddress`. Added: `"unknown"` fill status, `limit=100` paging, 401/403 → `invalid_config`, the API
-key on every call, and `quoteBody satisfies` Relay's official request type. The PR
-description has the final decisions.
+key on every call, and a quote body checked with `satisfies` against Relay's official
+request type. Response validation lives in each router method; `call` handles HTTP.
+The PR description has the final decisions.
 
 ## Goal
 

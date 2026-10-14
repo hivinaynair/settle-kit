@@ -6,6 +6,7 @@ export type {
   Fill,
   FillStatus,
   OrderAddress,
+  OrderAddressInput,
   PaymentRouter,
   Route,
 } from "./router";

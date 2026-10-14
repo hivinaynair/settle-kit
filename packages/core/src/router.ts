@@ -12,6 +12,8 @@ export type AddressRequest = {
   recipient: Address; // the merchant's own wallet (the app's treasury)
   refundTo: Address; // app-controlled refund address
 };
+/** amount is the exact merchant price in the destination token's base units. */
+export type OrderAddressInput = AddressRequest & { amount: bigint };
 
 /** payAmount: what the payer must send, in route.from's token, fee included. */
 export type OrderAddress = { address: Address; payAmount: bigint };
@@ -45,7 +47,7 @@ export type Fill = {
 export type PaymentRouter = {
   id: string; // "relay"
   /** amount: exact USDC base units the merchant must receive (the order price). */
-  orderAddress(input: AddressRequest & { amount: bigint }): Promise<OrderAddress>;
+  orderAddress(input: OrderAddressInput): Promise<OrderAddress>;
   /** Every payment that reached the address, with its current status. */
   fills(address: Address): Promise<Fill[]>;
 };
