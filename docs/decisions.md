@@ -19,7 +19,6 @@ steps cite these IDs; `bun run check-journeys` fails on an unknown or superseded
 | D3 | v1.0 has two products: **checkout** (a fixed-price order paid to a single-use address before an expiry) and **deposits** (a reusable address per user, credited any amount) | Deposits are Fun.xyz's and Daimo's core product; checkout is the simpler, exact case | Checkout only, deposits later | 2026-10-14 | |
 | D4 | Two lanes feed one verify → settle → deliver pipeline: the **Relay lane** (Relay deposit addresses, swaps and bridging) and the **own-rails lane** (our deposit contracts plus CCTP V2 for USDC) | Owning the USDC rails is what makes this infrastructure rather than a wrapper; Relay covers tokens CCTP cannot move | Relay only; own rails only (no non-USDC tokens) | 2026-10-14 | |
 | D5 | Done means: a stranger installs the packages, takes a checkout payment and a deposit through both lanes on mainnet, customizes the widget or builds their own UI with hooks, and sees every payment verified, credited once and reconciled against the treasury | A testable finish line, so scope can't drift | "Done when it feels done" | 2026-10-14 | |
-| D6 | If time runs short, cut in this order: any-token wallet payment, the CLI, refund evidence, the embeddable dashboard (the demo's dashboard stays). The own-rails lane is never cut | Cut polish before the part that proves the skill | Cutting the own-rails lane first | 2026-10-14 | |
 
 ## Product behavior (D10–D19)
 
