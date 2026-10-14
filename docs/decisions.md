@@ -82,6 +82,7 @@ steps cite these IDs; `bun run check-journeys` fails on an unknown or superseded
 | X3 | Settling anywhere but USDC on Base: no other chains in v1.0, and never a non-USDC destination such as ETH or USDT | D20. Other USDC chains are a follow-up after launch. Non-USDC destinations need a price source, multi-currency books and Relay for every payment, so own rails would no longer cover them |
 | X4 | A hosted Settle Kit service, or holding anyone's funds | D1; also avoids the regulatory side of running others' money |
 | X5 | A unified cross-chain balance (Circle Gateway) | Different product; not needed for checkout or deposits |
+| X6 | Tooling for `rescue(token)`: a dashboard balance lookup for non-USDC tokens and a Rescue button. The contract function itself ships (D33); an operator calls it from a block explorer or a one-line script | Contracts can't be changed later, so the function goes in now; the tooling is ordinary TypeScript that can be added in any later version |
 
 ## Open questions (Q1…)
 
