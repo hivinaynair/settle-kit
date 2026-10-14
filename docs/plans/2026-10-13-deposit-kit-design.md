@@ -879,3 +879,25 @@ for deposit mode.
 
 The single settlement callback, its retry policy and payer-borne fees are decided
 above.
+
+## 12. Open-source readiness
+
+This doc describes how the system works. Publishing it as an SDK also needs a public
+contract and a maintenance plan. These are release requirements for the first
+`npm publish`; the showcase needs only items 2 and 5 (quickstart).
+
+| # | Requirement | Contents |
+|---|---|---|
+| 1 | Public API reference | Every `createDeposits` option and its type; `SettleProvider`, `CheckoutButton`, `DepositButton` props; `useDeposit()` states; handler routes; `DepositErrorCode` list; `onSettled` event shapes; operator functions |
+| 2 | Versioning and stability | Start at `0.x`, marked experimental. Breaking changes: config, events, error codes, handler routes and the database schema. Changelog per release |
+| 3 | Database upgrades | Tables live in the host's Postgres. Ship numbered SQL migrations plus the Drizzle schema; never edit a published migration; each release lists the migrations it needs |
+| 4 | Packaging | Build step with type declarations; separate server and client entry points so server code never reaches the browser bundle; install-from-pack check in a separate Next.js app (§9) |
+| 5 | User docs | README with a 5-minute quickstart in test mode; concepts (checkout vs deposit, states, fees); "going live" checklist (treasury, refund and recovery addresses, Relay key and webhook, cron, Base RPC); troubleshooting (stuck in `waiting` → reindex; `needs_attention` cases) |
+| 6 | Project files | `SECURITY.md` (private reporting for anything that could lose or misroute funds), `CONTRIBUTING.md`, issue templates |
+| 7 | Responsibility statement | Settle Kit never holds funds or keys; the host is responsible for its own compliance; Relay screens sanctioned addresses (`address_blocked`) |
+| 8 | Route policy | Only routes with a recorded live proof ship in the manifest; how a new route is proved and added |
+| 9 | Framework scope | V1 requires Next.js with Workflow SDK; other frameworks are out of scope until the workflow layer has another host |
+
+Package names `@settle-kit/core`, `@settle-kit/react`, `@settle-kit/server` and
+`settle-kit` were unclaimed on npm on 2026-10-14; claim the `@settle-kit` organisation
+before publishing.
