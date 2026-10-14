@@ -1,6 +1,7 @@
 import { describe, expect, it } from "bun:test";
 import type { Hex } from "viem";
-import type { SettledEvent, TimelineEntry } from "./events";
+import { DepositError } from "./errors";
+import { amountMismatch, type SettledEvent, type TimelineEntry } from "./events";
 
 const DEPOSIT_TX = "0xaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" as Hex;
 const DEST_TX = "0xbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb" as Hex;
@@ -49,5 +50,31 @@ describe("TimelineEntry", () => {
     };
     expect(seen.actor).toBe("system");
     expect(failed.status).toBe("delivery_failed");
+  });
+});
+
+describe("amountMismatch", () => {
+  it("records the order price and the receipt as base-unit strings", () => {
+    const evidence = amountMismatch(1150000n, 1000000n);
+    expect(evidence).toEqual({
+      reason: "amount_mismatch",
+      expected: "1150000",
+      received: "1000000",
+    });
+    expect(JSON.parse(JSON.stringify(evidence))).toEqual(evidence);
+
+    const row: TimelineEntry = {
+      seq: 3,
+      status: "needs_attention",
+      at: new Date("2026-10-14T12:10:00.000Z"),
+      actor: "system",
+      evidence,
+    };
+    expect(row.status).toBe("needs_attention");
+  });
+
+  it("rejects a negative bigint", () => {
+    expect(() => amountMismatch(-1n, 1000000n)).toThrow(DepositError);
+    expect(() => amountMismatch(1150000n, -1n)).toThrow(DepositError);
   });
 });

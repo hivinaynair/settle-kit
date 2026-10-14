@@ -1,4 +1,5 @@
 import type { Hex } from "viem";
+import { toBaseUnits } from "./amounts";
 import type { DepositStatus } from "./payment";
 
 /**
@@ -27,7 +28,8 @@ export type SettledEvent = {
 /**
  * One append-only timeline row. `delivery_failed` is not a payment status:
  * the row stays `settled` while delivery is what failed.
- * Evidence holds strings (tx hashes, amounts, the router status, a note).
+ * Evidence stays an open record: tx hashes, amounts as strings, the router status, a note.
+ * An amount-mismatch row stores an `AmountMismatch` here and stays `needs_attention`.
  */
 export type TimelineEntry = {
   seq: number;
@@ -36,3 +38,24 @@ export type TimelineEntry = {
   actor: "system" | "operator";
   evidence: Record<string, unknown>;
 };
+
+/**
+ * The Base receipt was not the order price. Not a payment status.
+ * T4 attaches this when it moves the row to `needs_attention`.
+ */
+export type AmountMismatch = {
+  reason: "amount_mismatch";
+  /** Order price, base units. */
+  expected: string;
+  /** Amount on the Base receipt, base units. */
+  received: string;
+};
+
+/** Format both amounts with the base-unit rules. Does not decide that they differ. */
+export function amountMismatch(expected: bigint, received: bigint): AmountMismatch {
+  return {
+    reason: "amount_mismatch",
+    expected: toBaseUnits(expected),
+    received: toBaseUnits(received),
+  };
+}

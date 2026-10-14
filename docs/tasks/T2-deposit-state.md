@@ -137,6 +137,12 @@ export type TimelineEntry = {
 };
 ```
 
+When the Base receipt is not the exact order price, T4 moves the payment to
+`needs_attention` and stores an `AmountMismatch` as that row's `evidence`:
+`{ reason: "amount_mismatch", expected, received }`, both decimal base-unit strings.
+`evidence` stays an open record, so other rows can still carry tx hashes, the router
+status, and an operator note. The buyer still sees order status `needs_attention`.
+
 ## 5. Amounts
 
 ```ts
