@@ -1,5 +1,6 @@
 # Example spine: format reference only, not the Settle Kit spec. Small on purpose:
-# one buyer journey with a human step, an external step, script steps and three exits.
+# one buyer journey with a human step, an external step, script steps, two exits and two
+# invariants. Tests cite criteria as J1.S4.c2 and invariants as I1.
 product: settle-kit-example
 source: docs/plans/example-design.md
 
@@ -15,6 +16,16 @@ surfaces:
   - id: checkout
     kind: component
     states: [pay, processing, paid, needs_attention]
+
+invariants:
+  - id: I1
+    title: One credit per transfer
+    rule: THE SYSTEM SHALL NOT credit the same Base transfer (chain ID, tx hash, log index) more than once
+    decisions: [D21]
+  - id: I2
+    title: Never credit more than arrived
+    rule: THE SYSTEM SHALL NOT let the total credited exceed the total USDC verified at the safe block
+    decisions: [D22]
 
 journeys:
   - id: J1
@@ -37,14 +48,14 @@ journeys:
         does: Shows the order's stored address and payAmount
         next: J1.S2
         criteria:
-          - WHEN the buyer opens a routed order THE SYSTEM SHALL show the stored address and payAmount and SHALL NOT request a new quote
+          c1: WHEN the buyer opens a routed order THE SYSTEM SHALL show the stored address and payAmount and SHALL NOT request a new quote
       - id: J1.S2
         title: Sends from a wallet or exchange
         bucket: human
         does: Scans the QR or withdraws from an exchange, outside our UI
         next: J1.S3
         criteria:
-          - WHILE no payment is seen THE SYSTEM SHALL keep the order pending and SHALL NOT start the attention timer
+          c1: WHILE no payment is seen THE SYSTEM SHALL keep the order pending and SHALL NOT start the attention timer
       - id: J1.S3
         title: Relay reports the fill
         bucket: external
@@ -53,19 +64,22 @@ journeys:
         sees: Payment seen, moving to Base
         does: Relay delivers USDC to the treasury on Base
         next: J1.S4
+        invariants: [I1]
         criteria:
-          - WHEN Relay reports a fill THE SYSTEM SHALL record it once per fill ID
+          c1: WHEN Relay reports a fill THE SYSTEM SHALL record it once per fill ID
+          c2: IF Relay reports the same fill again THE SYSTEM SHALL NOT record a second fill
       - id: J1.S4
         title: Verifies on Base
         bucket: script
         does: Reads the receipt at the safe block
         decisions: [D21, D22]
+        invariants: [I2]
         next:
           - { to: J1.S5, when: exact amount to the order's treasury }
           - { to: J1.S4b, when: anything else }
         criteria:
-          - WHEN a fill is reported THE SYSTEM SHALL read the Base receipt at the safe block before settling
-          - IF the received amount differs from the order amount THE SYSTEM SHALL NOT settle the order
+          c1: WHEN a fill is reported THE SYSTEM SHALL read the Base receipt at the safe block before settling
+          c2: IF the received amount differs from the order amount THE SYSTEM SHALL NOT settle the order
       - id: J1.S4b
         title: Held for an operator
         bucket: script
@@ -75,7 +89,7 @@ journeys:
         does: Moves the payment to needs_attention with a reason
         exit: attention
         criteria:
-          - WHEN verification rejects a fill THE SYSTEM SHALL move the payment to needs_attention and SHALL NOT send order.paid
+          c1: WHEN verification rejects a fill THE SYSTEM SHALL move the payment to needs_attention and SHALL NOT send order.paid
       - id: J1.S5
         title: Paid
         bucket: script
@@ -84,8 +98,10 @@ journeys:
         sees: Paid, with a Base explorer link
         does: Settles once and sends one signed order.paid webhook
         exit: paid
+        invariants: [I1]
         criteria:
-          - WHEN a fill is verified THE SYSTEM SHALL settle the order once and send order.paid with a stable event ID
+          c1: WHEN a fill is verified THE SYSTEM SHALL settle the order once and send order.paid with a stable event ID
+          c2: IF a settled order receives another verified fill THE SYSTEM SHALL NOT settle it again and SHALL move the extra payment to needs_attention
 
 tasks:
   - id: M1.T1

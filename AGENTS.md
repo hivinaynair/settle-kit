@@ -23,7 +23,8 @@ Two artifacts drive the spec, written in this order. How to write them:
 | Fact | Its one home |
 |---|---|
 | What we build, what we ruled out, open questions | `docs/decisions.md` (IDs `D7`, `X1`, `Q2`) |
-| Exactly how it behaves: steps, branches, EARS rules | `docs/journeys/settle-kit.yaml` (IDs `J2.S4`) |
+| Exactly how it behaves: steps, branches, EARS rules | `docs/journeys/settle-kit.yaml` (IDs `J2.S4`, criteria `J2.S4.c1`) |
+| Rules that must always hold (money, security) | the same spine's `invariants:` (IDs `I1`) |
 | Live evidence (fills, tx links, timings) | `docs/spikes.md` |
 
 - Other docs (design doc, task specs, PRs) link these IDs; they never restate them.
@@ -32,15 +33,23 @@ Two artifacts drive the spec, written in this order. How to write them:
   recommendation and the rejected options.
 - No guessing: a missing business, money or user-visible rule becomes an open question in
   `docs/decisions.md`. Internal technical choices (names, layout, helpers) are the builder's.
-- Journeys: never hand-edit the generated `.md`; never renumber or reuse a step ID.
-- Journey steps list the decisions they rely on (`decisions: [D21]`); `check-journeys`
-  rejects unknown or superseded IDs, and `--complete` rejects steps citing open questions.
-- Tests: every test in `apps/` and `packages/` proves something traced. Most are journey
-  tests named after the step they prove (`it("J2.S4: …")`). A pure helper gets its own
-  tests only if it touches money or security, has many edge cases and needs no mocks; name
-  them after the money or security decision they enforce (`it("D21: …")`) and prefer one
-  table-driven test over many. Anything else is not tested directly. `check-journeys`
-  enforces the naming once a journey spine exists. PRs list the step IDs they serve.
+- Journeys: never hand-edit the generated `.md`; never renumber or reuse a step,
+  criterion or invariant ID.
+- Journey steps list the decisions they rely on (`decisions: [D21]`) and the invariants
+  they could break (`invariants: [I1]`); `check-journeys` rejects unknown or superseded IDs,
+  and `--complete` rejects steps citing open questions. A step that touches money needs
+  an `IF` criterion. Criteria use numbers and units, not vague words (`check-journeys`
+  flags *promptly*, *as needed* and similar).
+- Tests: every test in `apps/` and `packages/` proves something traced, named after it:
+  - a journey criterion, most tests: `it("J2.S4.c1: …")`;
+  - an invariant, tested with many generated orderings, duplicates and crash points
+    (property-based): `it("I1: …")`;
+  - a pure helper only if it touches money or security, has many edge cases and needs no
+    mocks: the decision it enforces, `it("D21: …")`, preferably one table-driven test.
+
+  Anything else is not tested directly. A test asserts exactly the rule it names; a
+  reviewer checks that. `check-journeys` enforces the naming once a journey spine exists.
+  PRs list the step IDs they serve.
 - Writing: lead with the point, plain words, explain a term on first use, keep fact,
   decision and assumption apart, no `TBD`.
 

@@ -23,5 +23,16 @@ or a `SHALL NOT` criterion. Skip a question only when the step makes it impossib
 - Test mode and live mode meet (same database, a real payment to a test address)?
 - The merchant's webhook is down for hours?
 
+**Money (any step that moves, counts or credits funds)**
+- The chain reorganizes after we showed "paid"? (We credit at Base's `safe` block; what
+  does the buyer see before it?)
+- Two of our own workers (webhook handler and reconciliation) credit the same transfer
+  at the same moment?
+- Amounts in different decimals (USDC 6, ETH 18), rounding, or a fee taken in between:
+  which exact base-unit amount is compared, and is any remainder lost or invented?
+- One transfer pays two orders, or two transfers pay one order?
+- A refund and a late fill both arrive for the same order?
+- Which invariant would this branch break if we got it wrong? List it on the step.
+
 **Every branch ends somewhere**: back on the path, in `needs_attention` with a reason
 and a human next step, or an exit. Name what the user sees and what must never happen.

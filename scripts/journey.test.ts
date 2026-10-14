@@ -2,14 +2,15 @@ import { describe, expect, it } from "bun:test";
 import { join } from "node:path";
 import {
   checkJourneyCitations,
-  citedStepIds,
   nextEdges,
   openQuestionSteps,
   parseDecisions,
   render,
-  requiredStepIds,
+  requiredIds,
   type Spine,
-  untracedTests,
+  testCitations,
+  traceableIds,
+  vagueWords,
   validateSpine,
 } from "./journey.ts";
 
@@ -115,7 +116,7 @@ describe("validateSpine", () => {
         title: "x",
         actor: "buyer",
         goal: "g",
-        steps: [{ id: "J1.S1", title: "a", criteria: ["the order gets paid"] }],
+        steps: [{ id: "J1.S1", title: "a", criteria: { c1: "the order gets paid" } }],
       },
     ]);
     expect(warnings.some((w) => w.includes("no bucket"))).toBe(true);
@@ -137,11 +138,11 @@ describe("validateSpine", () => {
             title: "a",
             bucket: "script",
             exit: "e",
-            criteria: [
-              "WHEN a fill is verified THE SYSTEM SHALL settle once",
-              "IF the amount differs THE SYSTEM SHALL NOT settle",
-              "WHILE no payment is seen THE SYSTEM SHALL keep the order pending",
-            ],
+            criteria: {
+              c1: "WHEN a fill is verified THE SYSTEM SHALL settle once",
+              c2: "IF the amount differs THE SYSTEM SHALL NOT settle",
+              c3: "WHILE no payment is seen THE SYSTEM SHALL keep the order pending",
+            },
           },
         ],
       },
@@ -208,8 +209,8 @@ describe("validateSpine", () => {
           id: "J1",
           title: "x",
           steps: [
-            { id: "J1.S1", title: "a", criteria: ["THE SYSTEM SHALL a"], next: "J1.S2" },
-            { id: "J1.S2", title: "b", criteria: ["THE SYSTEM SHALL b"], next: "J1.S3" },
+            { id: "J1.S1", title: "a", criteria: { c1: "THE SYSTEM SHALL a" }, next: "J1.S2" },
+            { id: "J1.S2", title: "b", criteria: { c1: "THE SYSTEM SHALL b" }, next: "J1.S3" },
             { id: "J1.S3", title: "c" },
           ],
         },
@@ -235,6 +236,93 @@ describe("validateSpine", () => {
     });
     expect(errors.some((e) => e.includes("must look like M1.T1"))).toBe(true);
     expect(errors.some((e) => e.includes('unknown step "J9.S1"'))).toBe(true);
+  });
+
+  it("requires criteria as an ID map with c1-style keys", () => {
+    const asList = ok([
+      {
+        id: "J1",
+        title: "x",
+        steps: [{ id: "J1.S1", title: "a", criteria: ["THE SYSTEM SHALL a"] as never }],
+      },
+    ]);
+    expect(asList.errors.some((e) => e.includes("criteria must map IDs to rules"))).toBe(true);
+    const badKey = ok([
+      {
+        id: "J1",
+        title: "x",
+        steps: [{ id: "J1.S1", title: "a", criteria: { first: "THE SYSTEM SHALL a" } }],
+      },
+    ]);
+    expect(badKey.errors).toContain('J1.S1: criterion id "first" must look like c1');
+  });
+
+  it("warns on vague words in criteria, ignoring quoted UI copy", () => {
+    expect(vagueWords("WHEN paid THE SYSTEM SHALL notify the merchant promptly, etc.")).toEqual([
+      "promptly",
+      "etc",
+    ]);
+    expect(vagueWords('WHEN paid THE SYSTEM SHALL show "Should arrive soon"')).toEqual([]);
+    const { warnings } = ok([
+      {
+        id: "J1",
+        title: "x",
+        steps: [
+          {
+            id: "J1.S1",
+            title: "a",
+            criteria: { c1: "WHEN paid THE SYSTEM SHALL respond quickly" },
+          },
+        ],
+      },
+    ]);
+    expect(warnings.some((w) => w.startsWith("J1.S1.c1: vague words (quickly)"))).toBe(true);
+  });
+
+  it("checks invariants: format, rule, citations by steps and unused ones", () => {
+    const { errors, warnings } = validateSpine({
+      ...base,
+      invariants: [
+        { id: "I1", title: "once", rule: "THE SYSTEM SHALL NOT credit a transfer twice" },
+        { id: "I2", title: "unused", rule: "THE SYSTEM SHALL NOT credit more than arrived" },
+        { id: "INV3", title: "bad", rule: "" },
+      ],
+      journeys: [
+        {
+          id: "J1",
+          title: "x",
+          steps: [{ id: "J1.S1", title: "a", invariants: ["I1", "I9"] }],
+        },
+      ],
+    });
+    expect(errors).toContain("INV3: invariant id must look like I1");
+    expect(errors).toContain("INV3: invariant needs a rule");
+    expect(errors).toContain('J1.S1: unknown invariant "I9"');
+    expect(warnings).toContain(
+      "invariant I2: no step lists it; add it to the steps that could break it",
+    );
+  });
+
+  it("requires an IF criterion on a step that touches money", () => {
+    const index = parseDecisions(
+      "## Money rules (D20–D29)\n| D21 | Credit at safe | | | | |\n## Architecture\n| D31 | Tick | | | | |",
+    );
+    const step = (decisions: string[], criteria: Record<string, string>) =>
+      validateSpine(
+        {
+          ...base,
+          journeys: [
+            { id: "J1", title: "x", steps: [{ id: "J1.S1", title: "a", decisions, criteria }] },
+          ],
+        },
+        index,
+      ).warnings.filter((w) => w.includes("touches money"));
+    const when = { c1: "WHEN a fill arrives THE SYSTEM SHALL verify it" };
+    expect(step(["D21"], when)).toHaveLength(1);
+    expect(step(["D31"], when)).toEqual([]);
+    expect(
+      step(["D21"], { ...when, c2: "IF the amount differs THE SYSTEM SHALL NOT settle" }),
+    ).toEqual([]);
   });
 });
 
@@ -265,6 +353,31 @@ describe("render", () => {
     expect(md.endsWith("\n")).toBe(true);
   });
 
+  it("shows criterion IDs, invariants and what each step cites", () => {
+    const md = render({
+      ...base,
+      invariants: [{ id: "I1", title: "Once", rule: "THE SYSTEM SHALL NOT credit twice" }],
+      journeys: [
+        {
+          id: "J1",
+          title: "Pay",
+          steps: [
+            {
+              id: "J1.S1",
+              title: "Settle",
+              decisions: ["D21"],
+              invariants: ["I1"],
+              criteria: { c1: "IF seen twice THE SYSTEM SHALL NOT settle again" },
+            },
+          ],
+        },
+      ],
+    });
+    expect(md).toContain("| `I1` | Once | THE SYSTEM SHALL NOT credit twice | — | `J1.S1` |");
+    expect(md).toContain("**`J1.S1`** Settle · decisions D21 · invariants I1");
+    expect(md).toContain("- `J1.S1.c1` IF seen twice THE SYSTEM SHALL NOT settle again");
+  });
+
   it("links the design doc relative to the generated file", () => {
     const spine = { ...base, source: "docs/plans/2026-10-15-settle-kit-design.md", journeys: [] };
     expect(render(spine, "docs/journeys/settle-kit.md")).toContain(
@@ -276,31 +389,42 @@ describe("render", () => {
 describe("citations", () => {
   const spine: Spine = {
     product: "t",
+    invariants: [{ id: "I1", rule: "THE SYSTEM SHALL NOT credit twice" }],
     journeys: [
       {
         id: "J1",
         title: "x",
         steps: [
-          { id: "J1.S1", title: "a", criteria: ["THE SYSTEM SHALL a"] },
-          { id: "J1.S2", title: "b" },
+          {
+            id: "J1.S1",
+            title: "a",
+            criteria: { c1: "THE SYSTEM SHALL a", c2: "THE SYSTEM SHALL b" },
+          },
+          { id: "J1.S2", title: "b", criteria: { c1: "THE SYSTEM SHALL c" } },
         ],
       },
     ],
-    tasks: [{ id: "M1.T1", title: "t", serves: ["J1.S1", "J1.S2"] }],
+    tasks: [{ id: "M1.T1", title: "t", serves: ["J1.S1"] }],
   };
 
-  it("requires only served steps with criteria", () => {
-    expect(requiredStepIds(spine)).toEqual(["J1.S1"]);
+  it("knows every criterion and invariant; requires served criteria and all invariants", () => {
+    expect(traceableIds(spine)).toEqual(["J1.S1.c1", "J1.S1.c2", "J1.S2.c1", "I1"]);
+    expect(requiredIds(spine)).toEqual(["I1", "J1.S1.c1", "J1.S1.c2"]);
   });
 
   it("finds unknown citations always and missing ones only when complete", () => {
-    const cited = citedStepIds(['it("J1.S1: a")', 'it("J9.S1: stray")']);
-    const base = { known: ["J1.S1", "J1.S2"], required: ["J1.S1", "J1.S2"], cited };
-    expect(checkJourneyCitations({ ...base, complete: false })).toEqual({
-      unknown: ["J9.S1"],
+    const { cited } = testCitations([
+      {
+        path: "a.test.ts",
+        text: 'it("J1.S1.c1, I1: a", () => {}); it("J9.S1.c1: stray", () => {});',
+      },
+    ]);
+    const args = { known: traceableIds(spine), required: requiredIds(spine), cited };
+    expect(checkJourneyCitations({ ...args, complete: false })).toEqual({
+      unknown: ["J9.S1.c1"],
       missing: [],
     });
-    expect(checkJourneyCitations({ ...base, complete: true }).missing).toEqual(["J1.S2"]);
+    expect(checkJourneyCitations({ ...args, complete: true }).missing).toEqual(["J1.S1.c2"]);
   });
 });
 
@@ -318,6 +442,13 @@ describe("decisions", () => {
   it("reads IDs and superseded rows from markdown tables", () => {
     expect([...index.ids].sort()).toEqual(["D31", "D8", "Q2", "X1"]);
     expect([...index.superseded]).toEqual(["D8"]);
+  });
+
+  it("marks rows under a Money heading as money decisions", () => {
+    const money = parseDecisions(
+      "## Money rules\n| D21 | a | | | | |\n## SDK\n| D41 | b | | | | |",
+    );
+    expect([...money.money]).toEqual(["D21"]);
   });
 
   it("rejects unknown, superseded and malformed citations", () => {
@@ -358,32 +489,37 @@ describe("example spine", () => {
   });
 });
 
-describe("untracedTests", () => {
+describe("testCitations", () => {
   const index = parseDecisions("| D8 | a | | | | |\n| D21 | b | | | | D8 |");
   const file = (text: string) => [{ path: "packages/x/a.test.ts", text }];
 
-  it("accepts tests named after a step or a live decision", () => {
+  it("accepts tests named after criteria, invariants or a live decision", () => {
     const text = [
-      'it("J2.S4: does not settle a short payment", () => {});',
+      'it("J2.S4.c1: does not settle a short payment", () => {});',
       "test('D21: rejects a receipt above the safe block', () => {});",
-      'it.each(cases)("J1.S2b: retries %s", () => {});',
+      'it.each(cases)("J1.S2b.c1, J1.S2b.c2: retries %s", () => {});',
+      'it("I1: never credits a transfer twice under any ordering", () => {});',
       'expect(/x/.test("not a test title")).toBe(true);',
     ].join("\n");
-    expect(untracedTests(file(text), index)).toEqual([]);
+    const { problems, cited } = testCitations(file(text), index);
+    expect(problems).toEqual([]);
+    expect([...cited].sort()).toEqual(["I1", "J1.S2b.c1", "J1.S2b.c2", "J2.S4.c1"]);
   });
 
-  it("rejects untraced, unknown and superseded titles", () => {
+  it("rejects untraced, step-level, unknown and superseded titles", () => {
     const text = [
       'it("parses amounts", () => {});',
       'it("D99: something", () => {});',
       'it("D8: old rule", () => {});',
-      'test("J2.S4 missing colon", () => {});',
+      'test("J2.S4.c1 missing colon", () => {});',
+      'it("J2.S4: names the step, not the rule", () => {});',
       'it.each(rows)("untraced %s", () => {});',
     ].join("\n");
-    const problems = untracedTests(file(text), index);
-    expect(problems).toHaveLength(5);
+    const { problems } = testCitations(file(text), index);
+    expect(problems).toHaveLength(6);
     expect(problems[0]).toContain('"parses amounts" must start with');
     expect(problems[1]).toContain("D99, which is not in docs/decisions.md");
     expect(problems[2]).toContain("D8, which was superseded");
+    expect(problems[4]).toContain('"J2.S4: names the step, not the rule" must start with');
   });
 });
