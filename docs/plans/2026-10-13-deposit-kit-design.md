@@ -16,11 +16,11 @@ mode, end to end, with real money.** Everything else here is designed and ships 
 | Pay by address / QR | Send exactly the shown amount from any wallet or exchange; the QR pre-fills token, network and amount (EIP-681) |
 | Pay from a browser wallet (EOA) | Connect via EIP-6963, switch network, check balance and gas, sign one USDC transfer of exactly `payAmount` to the order address; no second send for the same order |
 | Router | `orderAddress` + `fills` on Relay (T1, done) |
-| Payment workflow | Polls the order's address, verifies the USDC transfer on Base at `safe`, settles once, calls `onSettled` with retries |
+| Payment workflow | Polls the order's address, verifies the USDC transfer on Base at `safe`, settles once, sends a signed `order.paid` webhook with retries |
 | Store | Orders, payments and a timeline in Postgres, with the exactly-once rules (§4) |
 | Test mode | "Simulate payment" runs the real workflow without money (§10.1) |
 | Routes | Base and Arbitrum USDC → Base USDC proven live; Ethereum in the manifest once proven |
-| Developer API | `createSettle` config, `settle.createOrder` with the merchant's own price, `settle.handlers`, `<Checkout>` (§7) |
+| Developer API | Env-var settings + `createSettle()`, `settle.createOrder` with the merchant's own price, `settle.handlers`, signed `order.paid` webhook, `<Checkout>` (§7) |
 | npm `0.1.0` | `@settle-kit/core`, `@settle-kit/server`, `@settle-kit/react`, installable in any Next.js app |
 | Demo shop | Three products at different prices, built only on the published API |
 
@@ -57,7 +57,7 @@ The first release is intentionally small:
 | Router | Relay |
 | Storage | Postgres 15+ through Drizzle |
 | Execution | Workflow SDK on Vercel |
-| Host notification | One durable `onSettled` callback for both modes |
+| Host notification | One durable, signed settlement webhook for both modes |
 | Recovery | Reconciliation, callback replay and manual payer repayment |
 | Distribution | Installable packages and a working Next.js reference app |
 
@@ -113,7 +113,8 @@ can run more than once, so writes and callbacks remain idempotent. Cron starts
 reconciliation; it does not run the deposit lifecycle. No additional queue service
 is part of this design.
 
-**Deliver only settlement to the host.** `onSettled` is the one notification the host
+**Deliver only settlement to the host, as a signed webhook.** The settlement webhook
+(`order.paid` in checkout mode) is the one notification the host
 needs, to fulfil an order or apply an account credit; the event says which. Progress,
 failure and refund states remain queryable in the database. This keeps one delivery
 record per deposit and avoids a general event outbox.
@@ -131,7 +132,7 @@ The existing package split stays:
 | Package | Responsibility |
 |---|---|
 | `@settle-kit/core` | Types, state transitions and typed errors; no network or UI dependencies |
-| `@settle-kit/react` | Provider, `useDeposit` and the address/QR widget |
+| `@settle-kit/react` | `SettleProvider`, `useCheckout` and the `<Checkout>` widget (QR, address, wallet) |
 | `@settle-kit/server` | Handlers, Relay adapter, verification, workflows and Drizzle store |
 | `apps/demo` | Reference app: "Buy report" checkout, credits top-up, setup instructions |
 
@@ -142,6 +143,8 @@ Server credentials and database access stay in the server package.
 | Requirement | Why |
 |---|---|
 | Next.js app wrapped with `withWorkflow` | Workflows run inside the host |
+| Settle Kit settings in environment variables | A workflow step on a freshly started server rebuilds its settings from env (T5) |
+| A route that verifies the signed webhook | The host's fulfilment code runs there, in the host's own app or any service |
 | A durable Workflow World (Vercel or Postgres) | The local World loses in-flight runs on a crash |
 | Postgres 15+ | `NULLS NOT DISTINCT` and the partial unique index |
 | A scheduler calling `deposits.reconcile()` | Recovers missed webhooks and unfinished work |
@@ -168,7 +171,7 @@ flowchart TB
   WF --> Relay
   WF --> V["Receipt verifier"]
   V --> Base[("Base RPC")]
-  WF --> CB["Host onSettled callback"]
+  WF --> CB["Host webhook route (signed)"]
 ```
 
 A payment follows this path:
@@ -182,7 +185,7 @@ A payment follows this path:
    stored address in a connected wallet.
 4. A signed Relay event or reconciliation discovers the actual fill.
 5. A workflow verifies destination funds and persists settlement.
-6. A delivery workflow calls `onSettled`. The host fulfils the order or applies the
+6. A delivery step POSTs the signed settlement webhook. The host fulfils the order or applies the
    credit atomically; acknowledgment moves the SDK deposit to `credited`.
 
 Closing the widget does not stop tracking.
@@ -228,7 +231,7 @@ settle_kit_deposits
   refund_evidence          jsonb      -- nullable; verified return to the app
   run_id                   text       -- latest processing run; for debugging and restarts
   delivery_run_id          text
-  settlement_event         jsonb      -- immutable onSettled payload
+  settlement_event         jsonb      -- immutable webhook payload
   delivery_attempts        int
   delivery_next_attempt_at timestamptz -- null once delivered or exhausted
   delivery_error           text
@@ -314,7 +317,7 @@ retries. Only settlement schedules delivery.
 There are no locks or leases. Two runs for the same deposit can coexist: a webhook and
 reconciliation race, or an enqueue response is lost and the work is started again.
 Every write is a compare-and-set transition or a unique insert, so the slower run's
-writes fail and it exits. A duplicate `onSettled` call is absorbed by the host's unique
+writes fail and it exits. A duplicate webhook is absorbed by the host's unique
 credit on `deposit.id`. Reconciliation restarts work only when the recorded run is no
 longer running, which keeps duplicate API calls rare without a lock.
 
@@ -425,7 +428,7 @@ authorizes a credit or a declaration that funds are lost.
 
 ### Host credit delivery
 
-`deliverSettlement` calls `onSettled` with the persisted event. Its identity is
+`deliverSettlement` POSTs the persisted event as a signed webhook (Standard Webhooks). Its identity is
 `${deposit.id}:settled` and its type is `deposit.settled`. The snapshot contains
 verified `amountOut` for credit. Estimates are display data, not settlement fields. Replay preserves the payload and deposit ID.
 
@@ -541,7 +544,7 @@ settle_kit_orders
 An order's fill becomes an ordinary row in `settle_kit_deposits` (linked by
 `order_id`), so processing, verification, delivery and the timeline are unchanged.
 Settlement additionally requires `amount_out` to **equal** the order amount; anything
-else is `needs_attention`. The same `onSettled` callback fires, with
+else is `needs_attention`. The same settlement webhook fires, with
 `event.kind = "order"` and the host's `externalId`; the host dedupes on the event id.
 
 | Order status | Set when |
@@ -572,27 +575,32 @@ the request).
 
 Settle Kit never knows about products. A merchant creates an order with **their own
 price** on **their own server**; the money goes to **their own treasury**. Ten products or
-ten thousand: the integration is the same four pieces.
+ten thousand: the integration is the same few pieces.
 
 **1. Configure once (server)**
 
+```sh
+# .env
+SETTLE_MODE=live                          # "test": simulated payments, no Relay (§10.1)
+DATABASE_URL=postgres://…                 # the merchant's Postgres
+SETTLE_TREASURY=0xMerchantWallet…         # every payment lands here
+SETTLE_REFUND_ADDRESS=0xMerchantRefund…   # Relay refunds go here (payers may be exchanges)
+SETTLE_ROUTES=base-usdc,arbitrum-usdc     # subset of the tested manifest
+SETTLE_WEBHOOK_URL=/api/settle-webhook    # a path = this app; or any https URL
+SETTLE_WEBHOOK_SECRET=whsec_…
+RELAY_API_KEY=…                           # live only
+BASE_RPC_URL=https://…                    # live only
+```
+
 ```ts
 // lib/settle.ts
-import { createSettle, drizzleStore, relay } from "@settle-kit/server";
-
-export const settle = createSettle({
-  router: relay({ apiKey: process.env.RELAY_API_KEY! }),
-  treasury: "0xMerchantWallet…",            // every payment lands here
-  refundAddress: "0xMerchantRefundWallet…",  // Relay refunds go here (payers may be exchanges)
-  routes: ["base-usdc", "arbitrum-usdc"],    // typed subset of the tested manifest
-  store: drizzleStore(db),                   // the merchant's Postgres
-  baseRpcUrl: process.env.BASE_RPC_URL!,
-  mode: "live",                              // "test": simulated payments, no Relay (§10.1)
-  onPaid: async (event) => {                 // at least once; dedupe on event.id
-    await fulfil(event.order.externalId, event.id);
-  },
-});
+import { createSettle } from "@settle-kit/server";
+export const settle = createSettle();     // reads the env above
 ```
+
+Settings are env vars, not code, because the payment workflow runs on short-lived
+servers that start fresh: each can rebuild the settings from its environment without
+loading the merchant's files (T5).
 
 **2. Mount the API (one route file)**
 
@@ -600,6 +608,23 @@ export const settle = createSettle({
 // app/api/settle/[...path]/route.ts
 export const { GET, POST } = settle.handlers;
 ```
+
+**2b. Fulfil on the signed webhook (server)**
+
+```ts
+// app/api/settle-webhook/route.ts
+import { verifyWebhook } from "@settle-kit/server";
+
+export async function POST(request: Request) {
+  const event = await verifyWebhook(request, process.env.SETTLE_WEBHOOK_SECRET!);
+  await fulfil(event.order.externalId, event.id);   // record event.id uniquely
+  return new Response(null, { status: 204 });
+}
+```
+
+Signed per [Standard Webhooks](https://www.standardwebhooks.com/) (`webhook-id`,
+`webhook-timestamp`, `webhook-signature` headers), so any Standard Webhooks library can
+verify it too. Fulfilment can live in this app or in any other service.
 
 **3. Create an order with the merchant's price (server only)**
 
@@ -631,10 +656,13 @@ typed state for custom UIs.
 
 - `createOrder` is server-only: the browser can never choose its own price.
 - `externalId` is idempotent per account: a retry returns the same order.
-- `onPaid` is delivered at least once with a stable `event.id`; the merchant records the
-  id uniquely and fulfils in the same transaction.
+- The `order.paid` webhook is delivered at least once with a stable `event.id` (the
+  `webhook-id` header); the merchant records the id uniquely and fulfils in the same
+  transaction. Retries back off for ~17 h.
 - `display` is shown on the checkout screen and never used for payment logic.
-- Treasury and refund addresses come only from config, never from a request.
+- Treasury and refund addresses come only from env config, never from a request.
+- `<Checkout onPaid>` is a browser convenience (redirect to a thank-you page); it is not
+  proof of payment. Fulfil only on the verified webhook.
 
 | Endpoint (mounted by `handlers`) | Purpose |
 |---|---|
@@ -774,7 +802,7 @@ this doc stays designed and ships after. Task list: [docs/tasks](../tasks/README
 
 | Day | Build | Visible result |
 |---|---|---|
-| 1 | T1 router (done); T2 payment states (hand-written); T3 store; T4 receipt verifier; T5 `createSettle`: `createOrder`, `payOrder` workflow, handlers, `onPaid`, test mode | A simulated payment completes end to end through the public API |
+| 1 | T1 router (done); T2 payment states (hand-written); T3 store; T4 receipt verifier; T5 `createSettle`: `createOrder`, `payOrder` workflow, handlers, signed webhook, test mode | A simulated payment completes end to end through the public API |
 | 2 | T6 `<Checkout>` + demo shop (3 products); T7 pay from a browser wallet; T8 real payments + README + 2-minute video; T9 publish `0.1.0` to npm | **A stranger can `npm install` it and take payments** |
 
 Risks to the 2 days: the live payments need the Base funds; npm publishing needs the
@@ -783,7 +811,7 @@ proof, timeline polish, wallet-path extras (keep the basic exact-amount transfer
 
 **In the cut:** the 0.1 developer API (§7), checkout mode, Relay strict addresses, QR and
 browser-wallet payment, one durable workflow, on-chain verification, exactly-once
-settlement, `onPaid` with retries, test mode, timeline, key and secret handling, live
+settlement, a signed webhook with retries, test mode, timeline, key and secret handling, live
 routes proven, a 3-product demo shop, npm `0.1.0`.
 
 **After the cut (designed, not built):**
@@ -814,7 +842,7 @@ block them.
 `mode: "test"`, the widget shows a dev toolbar: **Simulate payment**, **…delayed**,
 **…refunded**, **…below minimum**, and for orders **…underpaid**, **…overpaid**,
 **…expired**. Simulated fills run through the same workflows,
-store, state machine and `onSettled` callback; only the router and the receipt
+store, state machine and settlement webhook; only the router and the receipt
 verifier are replaced. Simulated deposits are stored with `network = "test"` and can
 never reach a mainnet treasury configuration. Test mode never calls Relay, and live
 mode never loads the simulated router. Analogous to Stripe's test cards.
@@ -880,7 +908,7 @@ visible beside the QR.
 - **Accessibility:** focus moves to each new screen's heading; status changes are
   announced through a polite live region; the whole flow works by keyboard; QR has a
   text alternative.
-- **Headless:** `useDeposit()` returns a discriminated union per state, so teams can
+- **Headless:** `useCheckout()` returns a discriminated union per state, so teams can
   build their own UI on the same logic.
 
 ### 10.6 Treasury reconciliation (Later)
@@ -932,7 +960,7 @@ contract and a maintenance plan. These are release requirements for the first
 
 | # | Requirement | Contents |
 |---|---|---|
-| 1 | Public API reference | Every `createDeposits` option and its type; `SettleProvider`, `CheckoutButton`, `DepositButton` props; `useDeposit()` states; handler routes; `DepositErrorCode` list; `onSettled` event shapes; operator functions |
+| 1 | Public API reference | Every env var and `createSettle` option; `SettleProvider` and `<Checkout>` props; `useCheckout()` states; `verifyWebhook`; handler routes; `DepositErrorCode` list; webhook event shapes and signature scheme; operator functions |
 | 2 | Versioning and stability | Start at `0.x`, marked experimental. Breaking changes: config, events, error codes, handler routes and the database schema. Changelog per release |
 | 3 | Database upgrades | Tables live in the host's Postgres. Ship numbered SQL migrations plus the Drizzle schema; never edit a published migration; each release lists the migrations it needs |
 | 4 | Packaging | Build step with type declarations; separate server and client entry points so server code never reaches the browser bundle; install-from-pack check in a separate Next.js app (§9) |

@@ -86,7 +86,10 @@ export function nextStep(current: DepositStatus, fill: FillStatus): Step;
 Rules:
 1. A final `current`, or `settled`, always returns `stay` (only delivery moves `settled`).
 2. `filled` → `verify`.
-3. `refunded` → `move` to `refunded`. `failed` and `unknown` → `move` to `needs_attention`.
+3. `refunded`, `failed` and `unknown` → `move` to `needs_attention`. A router saying
+   "refunded" is a claim, not proof the money reached the refund wallet, and 0.1 has no
+   refund verifier (design §9, deferred), so it can't put a payment in a final state.
+   `refunded` stays in the table for when that verifier exists.
 4. `waiting` / `processing` / `delayed` → `move` to the same-named state, or `stay` if
    already there.
 5. Never return a `move` that `canTransition` rejects; return `stay` instead
@@ -110,7 +113,7 @@ export function orderStatusFor(payment: DepositStatus | null, expired: boolean):
 ## 4. Events
 
 ```ts
-/** The onSettled payload. Persisted once; a retry sends the same object. */
+/** The `order.paid` webhook body. Persisted once; a retry sends the same object. */
 export type SettledEvent = {
   id: string;           // `${payment.id}:settled`; the app dedupes on it
   kind: "order";        // "deposit" arrives with deposit mode later
@@ -159,7 +162,7 @@ to `DepositErrorCode` (used by the wallet path in T7).
 4. Generated: every `(status, fill)` pair (8 × 7 = 56) returns a `Step`, and every
    `move` passes `canTransition`.
 5. `nextStep("waiting", "filled")` → `verify`; `("processing", "refunded")` →
-   move `refunded`; `("delayed", "unknown")` → move `needs_attention`;
+   move `needs_attention`; `("delayed", "unknown")` → move `needs_attention`;
    `("settled", "failed")` → `stay`; `("needs_attention", "waiting")` → `stay`.
 6. `orderStatusFor` matches every row of the table in §3, including `credited` + expired
    → `paid`.
@@ -180,3 +183,4 @@ needed.
 - Why is there no `failed` payment status?
 - Why does `settled` exist separately from `credited`?
 - Why are amounts strings inside events but `bigint` in code?
+- Why does a router "refunded" go to `needs_attention` instead of `refunded`?

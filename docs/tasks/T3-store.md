@@ -48,20 +48,23 @@ settle_kit_orders
   route jsonb,             -- canonical route incl. recipient and refundTo, addresses lowercased
   display jsonb,           -- { title, image } for the checkout screen only
   address text,            -- the order's single-use deposit address (null until a route is picked)
+  test boolean not null,   -- created in test mode; a live deployment never processes it
+  simulation jsonb,        -- test mode only: { scenario, startedAt } for the simulated router (T5)
   expires_at, created_at, updated_at
-  UNIQUE (account_id, external_id)   -- creating the same order twice returns it
+  UNIQUE (account_id, external_id, test)   -- same order twice returns it; test and live never collide
   UNIQUE (address)
 
 settle_kit_deposits        -- one row per payment Relay saw at an order's address
   id, order_id → orders, fill_id, status,
   deposit_tx, received_amount numeric,   -- verified on chain; equals the order amount
   dest_chain_id, dest_tx, dest_log_index,
-  settlement_event jsonb,  -- the immutable onSettled payload
+  settlement_event jsonb,  -- the immutable webhook payload
   delivery_attempts int default 0, delivery_error,
   created_at, updated_at
   UNIQUE (order_id, fill_id)                                   -- a payment is recorded once
   UNIQUE INDEX NULLS NOT DISTINCT (dest_chain_id, dest_tx, dest_log_index)
     WHERE dest_tx IS NOT NULL                                  -- a transfer settles one payment
+  UNIQUE INDEX (order_id) WHERE status IN ('settled', 'credited')  -- an order is paid once
 
 settle_kit_deposit_events  -- the timeline
   deposit_id → deposits, seq, status, at, actor, evidence jsonb
@@ -78,9 +81,12 @@ payment and `expires_at`. One less thing to keep in sync.
 ```ts
 export type Store = {
   createOrder(input: {
-    accountId: string; externalId: string; amount: bigint; expiresAt: Date;
+    accountId: string; externalId: string; amount: bigint; expiresAt: Date; test: boolean;
     display?: { title: string; image?: string };
   }): Promise<OrderRow>;
+  findOrderByAddress(address: Address): Promise<OrderRow | null>;
+  /** Test mode only: start a simulated scenario once (CAS on simulation IS NULL). */
+  simulate(input: { orderId: string; scenario: string; startedAt: Date }): Promise<boolean>;
   /** Buyer picked a route: store the strict address and payAmount once. */
   setOrderRoute(input: { orderId: string; route: Route;
                          create: () => Promise<OrderAddress> }): Promise<OrderRow>;
@@ -92,7 +98,7 @@ export type Store = {
                       evidence: Record<string, unknown> }): Promise<PaymentRow | null>;
   settle(input: { id: string; receivedAmount: bigint;
                   destination: { chainId: number; txHash: Hex; logIndex: number };
-                  event: SettledEvent }): Promise<"settled" | "transfer_claimed" | "stale">;
+                  event: SettledEvent }): Promise<"settled" | "transfer_claimed" | "order_paid" | "stale">;
   markCredited(id: string): Promise<boolean>;
   recordDeliveryFailure(input: { id: string; error: string }): Promise<void>;
 };
@@ -100,7 +106,7 @@ export type Store = {
 
 ### Rules
 
-1. **`createOrder`** returns the existing order for the same `(accountId, externalId)`
+1. **`createOrder`** returns the existing order for the same `(accountId, externalId, test)`
    (the app may retry). No Relay call yet: the address depends on the route the buyer
    picks.
 1b. **`setOrderRoute`** calls `create()` (a strict Relay quote) only if the order has no
@@ -113,7 +119,9 @@ export type Store = {
    changed, appends the next timeline entry. Returns `null` if nothing changed.
 4. **`settle`** is one transaction: CAS to `settled`, write amounts, destination and
    `settlement_event`, append the timeline entry. A unique violation on the transfer index
-   returns `"transfer_claimed"` and changes nothing; a lost CAS returns `"stale"`.
+   returns `"transfer_claimed"`, one on the paid-once index returns `"order_paid"` (a
+   second payment to the same order; T5 sends it to `needs_attention`), and both change
+   nothing; a lost CAS returns `"stale"`.
 5. **`markCredited`** CAS `settled → credited` plus a timeline entry; `false` if already
    credited.
 6. **`recordDeliveryFailure`** increments `delivery_attempts`, stores the error, appends
@@ -146,6 +154,10 @@ drops it afterwards.
    increasing `seq`; `getOrder` derives order status `paid`.
 8. `recordDeliveryFailure` keeps `settled` and adds a `delivery_failed` entry.
 9. An amount of `10n ** 30n` round-trips exactly.
+10. Two payments of one order, different transfers: the first `settle` returns
+    `"settled"`, the second `"order_paid"`.
+11. `simulate` twice: the first returns `true`, the second `false`;
+    `findOrderByAddress` finds the order by its address in any letter case.
 
 ---
 

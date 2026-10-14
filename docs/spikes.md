@@ -117,11 +117,36 @@ the CDP faucet.
 | `GET /requests/v3` on testnet with our key | **401** (same key → 200 on mainnet) |
 | `GET /requests/v3` on testnet without a key | 400, `x-api-key` required |
 
+Re-checked later the same day: the 0.00015 ETH is still sitting at the deposit address
+(not swept, not refunded). Testnet `/chains` reports `depositAddressEnabled: true` for
+Base Sepolia and Sepolia, so it's not switched off. Testnet `/requests/v2?depositAddress=`
+(no key) answers 500 "Query read timeout". Untested: whether a **cross-chain** testnet
+deposit (Base Sepolia → Sepolia) sweeps. S4a was same-chain *and* same-token (ETH → ETH),
+which may simply be a route Relay never executes.
+
 **So:** Relay's testnet can't be our development profile: it didn't sweep the
 deposit, and `/requests/v3` has no usable key there. Relay's own testnet guide
 recommends cheap L2 mainnets over testnets. Development uses test mode (simulated
 deposits); the live proof is a small Base mainnet deposit. Reindex is a real
 recovery tool and belongs in operator tooling.
+
+## S4b · Cross-chain testnet deposit — 2026-10-14 (failed; confirms S4a)
+
+To test whether S4a failed only because ETH → ETH on one chain is a no-op route, we
+tried a real cross-chain route: Base Sepolia ETH → Sepolia ETH, open `EXACT_INPUT`.
+The minimum is ~0.0005 ETH (Sepolia's L1 fee is ~0.0004), so the payer was topped up
+from the CDP faucet (5 × 0.0001 ETH).
+
+| Step | Result |
+|---|---|
+| Deposit address | `0x3424abfc245da48f6968fba51b4841f2c7bdd6ff` (requestId `0x1791…5657`), quoted out 0.000152 ETH |
+| Transfer 0.0006 ETH | Mined, tx `0xc34e96492b695386ae3f169cf1d2fc5b3f6ddf6f69229c614a5ff9297d931cde` |
+| After 15 min (polled every 20 s) | Funds still at the deposit address; status `waiting`; nothing at the treasury on Sepolia |
+| Reindex | 200, "Triggered reindex for 1 currency", balance seen; status still `waiting` |
+
+**So:** Relay's testnet doesn't process deposit addresses at all, same-chain or
+cross-chain. S4a's failure says nothing about the mainnet Base USDC → Base USDC route;
+that still needs its own live proof (T8, run 1). Testnet is closed as a path.
 
 ## S7 · Relay account and funding findings — 2026-10-14
 
@@ -137,3 +162,25 @@ recovery tool and belongs in operator tooling.
   For payers in markets like India, local exchanges and INR onramps are the funding
   path, which supports building the address/QR path first.
 
+**Re-checked 2026-10-14 (later):** 8 `GET /requests/v3?depositAddress=` calls in 8 s with
+our key all returned 200, with no rate-limit headers. The 2 req/min figure doesn't apply
+to v3 at that rate, so T5's 10 s poll is fine for the demo. The real v3 limit is still
+unknown (Relay documents 200/min).
+
+## S9 · Minimum order amount for strict quotes — 2026-10-14
+
+Strict `EXACT_OUTPUT` deposit-address quotes to Base USDC, mainnet, with our key:
+
+| Order amount (USDC) | From Base, payer sends | From Arbitrum, payer sends |
+|---|---|---|
+| 0.000001 (1 base unit) | 0.025103 | 0.034058 |
+| 0.01 | 0.035092 | 0.044391 |
+| 0.05 | 0.075092 | 0.084055 |
+| 0.10 | 0.125092 | 0.134070 |
+| 0.25 | 0.275092 | 0.284089 |
+
+**So:** strict quotes have no minimum; S2's 50000 (0.05 USDC) minimum applies to open
+`EXACT_INPUT` quotes. The fee is flat (~0.0251 from Base, ~0.034 from Arbitrum), so below
+~0.05 the fee is larger than the price. Quotes only: whether Relay fills a tiny strict
+order is proven in T8. Demo prices: 0.50 / 1.00 / 2.00 USDC, so the fee reads as
+2–7% rather than more than the price.
