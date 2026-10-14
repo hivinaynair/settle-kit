@@ -18,8 +18,8 @@ wallet or exchange, credited as USDC on Base. Users send to a reusable deposit a
 ## Spec process
 
 - Idea → build-ready spec in five stages: decide → journeys → design → plan → check.
-  Overview and status: `docs/spec/README.md`. Skills: `.agents/skills/` (start with `spec`;
-  `.claude/skills` and `.cursor/skills` are aliases). Shared rules: `.agents/skills/CONTRACT.md`.
+  Overview and status: `docs/spec/README.md`. Skills: `.agents/skills/` (start with `spec`).
+  Shared rules: `.agents/skills/CONTRACT.md`.
 - `docs/journeys/settle-kit.yaml` is the source of truth for behavior. Never hand-edit the
   generated `.md`; never renumber or reuse a step ID.
 - Tests name the step they prove (`it("J2.S4: …")`); PRs list the step IDs they serve.

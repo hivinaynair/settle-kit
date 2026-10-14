@@ -34,9 +34,6 @@ for (const name of readdirSync(skillsRoot).sort()) {
     issues.push(`${name}: SKILL.md exceeds 360 words; move detail to a linked file`);
   for (const file of readdirSync(dir).filter((f) => f.endsWith(".md")))
     checkLinks(join(dir, file), `${name}/${file}`);
-  for (const alias of [".claude/skills", ".cursor/skills"])
-    if (!existsSync(join(root, alias, name, "SKILL.md")))
-      issues.push(`${name}: missing ${alias}/${name} alias`);
 }
 checkLinks(join(skillsRoot, "CONTRACT.md"), "CONTRACT.md");
 if (total > 2500) issues.push(`skill catalog exceeds 2500 words (${total})`);
