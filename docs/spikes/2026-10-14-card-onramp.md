@@ -66,7 +66,8 @@ the standard onramp covers it.
 ## What actually ran
 
 Read-only GET requests ran without provider credentials. Full sanitized results are
-in [the snapshot](card-onramp/2026-10-14-public-probes.json). Its UTC timestamp is
+in the snapshot `docs/spikes/card-onramp/2026-10-14-public-probes.json` (removed with the
+probe script when cards went out of scope; recover it from commit `05c8539`). Its UTC timestamp is
 October 13, 19:45; that is October 14 in the workspace's India timezone.
 
 | Probe | Observed result | What it establishes |
@@ -147,7 +148,8 @@ state remains the source of truth; a workflow alone does not discover lost notif
 
 ## Reproduce the public probes
 
-From the repository root, using Bun:
+The probe script and its test were removed when cards went out of scope. To rerun them,
+restore `scripts/spikes/card-onramp.ts` and its test from commit `05c8539`, then:
 
 ```sh
 bun scripts/spikes/card-onramp.ts

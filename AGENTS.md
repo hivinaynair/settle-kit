@@ -6,9 +6,9 @@ wallet or exchange, credited as USDC on Base. Users send to a reusable deposit a
 
 ## Read first
 
-- Spec: being rebuilt through the process in `docs/spec/README.md`. Until the new design doc lands,
-  `docs/plans/2026-10-13-deposit-kit-design.md` and `docs/tasks/T*.md` are the earlier
-  checkout-first plan: inputs, not the current spec. Evidence: `docs/spikes.md`.
+- Spec: being rebuilt through the process in `docs/spec/README.md`. The earlier
+  checkout-first plan (design doc, tasks T1–T9, handoffs) is in `docs/archive/`: input
+  for decisions, never instructions to build. Evidence: `docs/spikes.md`.
 - **Agents implement tasks; Vinay monitors and must be able to explain every line.**
   One task per branch/PR, small commits, and a plain-words "what and why" after each
   step (decisions, trade-offs, rejected options).

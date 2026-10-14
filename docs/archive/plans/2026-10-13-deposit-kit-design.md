@@ -1,7 +1,7 @@
 # Settle Kit: v1 checkout and deposit SDK
 
 Status: T1 (router) built; the demo build is in progress. Updated: 2026-10-14.
-Evidence: [integration spikes](../spikes.md). Tasks: [docs/tasks](../tasks/README.md).
+Evidence: [integration spikes](../../spikes.md). Tasks: [docs/tasks](../tasks/README.md).
 
 ## 0. Build scope (read this first)
 
@@ -736,7 +736,7 @@ Wallet errors cover `wallet_rejected`, `wrong_network`, `insufficient_balance` a
 
 ## 9. Validation and release
 
-The [spike log](../spikes.md) separates existing evidence from pending work:
+The [spike log](../../spikes.md) separates existing evidence from pending work:
 
 | Evidence | Status |
 |---|---|
@@ -946,7 +946,7 @@ claims and show what payers actually wait through.
 
 More routers, our own deposit-address contracts and card onramps widen the product
 without deepening it. A Transak card onramp is the most likely later addition; its
-feasibility work is in [S5](../spikes/2026-10-14-card-onramp.md) and it would need its
+feasibility work is in [S5](../../spikes/2026-10-14-card-onramp.md) and it would need its
 own spec. Depositing into each user's own wallet instead of the treasury (the
 trading-app model: `recipient` = the user's server-resolved wallet) is a later option
 for deposit mode.

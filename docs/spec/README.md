@@ -19,5 +19,5 @@ tests are named after steps (`it("J2.S4: …")`).
 | `bun run check-journeys` | Merge bar: spine valid with no warnings, `.md` fresh, test citations real |
 | `bun run check-journeys -- --complete` | Release gate: every step a task serves has a test |
 
-Until the new design doc lands, `docs/plans/2026-10-13-deposit-kit-design.md` and
-`docs/tasks/T*.md` describe the earlier checkout-first plan: inputs, not the current spec.
+The earlier checkout-first plan (design doc, tasks T1–T9, handoffs) is in
+[`docs/archive/`](../archive/): input for decisions, not the current spec.
