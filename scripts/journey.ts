@@ -19,6 +19,8 @@
  * generated-file freshness.
  */
 
+import { dirname, relative } from "node:path";
+
 type Actor = { id: string; name: string; type?: "person" | "system" | "external" | string };
 type Surface = { id: string; kind?: string; states?: string[] };
 type Exit = { id: string; title?: string };
@@ -134,6 +136,11 @@ export function validateSpine(
   const actorIds = new Set((spine.actors ?? []).map((a) => a.id));
   const surfaces = new Map((spine.surfaces ?? []).map((s) => [s.id, s]));
   const journeys = new Map(spine.journeys.map((j) => [j.id, j]));
+  const journeyIds = new Set<string>();
+  for (const j of spine.journeys) {
+    if (journeyIds.has(j.id)) err(`${j.id}: duplicate journey id`);
+    journeyIds.add(j.id);
+  }
   const stepIds = new Set<string>();
   const usedSurfaces = new Set<string>();
 
@@ -148,7 +155,6 @@ export function validateSpine(
     if (!j.goal) warn(`${j.id}: no goal`);
 
     const local = new Set(j.steps.map((s) => s.id));
-    const referenced = new Set<string>();
     const exitIds = new Set((j.exits ?? []).map((e) => e.id));
     for (const e of j.exits ?? []) if (!e.id) err(`${j.id}: exit is missing id`);
     if (j.entry && !local.has(j.entry)) err(`${j.id}: entry "${j.entry}" is not a step of ${j.id}`);
@@ -179,7 +185,6 @@ export function validateSpine(
         if (!e.to) err(`${s.id}: next entry is missing to`);
         else if (e.to === s.id) err(`${s.id}: next points at itself`);
         else if (!local.has(e.to)) err(`${s.id}: next "${e.to}" is not a step of ${j.id}`);
-        if (e.to) referenced.add(e.to);
       }
       if (edges.length > 1 && edges.some((e) => !e.when))
         err(`${s.id}: a step with several next steps must label each with when`);
@@ -238,11 +243,12 @@ export function validateSpine(
     }
 
     const start = j.entry && local.has(j.entry) ? j.entry : j.steps[0]?.id;
-    for (const s of j.steps)
-      if (s.id !== start && !referenced.has(s.id))
-        err(`${s.id}: unreachable (no step points at it)`);
+    for (const id of unreachableSteps(j, start)) err(`${id}: unreachable from ${start}`);
     if (!j.steps.some((s) => nexts(s).length === 0))
       err(`${j.id}: no terminal step (every step has a next)`);
+    else
+      for (const id of stuckSteps(j, start))
+        err(`${id}: can never reach an end (it only leads into a loop)`);
   }
 
   const taskIds = new Set<string>();
@@ -255,10 +261,54 @@ export function validateSpine(
       if (!stepIds.has(ref)) err(`${t.id}: serves unknown step "${ref}"`);
   }
 
+  // Once tasks exist, each step with criteria belongs to exactly one task.
+  if (spine.tasks?.length) {
+    const owners = new Map<string, string[]>();
+    for (const t of spine.tasks)
+      for (const ref of new Set(t.serves ?? []))
+        owners.set(ref, [...(owners.get(ref) ?? []), t.id]);
+    for (const step of spine.journeys.flatMap((j) => j.steps ?? [])) {
+      const by = owners.get(step.id) ?? [];
+      if (by.length > 1) err(`${step.id}: served by several tasks (${by.join(", ")}); pick one`);
+      else if (!by.length && step.criteria?.length)
+        warn(`${step.id}: has criteria but no task serves it`);
+    }
+  }
+
   for (const sf of spine.surfaces ?? [])
     if (!usedSurfaces.has(sf.id)) warn(`surface ${sf.id}: never used by any journey step`);
 
   return { errors, warnings };
+}
+
+/** Steps not reachable from the journey's entry by following `next`. */
+function unreachableSteps(j: Journey, start: string | undefined): string[] {
+  const byId = new Map(j.steps.map((s) => [s.id, s]));
+  const seen = new Set<string>();
+  const queue = start ? [start] : [];
+  while (queue.length) {
+    const id = queue.pop() as string;
+    if (seen.has(id) || !byId.has(id)) continue;
+    seen.add(id);
+    queue.push(...nexts(byId.get(id) as Step));
+  }
+  return j.steps.map((s) => s.id).filter((id) => !seen.has(id));
+}
+
+/** Reachable steps from which no path leads to a terminal step (trapped in a cycle). */
+function stuckSteps(j: Journey, start: string | undefined): string[] {
+  const canEnd = new Set(j.steps.filter((s) => nexts(s).length === 0).map((s) => s.id));
+  let grew = true;
+  while (grew) {
+    grew = false;
+    for (const s of j.steps)
+      if (!canEnd.has(s.id) && nexts(s).some((n) => canEnd.has(n))) {
+        canEnd.add(s.id);
+        grew = true;
+      }
+  }
+  const unreachable = new Set(unreachableSteps(j, start));
+  return j.steps.map((s) => s.id).filter((id) => !canEnd.has(id) && !unreachable.has(id));
 }
 
 const esc = (t: string) => t.replace(/"/g, "'").replace(/\|/g, "\\|");
@@ -272,13 +322,17 @@ function nextCell(s: Step): string {
   return parts.join("; ") || "—";
 }
 
-export function render(spine: Spine): string {
+/** `mdFile` is where the output will live, so the design-doc link resolves from there. */
+export function render(spine: Spine, mdFile?: string): string {
   const out: string[] = [];
   const actors = new Map((spine.actors ?? []).map((a) => [a.id, a]));
 
   out.push(`# ${spine.product ?? "Product"}: journey spine`, "");
   out.push("<!-- Generated by scripts/journey.ts. Edit the .yaml spine, not this file. -->", "");
-  if (spine.source) out.push(`Design doc: [${spine.source}](${spine.source})`, "");
+  if (spine.source) {
+    const href = mdFile ? relative(dirname(mdFile), spine.source) : spine.source;
+    out.push(`Design doc: [${spine.source}](${href})`, "");
+  }
 
   if (spine.actors?.length) {
     out.push("## Actors", "", "| ID | Actor | Type |", "|---|---|---|");
@@ -499,11 +553,11 @@ if (import.meta.main) {
     }
 
     if (cmd === "render") {
-      await Bun.write(mdPath(path), render(spine));
+      await Bun.write(mdPath(path), render(spine, mdPath(path)));
       console.error(`wrote ${mdPath(path)}`);
     } else if (cmd === "check") {
       const md = Bun.file(mdPath(path));
-      if (!(await md.exists()) || (await md.text()) !== render(spine)) {
+      if (!(await md.exists()) || (await md.text()) !== render(spine, mdPath(path))) {
         console.error(`ERROR ${mdPath(path)} is stale; run: bun run journeys:render`);
         failed = true;
       }

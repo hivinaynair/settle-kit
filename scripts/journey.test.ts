@@ -148,6 +148,81 @@ describe("validateSpine", () => {
     expect(warnings.filter((w) => !w.startsWith("surface"))).toEqual([]);
   });
 
+  it("rejects a branch that loops forever while another branch exits", () => {
+    const { errors } = ok([
+      {
+        id: "J1",
+        title: "x",
+        exits: [{ id: "done" }],
+        steps: [
+          {
+            id: "J1.S1",
+            title: "a",
+            next: [
+              { to: "J1.S2", when: "ok" },
+              { to: "J1.S3", when: "retry" },
+            ],
+          },
+          { id: "J1.S2", title: "b", exit: "done" },
+          { id: "J1.S3", title: "c", next: "J1.S4" },
+          { id: "J1.S4", title: "d", next: "J1.S3" },
+        ],
+      },
+    ]);
+    expect(errors.filter((e) => e.includes("never reach an end")).sort()).toEqual([
+      "J1.S3: can never reach an end (it only leads into a loop)",
+      "J1.S4: can never reach an end (it only leads into a loop)",
+    ]);
+  });
+
+  it("flags a cycle that nothing reaches from the entry", () => {
+    const { errors } = ok([
+      {
+        id: "J1",
+        title: "x",
+        steps: [
+          { id: "J1.S1", title: "a" },
+          { id: "J1.S2", title: "b", next: "J1.S3" },
+          { id: "J1.S3", title: "c", next: "J1.S2" },
+        ],
+      },
+    ]);
+    expect(errors).toContain("J1.S2: unreachable from J1.S1");
+    expect(errors).toContain("J1.S3: unreachable from J1.S1");
+  });
+
+  it("rejects duplicate journey ids", () => {
+    const { errors } = ok([
+      { id: "J1", title: "a", steps: [{ id: "J1.S1", title: "a" }] },
+      { id: "J1", title: "b", steps: [{ id: "J1.S2", title: "b" }] },
+    ]);
+    expect(errors).toContain("J1: duplicate journey id");
+  });
+
+  it("once tasks exist, each step with criteria has exactly one task", () => {
+    const { errors, warnings } = validateSpine({
+      ...base,
+      journeys: [
+        {
+          id: "J1",
+          title: "x",
+          steps: [
+            { id: "J1.S1", title: "a", criteria: ["THE SYSTEM SHALL a"], next: "J1.S2" },
+            { id: "J1.S2", title: "b", criteria: ["THE SYSTEM SHALL b"], next: "J1.S3" },
+            { id: "J1.S3", title: "c" },
+          ],
+        },
+      ],
+      tasks: [
+        { id: "M1.T1", title: "one", serves: ["J1.S1"] },
+        { id: "M1.T2", title: "two", serves: ["J1.S1"] },
+      ],
+    });
+    expect(errors).toContain("J1.S1: served by several tasks (M1.T1, M1.T2); pick one");
+    expect(warnings).toContain("J1.S2: has criteria but no task serves it");
+    expect(warnings.some((w) => w.startsWith("J1.S3: has criteria"))).toBe(false);
+  });
+
   it("checks task ids and served steps", () => {
     const { errors } = validateSpine({
       ...base,
@@ -187,6 +262,13 @@ describe("render", () => {
     expect(md).toContain("| `paid` |");
     expect(md).toContain("## Surfaces");
     expect(md.endsWith("\n")).toBe(true);
+  });
+
+  it("links the design doc relative to the generated file", () => {
+    const spine = { ...base, source: "docs/plans/2026-10-15-settle-kit-design.md", journeys: [] };
+    expect(render(spine, "docs/journeys/settle-kit.md")).toContain(
+      "Design doc: [docs/plans/2026-10-15-settle-kit-design.md](../plans/2026-10-15-settle-kit-design.md)",
+    );
   });
 });
 

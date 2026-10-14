@@ -91,3 +91,6 @@ tasks:
   - id: M1.T1
     title: Verify and settle
     serves: [J1.S3, J1.S4, J1.S4b, J1.S5]
+  - id: M1.T2
+    title: Show what to send and wait
+    serves: [J1.S1, J1.S2]
