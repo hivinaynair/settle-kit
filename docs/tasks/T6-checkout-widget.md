@@ -72,8 +72,8 @@ function useCheckout(orderId: string): CheckoutState & {
 | `pay` | QR of `paymentUri` (EIP-681: token, chain, address, `payAmount`); "Send exactly **1.184248 USDC** on **Arbitrum**"; address in 4-character groups with the first and last groups emphasised and a "check the first and last 4 characters" hint; copy buttons for address and amount with "Copied: 0x1a2b…9f8e" feedback; "Exchanges: withdraw on the Arbitrum network" note; the fee line (`payAmount − amount`) |
 | `processing` | Timeline: Payment seen → Moving to Base → Verified on Base → Paid, with times and explorer links for `depositTx` / destination tx |
 | `paid` | "Paid" + amount + Base explorer link; calls `onPaid()` once |
-| `refunded` | "Returned to the merchant; contact support with order `ord_…`" (never "you've been refunded", design §8) |
-| `needs_attention` | "We're checking this payment" + order id to quote to support |
+| `refunded` | "Returned to the merchant; contact support with order `ord_…`" (never "you've been refunded", design §8). Not reachable in 0.1 (no refund verifier); build it anyway |
+| `needs_attention` | "We're checking this payment" + order id to quote to support. Reason `refund_unverified`: "Relay reports this payment was sent back to the merchant's refund wallet; contact support with order `ord_…`" |
 | `expired` | "This checkout expired. Start a new order." (a late payment still moves it on) |
 | `error` | Typed message from `copy` per error code + Retry (only before money moves) |
 

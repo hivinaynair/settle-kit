@@ -88,19 +88,23 @@ the widget and server agree; the widget never sends a raw chain/token, only a `R
 ## 2. Config
 
 ```ts
-export type SettleConfig = {
-  router: PaymentRouter;            // relay({ apiKey }); ignored in test mode
+type CommonConfig = {
   treasury: Address;                // every payment lands here
   refundAddress: Address;           // Relay refunds go here
   routes: readonly RouteId[];       // subset of ROUTES offered to buyers
   store: Store;                     // drizzleStore(db)
-  baseRpcUrl: string;               // receipt verification (T4)
-  mode: "live" | "test";
   onPaid: (event: SettledEvent) => Promise<void>;
   account?: (request: Request) => Promise<string | null>;   // see "Access" below
   orderTtl?: number;                // ms, default 30 min
   pollEvery?: number;               // ms, default 10 s
+  watchAfterExpiry?: number;        // ms, default 24 h (see §5, "How long a run watches")
 };
+
+/** Live-only dependencies are required only in live mode, so the test-mode quickstart
+ *  needs no Relay key and no RPC URL. */
+export type SettleConfig =
+  | (CommonConfig & { mode: "live"; router: PaymentRouter; baseRpcUrl: string })
+  | (CommonConfig & { mode: "test" });   // simulated router and verifier (§6)
 ```
 
 Validated with Zod once, in `createSettle`; any problem throws
@@ -119,8 +123,9 @@ Validated with Zod once, in `createSettle`; any problem throws
 }
 ```
 
-- `createOrder` → `store.createOrder` (idempotent on `accountId + externalId`), with
-  `test = (mode === "test")`, `expiresAt = now + orderTtl`. Rejects `amount <= 0n` as
+- `createOrder` → `store.createOrder` (idempotent on `accountId + externalId + test`,
+  so a test and a live deployment sharing one database never return each other's
+  orders), with `test = (mode === "test")`, `expiresAt = now + orderTtl`. Rejects `amount <= 0n` as
   `amount_too_low`. No other minimum is hard-coded: strict quotes have none (S9); if
   Relay ever rejects a small amount, its `AMOUNT_TOO_LOW` maps to `amount_too_low`
   when the buyer picks a route.
@@ -134,7 +139,7 @@ segments.
 | Route | Does |
 |---|---|
 | `GET /routes` | The configured `RouteView[]` (id, labels) |
-| `GET /orders/:id` | `OrderView`: status (via `orderStatusFor`), amount, payAmount, route, address, expiresAt, display, test, payment, timeline |
+| `GET /orders/:id` | `OrderView`: status (via `orderStatusFor`), amount, payAmount, route, address, expiresAt, display, test, payment (with its attention reason, if any), timeline |
 | `POST /orders/:id/route { route: RouteId }` | Issues the strict address via `store.setOrderRoute` + `router.orderAddress({ route, recipient: treasury, refundTo: refundAddress, amount })`, then `start(payOrder, [id])`; returns the `OrderView` |
 | `POST /orders/:id/simulate { scenario }` | Test mode only (404 in live): records the scenario for the simulated router |
 
@@ -162,36 +167,57 @@ export async function payOrder(orderId: string) {
 
   for (;;) {
     const next = await checkOrder(orderId);          // step
-    if (next.kind === "deliver") { await deliverOrder(orderId); return; }
-    if (next.kind === "done") return;
+    if (next.deliver) await deliverOrderOrGiveUp(orderId);  // catches retry exhaustion
+    if (next.done) return;
     await sleep(next.wait);
   }
 }
 ```
 
-`checkOrder` (step) does one pass and returns `{ kind: "wait", wait } | { kind:
-"deliver" } | { kind: "done" }`:
+`checkOrder` (step) does one full pass over **every** fill, then returns
+`{ deliver: boolean; done: boolean; wait: number }`. It never returns halfway through the
+list, so a second payment to the same address is always recorded and flagged.
 
 1. Load the order. No address, or `order.test !== (mode === "test")` → `done`
    (a live deployment never touches test orders, and the reverse).
-2. Already has a `settled` payment → `deliver`; `credited` → `done`.
-3. `router.fills(address)`. `router_unavailable` (outage or 429) → `wait` with backoff
+2. `router.fills(address)`. `router_unavailable` (outage or 429) → `wait` with backoff
    (double `pollEvery`, max 60 s); never fail the run for it.
-4. No fills: past `expiresAt` + 10 min grace → `done` (order shows `expired`); else `wait`.
-5. For each fill: `recordPayment`, then `nextStep(payment.status, fill.status)` (T2):
-   - `move` → `store.transition` with evidence `{ routerStatus, fillId }`.
+3. For each fill: `recordPayment`, then `nextStep(payment.status, fill.status)` (T2):
+   - `move` → `store.transition` with evidence `{ routerStatus, fillId }`, **except** a
+     move to `refunded`: 0.1 has no refund verifier (design §9, deferred), and a
+     provider's word never makes a final state, so it goes to `needs_attention` with
+     reason `refund_unverified` instead. Delete this exception when refund
+     verification lands.
    - `verify` → destination chain must be 8453, then `verifyPayment` (T4) against
      `treasury`, Base USDC and `order.amount`. `verified` → build the `SettledEvent`
-     (T2) and `store.settle`; `"settled"` → `deliver`. `pending` → `wait`.
+     (T2) and `store.settle`. `pending` → try again next pass.
      `rejected`, `transfer_claimed` or `order_paid` → `needs_attention` with the reason.
-6. A payment not final 30 min after it was recorded → `needs_attention` (design §6
-   attention threshold) → `done`.
+   - A payment still waiting/processing/delayed 30 min after it was recorded →
+     `needs_attention` (design §6 attention threshold).
+4. `deliver` = the order has a `settled` payment that isn't `credited` and hasn't
+   exhausted its retries.
+5. `done` and `wait` follow "How long a run watches" below.
+
+**How long a run watches.** There are no webhooks or reconciliation in 0.1, so this run
+is the only thing watching the address; ending it early would leave a late payment
+untracked (design §6a: late payments are still processed).
+
+| Order state | Poll every | Run ends |
+|---|---|---|
+| Before `expiresAt`, or any payment in progress | `pollEvery` | – |
+| Paid (`credited`) | `pollEvery` | at `expiresAt` + 10 min (catches an accidental second payment during checkout) |
+| Unpaid, past `expiresAt` | doubling from 1 min, capped at 1 h (~30 Relay calls a day) | at `expiresAt` + `watchAfterExpiry` (24 h) |
+
+A payment after the run ends is not tracked in 0.1; the README says so, and
+reconciliation (later) closes the gap. T8 checks whether Relay still accepts a payment
+to a strict address after its quote expires.
 
 `deliverOrder` (step, `maxRetries = 10`): load the payment; already `credited` → return.
 Call `onPaid(settlementEvent)` with a 10 s timeout. Success → `markCredited`. Failure →
 `recordDeliveryFailure`, then throw `RetryableError` with `retryAfter = 2^(attempt-1)`
-minutes (design §6, ~17 h total). The workflow catches the final failure and returns;
-the payment stays `settled` with `delivery_error`, visible on the timeline.
+minutes (design §6, ~17 h total). `deliverOrderOrGiveUp` catches the final
+failure; the payment stays `settled` with `delivery_error`, visible on the timeline, and
+later passes don't retry it.
 
 Every write is a CAS or unique insert (T3), so two runs, a retried step or a replayed
 workflow cannot settle or credit twice.
@@ -238,14 +264,20 @@ and the real Postgres store from T3.
 3. `POST …/route`: issues one address (router called once across two calls); different
    route → 409; expired → 410; unknown order → 404; wrong account (with `account`) → 404.
 4. `checkOrder` with fills scripted `[] → processing → filled` and a verifier saying
-   `verified`: payment goes waiting → processing → settled; returns `deliver`.
-5. Verifier says `pending` → `wait`, nothing settled. `rejected` → `needs_attention`.
-6. Fill status `refunded` → payment `refunded`, order `refunded`, `onPaid` never called.
+   `verified`: payment goes waiting → processing → settled; returns `deliver: true`.
+5. Verifier says `pending` → not done, nothing settled. `rejected` → `needs_attention`.
+6. Fill status `refunded` → payment `needs_attention` (reason `refund_unverified`),
+   never `refunded`; `onPaid` never called.
 7. `deliverOrder`: `onPaid` throws twice then succeeds → one `markCredited`, two
    `delivery_failed` timeline entries, order `paid`. Run `deliverOrder` again →
    `onPaid` not called.
-8. Two fills both verified for one order → first settles, second `needs_attention`
-   (`order_paid`); `onPaid` called once.
+8. Two fills both verified for one order, in one pass → first settles, second
+   `needs_attention` (`order_paid`) in the same pass; `onPaid` called once.
+12. Watch window: unpaid order past expiry keeps polling with the doubling interval and
+    ends at `expiresAt + watchAfterExpiry`; a fill appearing 2 h after expiry is still
+    recorded and settled. Paid order ends at `expiresAt` + 10 min.
+13. Config: `mode: "test"` type-checks without `router` or `baseRpcUrl`;
+    `mode: "live"` without them is a type error.
 9. A test-mode order is ignored by a live-mode `checkOrder`, and vice versa.
 10. Simulated `paid` scenario, end to end in the demo (local dev): `onPaid` called once
     and `GET /orders/:id` reads `paid` with a timeline.

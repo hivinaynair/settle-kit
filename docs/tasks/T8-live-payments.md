@@ -55,7 +55,7 @@ Run each, in order; stop at the first failure and fix before going on.
 | 1 | Market report, Base USDC, by script (stands in for "scan QR in any wallet") | `paid`, `onPaid` once, thank-you unlocked |
 | 2 | Sticker pack, Arbitrum USDC, by script | `paid` |
 | 3 | Market report, Base USDC, browser wallet via `<Checkout>` | `paid` |
-| 4 | Send 0.02 USDC less than `payAmount` on Base, by script | Relay refunds to `SETTLE_REFUND_ADDRESS`; order `refunded`; no `onPaid` |
+| 4 | Send 0.02 USDC less than `payAmount` on Base, by script | Relay refunds to `SETTLE_REFUND_ADDRESS`; order `needs_attention` (`refund_unverified`; record the refund tx by hand); no `onPaid` |
 | 5 | Send 0.02 USDC more than `payAmount` on Base | `paid` with exactly the order amount; excess refunded |
 
 For each, record in `docs/spikes.md` (S4): order id, Relay fill id, deposit tx, Base

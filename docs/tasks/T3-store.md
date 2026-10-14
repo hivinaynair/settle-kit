@@ -51,7 +51,7 @@ settle_kit_orders
   test boolean not null,   -- created in test mode; a live deployment never processes it
   simulation jsonb,        -- test mode only: { scenario, startedAt } for the simulated router (T5)
   expires_at, created_at, updated_at
-  UNIQUE (account_id, external_id)   -- creating the same order twice returns it
+  UNIQUE (account_id, external_id, test)   -- same order twice returns it; test and live never collide
   UNIQUE (address)
 
 settle_kit_deposits        -- one row per payment Relay saw at an order's address
@@ -106,7 +106,7 @@ export type Store = {
 
 ### Rules
 
-1. **`createOrder`** returns the existing order for the same `(accountId, externalId)`
+1. **`createOrder`** returns the existing order for the same `(accountId, externalId, test)`
    (the app may retry). No Relay call yet: the address depends on the route the buyer
    picks.
 1b. **`setOrderRoute`** calls `create()` (a strict Relay quote) only if the order has no

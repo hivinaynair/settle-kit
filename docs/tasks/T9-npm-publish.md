@@ -62,7 +62,7 @@ keep server code out of browser bundles, and work without our workspace setup.
 
 1. `bun run build && bun pm pack` in each package; inspect each tarball: only `dist`,
    `src`, README, LICENSE; no `.env*`, tests or fixtures.
-2. `npx publint` and `npx @arethetypeswrong/cli --pack` on each tarball (run once; not
+2. `bunx publint` and `bunx @arethetypeswrong/cli --pack` on each tarball (run once; not
    added as dependencies). Fix every error.
 3. **Install test:** in the scratch directory, `bunx create-next-app@latest` a fresh
    app; `bun add` the three tarballs plus `workflow`, `viem`, `drizzle-orm`, `pg`; follow
