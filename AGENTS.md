@@ -38,8 +38,8 @@ Two artifacts drive the spec, written in this order. How to write them:
 - Journey steps list the decisions they rely on (`decisions: [D21]`) and the invariants
   they could break (`invariants: [I1]`); `check-journeys` rejects unknown or superseded IDs,
   and `--complete` rejects steps citing open questions. A step that touches money needs
-  an `IF` criterion. Criteria use numbers and units, not vague words (`check-journeys`
-  flags *promptly*, *as needed* and similar).
+  an `IF … THE SYSTEM SHALL NOT …` criterion. Criteria use numbers and units, not vague
+  words (`check-journeys` flags *promptly*, *as needed* and similar).
 - Tests: every test in `apps/` and `packages/` proves something traced, named after it:
   - a journey criterion, most tests: `it("J2.S4.c1: …")`;
   - an invariant, tested with many generated orderings, duplicates and crash points

@@ -71,7 +71,7 @@ step without bucket or criteria; a criterion or invariant rule that is not EARS 
 vague word (*should, promptly, quickly, soon, appropriate, reasonable, as needed, if
 possible, etc, properly, gracefully, seamless, usually* …; text in "double quotes" or
 `backticks` is UI copy and is skipped); a step that touches money (cites a decision under
-the Money heading of `docs/decisions.md`, or any invariant) with no `IF` criterion; an
+the Money heading of `docs/decisions.md`, or any invariant) with no `IF … THE SYSTEM SHALL NOT …` criterion; an
 unused surface, exit or invariant; a task serving nothing; a step with criteria no task
 serves; `uses` of a journey not marked reusable.
 
@@ -99,8 +99,8 @@ workers at once, a webhook replayed after a crash, a reorg.
 - Keep the list short (a handful): only rules that, if broken, lose or invent money or
   leak a secret. Write each as an EARS rule, usually `THE SYSTEM SHALL NOT …`, that can be
   checked against stored data (rows, balances, chain logs).
-- Each step that could break one lists it in `invariants:`; that step then needs an `IF`
-  criterion for the case that would break it.
+- Each step that could break one lists it in `invariants:`; that step then needs an
+  `IF … THE SYSTEM SHALL NOT …` criterion for the case that would break it.
 - Test each with many generated cases rather than one example: random event orders,
   duplicates and crash points (property-based testing, e.g. `fast-check` under `bun test`),
   asserting the rule over the final state. Name the test `I1: …`.

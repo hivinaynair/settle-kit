@@ -300,9 +300,10 @@ export function validateSpine(
         ...(s.decisions ?? []).filter((d) => decisions?.money.has(d)),
         ...(s.invariants ?? []),
       ];
-      if (money.length && !criteria.some(([, rule]) => /^IF\b/.test(rule)))
+      const forbidsOnFailure = (rule: string) => /^IF\b.+?\bTHE SYSTEM SHALL NOT\b/.test(rule);
+      if (money.length && !criteria.some(([, rule]) => forbidsOnFailure(rule)))
         warn(
-          `${s.id}: touches money (${money.join(", ")}) but has no IF criterion; add "IF <what goes wrong> THE SYSTEM SHALL NOT …"`,
+          `${s.id}: touches money (${money.join(", ")}) but no IF criterion forbids an effect; add "IF <what goes wrong> THE SYSTEM SHALL NOT …"`,
         );
     }
 

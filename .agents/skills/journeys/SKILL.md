@@ -27,7 +27,7 @@ Adapted from ViperNxt's journeys skill (MIT).
    and `SHALL NOT` (forbidden effect). Name the resulting state and the side effects that
    must not happen, not just what is shown. Use numbers with units ("within 60 s", "at
    Base's safe block"), never *promptly* or *as needed*. A step that touches money needs
-   at least one `IF` criterion.
+   at least one `IF … THE SYSTEM SHALL NOT …` criterion.
 6. Run `bun run journeys:validate` while drafting; fix every error and warning.
 7. **Walk each journey with the owner**: ordinary case, an incomplete case, an exception.
    Record corrections as decisions when they change policy.
