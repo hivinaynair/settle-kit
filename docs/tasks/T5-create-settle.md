@@ -100,7 +100,7 @@ the widget and server agree; the widget never sends a raw chain/token, only a `R
 | Variable | Required | Meaning |
 |---|---|---|
 | `SETTLE_MODE` | no, default `test` | `test` (simulated payments) or `live` |
-| `DATABASE_URL` (or `SETTLE_DATABASE_URL` to use a different one) | yes | Postgres 15+; tables are prefixed `settle_kit_` |
+| `DATABASE_URL` (or `SETTLE_DATABASE_URL` to use a different one) | yes | Postgres 15+; tables are prefixed `settle_kit_`. One database (or Neon branch) per mode: test and live never share one |
 | `SETTLE_TREASURY` | yes | Every payment lands here |
 | `SETTLE_REFUND_ADDRESS` | yes | Relay refunds go here; must differ from the treasury |
 | `SETTLE_ROUTES` | no, default all | Comma-separated `RouteId`s offered to buyers |
@@ -142,9 +142,8 @@ where this file is always loaded. `createSettle` calls `loadConfig(process.env)`
 (first use), so a missing variable fails on the first request, not at build time.
 Tests pass `createSettle({ env: {...} })`.
 
-- `createOrder` → `store.createOrder` (idempotent on `accountId + externalId + test`,
-  so a test and a live deployment sharing one database never return each other's
-  orders), with `test = (mode === "test")`, `expiresAt = now + (expiresIn ?? 30 min)`.
+- `createOrder` → `store.createOrder` (idempotent on `accountId + externalId`), with
+  `expiresAt = now + (expiresIn ?? 30 min)`.
   Rejects `amount <= 0n` as `amount_too_low`. No other minimum is hard-coded: strict
   quotes have none (S9); if Relay ever rejects a small amount, its `AMOUNT_TOO_LOW` maps
   to `amount_too_low` when the buyer picks a route.
@@ -158,7 +157,7 @@ segments.
 | Route | Does |
 |---|---|
 | `GET /routes` | The configured `RouteView[]` (id, labels) |
-| `GET /orders/:id` | `OrderView`: status (via `orderStatusFor`), amount, payAmount, route, address, expiresAt, display, test, payment (the order's main payment from `store.getOrder`, T3 rule 8, with its attention reason, read from the latest timeline entry's `evidence.reason`; no extra column), timeline. Not the router request ID: that stays inside the server and store |
+| `GET /orders/:id` | `OrderView`: status (via `orderStatusFor`), amount, payAmount, route, address, expiresAt, display, test (= `mode === "test"`), payment (the order's main payment from `store.getOrder`, T3 rule 8, with its attention reason, read from the latest timeline entry's `evidence.reason`; no extra column), timeline. Not the router request ID: that stays inside the server and store |
 | `POST /orders/:id/route { route: RouteId }` | Issues the strict address via `store.setOrderRoute` + `router.orderAddress({ route, recipient: treasury, refundTo: refundAddress, amount })`, which stores the returned `address`, `payAmount` and `requestId` together, then `start(payOrder, [id])`; returns the `OrderView` |
 | `POST /orders/:id/simulate { scenario }` | Test mode only (404 in live): records the scenario for the simulated router |
 
@@ -207,9 +206,9 @@ ID. The ID only tells us where to look: credit still needs the verified Base tra
 list, and never stops early because one report already settled, so a second payment
 (a child arriving after the parent settled) is always recorded and flagged.
 
-1. Load the order. No route yet (neither `address` nor `routerRequestId`), or
-   `order.test !== (mode === "test")` → `done` (a live deployment never touches test
-   orders, and the reverse). One without the other is a bug (T3 stores them in one
+1. Load the order. No route yet (neither `address` nor `routerRequestId`) → `done`.
+   A request ID from the other mode (`sim_…` in live, anything else in test) → `done`:
+   someone pointed both modes at one database; never send a simulated ID to Relay. One without the other is a bug (T3 stores them in one
    CAS): throw so the step fails loudly; never request another quote.
 2. `router.fills(order.routerRequestId)`. `router_unavailable` (outage or 429) → `wait`
    with backoff (double the poll interval, max 60 s); never fail the run for it.
@@ -305,7 +304,7 @@ workflow cannot settle or credit twice; a duplicate webhook carries the same
   stored with the address, so it stays stable for the order) and
   `payAmount = amount + 25_000n` (a simulated $0.025 fee, the S6 Base figure, so the UI
   shows a realistic "send exactly"). `fills(requestId)` finds the order with
-  `store.findOrderByRequestId(requestId, true)`. Before a scenario starts it returns one
+  `store.findOrderByRequestId(requestId)`. Before a scenario starts it returns one
   `waiting` report with no `depositTx`, like Relay for an unfunded quote. After, it reads
   the order's `simulation` (T3) and derives reports from the seconds elapsed, each with a
   fake `depositTx`:
@@ -313,16 +312,14 @@ workflow cannot settle or credit twice; a duplicate webhook carries the same
   | Scenario | Fills over time |
   |---|---|
   | `paid` | waiting (0 s) → processing (3 s) → filled (6 s) |
-  | `delayed` | waiting → delayed (3 s) → processing (20 s) → filled (25 s) |
   | `underpaid` | waiting → refunded (5 s) |
-  | `overpaid` | as `paid` (strict address: exact amount delivered, excess refunded) |
   | `failed` | waiting → failed (5 s) |
-  | `paid_twice` | root as `paid`; a child report (ID `<requestId>:2`) waiting (10 s) → filled (16 s) |
+  | `paid_twice` | root as `paid`; a child report (ID `<requestId>:2`) waiting (10 s) → filled (16 s). For tests and `curl`; not in the widget toolbar |
 
 - `simulatedVerifier` returns `verified` with `receivedAmount = order.amount`,
   `logIndex = 0` and a deterministic fake tx hash (`keccak256(fillId)`).
 - `relay()` is never constructed or called in test mode; the simulated router is never
-  used in live mode. Test orders carry `test: true` and so does their `SettledEvent`.
+  used in live mode. In test mode `OrderView.test` and the `SettledEvent`'s `test` are `true`.
 
 ## 7. Demo wiring
 
@@ -347,7 +344,7 @@ from T3.
    `invalid_config` naming the variable; no value (key, secret, URL) appears in the
    error. Test mode loads without `RELAY_API_KEY` or `BASE_RPC_URL`.
 2. `createOrder` twice with the same `externalId` → same order; `amount: 0n` and
-   negative amounts rejected; same `externalId` in test and live → two orders.
+   negative amounts rejected.
 3. `POST …/route`: issues one address (router called once across two calls) and stores
    its request ID; `OrderView` doesn't include the request ID; different route → 409;
    expired → 410; unknown order → 404; wrong account (with `account`) → 404.
@@ -359,7 +356,8 @@ from T3.
    never `refunded`; no webhook sent.
 7. Two fills both verified for one order, in one pass → first settles, second
    `needs_attention` (`order_paid`) in the same pass; one webhook.
-8. A test-mode order is ignored by a live-mode `checkOrder`, and vice versa.
+8. A `sim_` request ID is ignored by a live-mode `checkOrder` (Relay never called), and
+   a non-`sim_` one by test mode.
 9. `router_unavailable` from `fills` → `wait` with backoff, no state change.
 9b. No payment yet: `[]` (request not indexed), then a `waiting` report with no
     `depositTx` or `destination`, for 40 min → no payment row, no `needs_attention`,

@@ -49,12 +49,11 @@ settle_kit_orders
   display jsonb,           -- { title, image } for the checkout screen only
   address text,            -- the order's single-use deposit address (null until a route is picked)
   router_request_id text,  -- Relay's original request ID for that quote; set with address, same CAS
-  test boolean not null,   -- created in test mode; a live deployment never processes it
   simulation jsonb,        -- test mode only: { scenario, startedAt } for the simulated router (T5)
   expires_at, created_at, updated_at
-  UNIQUE (account_id, external_id, test)   -- same order twice returns it; test and live never collide
+  UNIQUE (account_id, external_id)         -- same order twice returns it
   UNIQUE (address)
-  UNIQUE (router_request_id, test)         -- one router request belongs to one order per mode
+  UNIQUE (router_request_id)               -- one router request belongs to one order
 
 settle_kit_deposits        -- one row per payment Relay reported for an order (root or child request)
   id, order_id → orders, fill_id, status,  -- fill_id: that report's own request ID, never the root's
@@ -73,6 +72,10 @@ settle_kit_deposit_events  -- the timeline
   PRIMARY KEY (deposit_id, seq)
 ```
 
+There's no test/live column: each mode uses its own database (or Neon branch), so test
+and live orders never meet. T5 also refuses an order whose request ID belongs to the
+other mode.
+
 The order's status isn't stored: it's derived with `orderStatusFor` (T2) from its
 payment and `expires_at`. One less thing to keep in sync.
 
@@ -83,11 +86,11 @@ payment and `expires_at`. One less thing to keep in sync.
 ```ts
 export type Store = {
   createOrder(input: {
-    accountId: string; externalId: string; amount: bigint; expiresAt: Date; test: boolean;
+    accountId: string; externalId: string; amount: bigint; expiresAt: Date;
     display?: { title: string; image?: string };
   }): Promise<OrderRow>;
-  /** Simulated router (T5) looks up the order behind a request ID, in one mode only. */
-  findOrderByRequestId(requestId: string, test: boolean): Promise<OrderRow | null>;
+  /** Simulated router (T5) looks up the order behind a request ID. */
+  findOrderByRequestId(requestId: string): Promise<OrderRow | null>;
   /** Test mode only: start a simulated scenario once (CAS on simulation IS NULL). */
   simulate(input: { orderId: string; scenario: string; startedAt: Date }): Promise<boolean>;
   /** Buyer picked a route: store address, payAmount and requestId once, together. */
@@ -110,7 +113,7 @@ export type Store = {
 
 ### Rules
 
-1. **`createOrder`** returns the existing order for the same `(accountId, externalId, test)`
+1. **`createOrder`** returns the existing order for the same `(accountId, externalId)`
    (the app may retry). No Relay call yet: the address depends on the route the buyer
    picks.
 1b. **`setOrderRoute`** calls `create()` (a strict Relay quote) only if the order has no
@@ -175,12 +178,10 @@ drops it afterwards.
 10. Two payments of one order, different transfers: the first `settle` returns
     `"settled"`, the second `"order_paid"`.
 11. `simulate` twice: the first returns `true`, the second `false`;
-    `findOrderByRequestId` finds the order in its own mode and returns `null` for the
-    other mode.
+    `findOrderByRequestId` finds the order and returns `null` for an unknown ID.
 12. Two concurrent `setOrderRoute` calls whose `create` returns different quotes: one
     pair is stored whole; both calls return that same address and request ID.
-13. The same request ID on two orders in one mode → unique violation; in test and live →
-    allowed.
+13. The same request ID on two orders → unique violation.
 14. A root fill and a child fill (different `fill.id`) for one order → two payment rows.
 15. Root `credited`, then a child recorded and moved to `needs_attention`: `getOrder`
     returns the root as the payment and the order reads `paid`. With no paid row, the

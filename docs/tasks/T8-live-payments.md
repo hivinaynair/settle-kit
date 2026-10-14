@@ -32,7 +32,8 @@ $5 of USDC moves in total; most of it ends up back in the treasury.
 - [ ] Vercel production env: `SETTLE_MODE=live`, `RELAY_API_KEY`, `BASE_RPC_URL`,
       `SETTLE_TREASURY=0xac44275dE5bF4109977892c4a256BbFA16B6C804`,
       `SETTLE_REFUND_ADDRESS` (an app-controlled wallet; not the treasury).
-- [ ] Keep a separate test-mode deployment (preview or a second project) for visitors.
+- [ ] Keep a separate test-mode deployment (preview or a second project) for visitors,
+      with its own database (Neon branch); test and live never share one.
 
 ---
 
