@@ -29,6 +29,7 @@ steps cite these IDs; `bun run check-journeys` fails on an unknown or superseded
 | D12 | A deposit is delivered either to the treasury or straight to the user's own wallet (the trading-app model) | Both are common in Fun.xyz-style products | Treasury only | 2026-10-14 | |
 | D13 | The payer bears route fees. The widget shows the estimate ("you'll receive about X") before sending; credit is the verified arrival amount | Merchants receive what they priced; fees are visible up front | The merchant absorbs fees | 2026-10-13 | |
 | D14 | The host is told by signed webhook events: `order.paid`, `order.needs_attention`, `deposit.credited` | Merchants hear about problems, not only successes; three events stay small | A settlement-only callback; a general event bus | 2026-10-14 | |
+| D15 | A checkout payment that arrives after the order expired still pays the order automatically, if the order wasn't cancelled and the amount meets the rule for its lane (exact on Relay, D24; at least the price on CCTP Fast, D25). `order.paid` then carries `late: true` so the host can tell | The buyer paid in full and shouldn't wait on a person; the host still sees it was late | Holding every late payment in `needs_attention` for an operator; a config switch between the two | 2026-10-14 | |
 
 ## Money rules (D20–D29)
 
@@ -101,4 +102,3 @@ steps cite these IDs; `bun run check-journeys` fails on an unknown or superseded
 | Q9 | Is the release labelled 1.0 or 0.x "experimental" while the contracts are unaudited? | Call the launch v1.0 of the project, publish the packages as 0.x, and mark the contracts experimental with the caps from Q8 | Release and docs | Vinay |
 | Q10 | Does Relay's 2 req/min `/requests` limit apply to `/requests/v3`, and can we get a testnet key? (S7) | Design for webhooks first and treat polling as the fallback whatever the answer | Discovery reconciliation budget | Relay support |
 | Q11 | Does Relay support deposit addresses on Tron for USDT? | Check Relay's `/chains` list and quote one Tron USDT → Base USDC deposit address; add the route only if a live payment succeeds | The Tron route in D11 | Vinay (one script run) |
-| Q12 | When the full amount arrives after a checkout order expired, and the host hasn't cancelled it, is the order paid or held for a person? | Hold it: `needs_attention: paid after expiry`, with two operator actions, accept as paid (sends `order.paid`) or refund. The price or stock may have changed, and the money is already safe in the treasury | Checkout late-payment branch | Vinay |
