@@ -182,7 +182,8 @@ settle_kit_deposit_addresses
 
 settle_kit_deposits
   id                       text pk
-  address_id               text → deposit_addresses
+  address_id               text → deposit_addresses   -- null for checkout fills
+  order_id                 text → orders              -- set for checkout fills (§6a)
   router                   text
   network                  text
   fill_id                  text
