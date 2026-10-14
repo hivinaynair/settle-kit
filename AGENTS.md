@@ -6,13 +6,24 @@ wallet or exchange, credited as USDC on Base. Users send to a reusable deposit a
 
 ## Read first
 
-- Design: `docs/plans/2026-10-13-deposit-kit-design.md` (source of truth for scope,
-  states, API). Evidence: `docs/spikes.md`. Task specs: `docs/tasks/`.
+- Spec: being rebuilt through the process in `docs/spec/README.md`. Until stage 3 lands,
+  `docs/plans/2026-10-13-deposit-kit-design.md` and `docs/tasks/T*.md` are the earlier
+  checkout-first plan: inputs, not the current spec. Evidence: `docs/spikes.md`.
 - **Agents implement tasks; Vinay monitors and must be able to explain every line.**
   One task per branch/PR, small commits, and a plain-words "what and why" after each
   step (decisions, trade-offs, rejected options).
 - Docs are edited by more than one AI tool. Re-read a file right before editing it,
   make targeted edits, and don't commit others' uncommitted changes without asking.
+
+## Spec process
+
+- Idea → build-ready spec in five stages: decide → journeys → design → plan → check.
+  Overview and status: `docs/spec/README.md`. Skills: `.agents/skills/` (start with `spec`;
+  `.claude/skills` and `.cursor/skills` are aliases). Shared rules: `.agents/skills/CONTRACT.md`.
+- `docs/journeys/settle-kit.yaml` is the source of truth for behavior. Never hand-edit the
+  generated `.md`; never renumber or reuse a step ID.
+- Tests name the step they prove (`it("J2.S4: …")`); PRs list the step IDs they serve.
+- A missing business or money rule is an open question in `docs/decisions.md`, never a guess.
 
 ## Constraints
 
@@ -51,7 +62,7 @@ on Tailwind or `@repo/ui`; it themes through CSS variables.
 ## Before merging
 
 ```sh
-bun run format-and-lint && bun run check-types && bun run check-tokens && bun test
+bun run format-and-lint && bun run check-types && bun run check-tokens && bun run check-journeys && bun run check-skills && bun test
 ```
 
 <!-- BEGIN:turborepo-agent-rules -->
