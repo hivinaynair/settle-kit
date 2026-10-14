@@ -46,7 +46,8 @@ settle_kit_orders
   amount numeric,          -- exact USDC base units the merchant must receive
   pay_amount numeric,      -- what the payer must send (from the quote)
   route jsonb,             -- canonical route incl. recipient and refundTo, addresses lowercased
-  address text,            -- the order's single-use deposit address
+  display jsonb,           -- { title, image } for the checkout screen only
+  address text,            -- the order's single-use deposit address (null until a route is picked)
   expires_at, created_at, updated_at
   UNIQUE (account_id, external_id)   -- creating the same order twice returns it
   UNIQUE (address)
@@ -77,9 +78,12 @@ payment and `expires_at`. One less thing to keep in sync.
 ```ts
 export type Store = {
   createOrder(input: {
-    accountId: string; externalId: string; amount: bigint; route: Route; expiresAt: Date;
-    create: () => Promise<OrderAddress>;  // calls router.orderAddress()
+    accountId: string; externalId: string; amount: bigint; expiresAt: Date;
+    display?: { title: string; image?: string };
   }): Promise<OrderRow>;
+  /** Buyer picked a route: store the strict address and payAmount once. */
+  setOrderRoute(input: { orderId: string; route: Route;
+                         create: () => Promise<OrderAddress> }): Promise<OrderRow>;
   getOrder(id: string): Promise<{ order: OrderRow; payment: PaymentRow | null;
                                   timeline: TimelineEntry[] } | null>;
 
@@ -97,8 +101,11 @@ export type Store = {
 ### Rules
 
 1. **`createOrder`** returns the existing order for the same `(accountId, externalId)`
-   without calling `create` (the app may retry). Otherwise it calls `create()` (a Relay
-   quote) and inserts.
+   (the app may retry). No Relay call yet: the address depends on the route the buyer
+   picks.
+1b. **`setOrderRoute`** calls `create()` (a strict Relay quote) only if the order has no
+   address yet, and stores `route`, `address` and `pay_amount` with a CAS on
+   `address IS NULL`. A second call for the same order returns the stored address.
 2. **`recordPayment`** inserts with status `waiting` and timeline `seq 1`; the same
    `(orderId, fill.id)` again returns the existing row with `inserted: false`.
 3. **`transition`** checks `canTransition` (T2), then in one transaction:
@@ -126,7 +133,8 @@ drops it afterwards.
 ## Acceptance tests
 
 1. The migration applies cleanly to an empty schema.
-2. `createOrder` twice with the same `externalId`: `create` called once, same row.
+2. `createOrder` twice with the same `externalId`: one row. `setOrderRoute` twice:
+   `create` called once, same address.
 3. `recordPayment` twice with the same fill: one row, one timeline entry.
 4. `transition` follows the table; a repeated or disallowed move returns `null` and
    changes nothing.
