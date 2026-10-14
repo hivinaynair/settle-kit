@@ -115,8 +115,8 @@ live-only variables are required only in live mode) and caches the result: the
 client (live) or `simulatedVerifier` (test). Any problem throws
 `DepositError("invalid_config")` naming the **variable**, never its value.
 
-Constants in 0.1: order TTL 30 min (overridable per order), poll every 10 s, watch 24 h
-after expiry, webhook timeout 10 s.
+Constants in 0.1: order TTL 30 min (overridable per order), poll every 10 s, watch 1 h after
+expiry, webhook timeout 10 s.
 
 ## 3. `createSettle`
 
@@ -232,18 +232,19 @@ list, and never stops early because one report already settled, so a second paym
 6. `done` and `wait` follow "How long a run watches" below.
 
 **How long a run watches.** There are no Relay webhooks or reconciliation in 0.1, so this
-run is the only thing watching the order; ending it early would leave a late payment
-untracked (design §6a: late payments are still processed).
+run is the only thing watching the order. It polls every 10 s (backoff only for
+`router_unavailable`) and ends at the first of:
 
-| Order state | Poll every | Run ends |
-|---|---|---|
-| Before `expiresAt`, or any payment in progress | 10 s | – |
-| Paid (`credited`) | 10 s | at `expiresAt` + 10 min (catches an accidental second payment during checkout) |
-| Unpaid, past `expiresAt` | doubling from 1 min, capped at 1 h (~30 Relay calls a day) | at `expiresAt` + 24 h |
+- **Paid** (`credited`) and `expiresAt` + 10 min has passed (catches an accidental second
+  payment during checkout).
+- `expiresAt` + 1 h has passed and no payment is in progress (waiting, processing or
+  delayed). One hour covers a slow exchange withdrawal; a payment in progress is never
+  abandoned.
 
-A payment after the run ends is not tracked in 0.1; the README says so, and
-reconciliation (later) closes the gap. T8 checks whether Relay still accepts a payment
-to a strict address after its quote expires.
+At most ~540 Relay calls per order (1.5 h × 6/min). A payment after the run ends is not
+tracked in 0.1; the README says so, and reconciliation (later) closes the gap. T8 run 7
+checks whether Relay even fills a strict quote after it expires; if it does and late
+payments matter, lengthen the window then.
 
 ### Webhook (`deliverOrder` step)
 
@@ -366,9 +367,10 @@ from T3.
 9c. A child after the parent: pass 1 settles the root; pass 2 also returns a child
     (different ID), verified → recorded, `needs_attention` (`order_paid`); still one
     webhook.
-10. Watch window: unpaid order past expiry keeps polling with the doubling interval and
-    ends at `expiresAt` + 24 h; a fill appearing 2 h after expiry is still recorded and
-    settled (looked up by the same request ID). Paid order ends at `expiresAt` + 10 min.
+10. Watch window: unpaid order keeps polling every 10 s and ends at `expiresAt` + 1 h; a
+    fill appearing 30 min after expiry is still recorded and settled (same request ID); a
+    payment still processing at `expiresAt` + 1 h keeps the run going until it finishes.
+    Paid order ends at `expiresAt` + 10 min.
 11. Webhook signing: `verifyWebhook(signWebhook(event))` round-trips; a changed body,
     changed id, wrong secret, or timestamp 6 min old → rejected. Matches a Standard
     Webhooks test vector (from their spec repo).

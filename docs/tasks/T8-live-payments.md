@@ -96,7 +96,7 @@ config and note it; don't add new mechanisms in this task.
 4. **How it works:** the payment-to-order diagram (order → one address for the buyer
    and its stored Relay request ID → Relay's reports for that request → verified transfer
    on Base at `safe` → settle once → signed webhook with retries), with links to the
-   design doc. Keep the limit: a payment after the watch window ends isn't tracked in 0.1.
+   design doc. Keep the limit: a payment more than 1 h after expiry isn't tracked in 0.1.
 5. **Live proof:** the S4 table with explorer links.
 6. Limits of 0.1 and what's next (link `docs/built-vs-designed.md`).
 7. Security note: Settle Kit never holds funds or keys; report issues privately
