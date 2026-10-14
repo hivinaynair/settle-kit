@@ -33,7 +33,7 @@ wallet or exchange, credited as USDC on Base. Users send to a reusable deposit a
   alone never authorizes credit.
 - Map provider `errorCode`s; never parse error messages. Never put API keys or
   webhook secrets in errors, `cause` or logs.
-- Treasury, refund and recovery addresses come from server config only.
+- Treasury and refund addresses come from server config only.
 
 ## Packages
 

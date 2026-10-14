@@ -84,12 +84,11 @@ export type PaymentRouter = {
     amountIn: bigint;                 // nominal amount to quote with (the route minimum)
     recipient: Address;               // treasury
     refundTo: Address;                // app-controlled refund address
-    recoveryAddress: Address;         // app-controlled EOA
   }): Promise<DepositAddress>;
   orderAddress(input: {
     route: Route;
     amountOut: bigint;                // exact base units the treasury must receive
-    recipient: Address; refundTo: Address; recoveryAddress: Address;
+    recipient: Address; refundTo: Address;
   }): Promise<OrderAddress>;
   quote(input: { route: Route; amountIn: bigint }): Promise<Quote>;
   fills(address: Address): Promise<Fill[]>;
@@ -128,11 +127,11 @@ relay({
    `"native"`. (The tested route manifest is applied later, in `createDeposits`.)
 4. **`depositAddress()`** → `POST /quote/v2` with `useDepositAddress: true`,
    `tradeType: "EXACT_INPUT"`, `user` = zero address, `recipient`, `refundTo`,
-   `recoveryAddress`, `amount` as a decimal string. Return `steps[0].depositAddress`.
+   `amount` as a decimal string. No `recoveryAddress` (design §6). Return `steps[0].depositAddress`.
    Every call issues a **new** address; callers store the first one (T3).
 5. **`orderAddress()`** → `POST /quote/v2` with `useDepositAddress: true`, `strict: true`,
-   `tradeType: "EXACT_OUTPUT"`, `amount` = `amountOut`, plus `recipient`, `refundTo`,
-   `recoveryAddress`. Return `steps[0].depositAddress`, `details.currencyIn.amount` as
+   `tradeType: "EXACT_OUTPUT"`, `amount` = `amountOut`, plus `recipient` and
+   `refundTo`. Return `steps[0].depositAddress`, `details.currencyIn.amount` as
    `amountIn` (what the payer must send) and `details.currencyOut.amount` as `amountOut`.
    If the returned `amountOut` differs from the requested one, throw `quote_unavailable`.
 6. **`quote()`** → `POST /quote/v2` without `useDepositAddress`. Map
@@ -196,7 +195,7 @@ Inject a fake `fetch` that serves the fixtures. No network.
    test) is excluded.
 3. `depositAddress()` returns `0xa689cfe5515c4281a7999b9133895244791b34db`.
 4. `depositAddress()` sends `useDepositAddress: true`, `tradeType: "EXACT_INPUT"`,
-   `amount: "2000000"`, the given `recipient`/`refundTo`/`recoveryAddress`, and the zero
+   `amount: "2000000"`, the given `recipient`/`refundTo` (no `recoveryAddress`), and the zero
    address for a `"native"` asset.
 5. `quote()` maps `amountIn 2000000n`, `amountOut 1965708n`, `minimumOut 1899857n`,
    `etaSeconds 2`, all `bigint`.

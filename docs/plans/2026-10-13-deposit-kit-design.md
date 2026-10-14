@@ -118,7 +118,7 @@ Server credentials and database access stay in the server package.
 | A scheduler calling `deposits.reconcile()` | Recovers missed webhooks and unfinished work |
 | A Relay API key with its webhook pointed at the host | Fill discovery and push events |
 | A Base RPC endpoint | Receipt verification at the `safe` block |
-| App-controlled treasury, refund and recovery addresses | Destination and the return path for refunds |
+| App-controlled treasury and refund addresses | Destination and the return path for refunds |
 
 Requiring Workflow SDK limits adoption to hosts that can run it. That is the price of
 durable execution without a separate queue; it is stated up front, not discovered.
@@ -223,7 +223,7 @@ timeout or page reload instead of offering a second send. It is never evidence o
 payment; fills still come only from Relay and are verified on chain.
 
 `route` is canonical JSON containing source and destination chain/token IDs, treasury,
-and refund/recovery addresses. EVM addresses are normalized to lowercase. A treasury
+and refund addresses. EVM addresses are normalized to lowercase. A treasury
 or refund configuration change creates a different address identity; existing
 addresses keep their original settings and remain reconciled.
 
@@ -431,10 +431,13 @@ does not depend on a user reopening the widget.
 
 `refundAddress` (sent to Relay as `refundTo`) is the app-controlled origin-chain
 address that receives Relay refunds.
-`recoveryAddress` is an app-controlled origin-chain EOA authorized to withdraw from
-Relay's depository when filling or refunding is unavailable; it does not receive
-automatic refunds. These addresses can be the same EOA for the supported EVM routes,
-subject to the host's choice and control on each origin chain.
+
+*Decision: no `recoveryAddress`.* Relay accepts an optional integrator EOA that can
+withdraw funds from its depository when it can neither fill nor auto-refund (an
+unsupported token, a failed refund, a long solver outage). V1 leaves it out to keep
+configuration to one refund address. Trade-off: in that rare case recovery goes through
+Relay (relay.link/withdraw or Relay support), and an exchange sender cannot sign the
+withdrawal itself. Adding it later is one optional config field.
 
 The SDK stores verified return evidence in `refund_evidence`: chain, token,
 recipient address, transaction and amount. The widget distinguishes return to the
@@ -545,7 +548,6 @@ export const deposits = createDeposits({
   baseRpcUrl: env.BASE_RPC_URL,
   treasury: env.TREASURY,
   refundAddress: env.REFUND_ADDRESS,              // sent to Relay as refundTo
-  recoveryAddress: env.RECOVERY_ADDRESS,
   limits: { minUsd: 2, maxUsd: 10 },              // deposit mode only
   store: drizzleStore(db),
   account: (req) => getAccountId(req),
@@ -812,7 +814,7 @@ operators and audits.
 |---|---|
 | Address poisoning: a lookalike address planted in the payer's history | Address rendered in 4-character groups with the first and last groups emphasised; "Check the first and last 4 characters" hint; copy only from our UI |
 | Clipboard-hijacking malware | After copy, show "Copied: 0x1a2b…9f8e" to compare with what gets pasted; QR offered as the primary path |
-| Account takeover redirecting funds | Treasury, refund and recovery addresses come only from server config, never user input or the request |
+| Account takeover redirecting funds | Treasury and refund addresses come only from server config, never user input or the request |
 | Cross-account access | Every user endpoint checks the stored address's `account_id` against `account(req)` |
 | Webhook forgery or replay | HMAC signature, 300 s timestamp freshness, constant-time compare; the event only triggers a re-check of provider state |
 | Address-creation spam | Per-account rate limit on `POST /address` |
@@ -864,8 +866,8 @@ for deposit mode.
 
 ## 11. Open decisions
 
-- Treasury, refund and recovery wallets for the reference app; same or separate
-  refund/recovery EOAs, and who handles manual payer repayment.
+- Treasury and refund wallets for the reference app, and who handles manual payer
+  repayment.
 - Final source manifest after real fill and refund/recovery checks; whether USDT
   meets the release bar without delaying launch.
 - Suggested deposit limits: $2 minimum and $10 displayed maximum, checked against
@@ -892,7 +894,7 @@ contract and a maintenance plan. These are release requirements for the first
 | 2 | Versioning and stability | Start at `0.x`, marked experimental. Breaking changes: config, events, error codes, handler routes and the database schema. Changelog per release |
 | 3 | Database upgrades | Tables live in the host's Postgres. Ship numbered SQL migrations plus the Drizzle schema; never edit a published migration; each release lists the migrations it needs |
 | 4 | Packaging | Build step with type declarations; separate server and client entry points so server code never reaches the browser bundle; install-from-pack check in a separate Next.js app (§9) |
-| 5 | User docs | README with a 5-minute quickstart in test mode; concepts (checkout vs deposit, states, fees); "going live" checklist (treasury, refund and recovery addresses, Relay key and webhook, cron, Base RPC); troubleshooting (stuck in `waiting` → reindex; `needs_attention` cases) |
+| 5 | User docs | README with a 5-minute quickstart in test mode; concepts (checkout vs deposit, states, fees); "going live" checklist (treasury and refund addresses, Relay key and webhook, cron, Base RPC); troubleshooting (stuck in `waiting` → reindex; `needs_attention` cases) |
 | 6 | Project files | `SECURITY.md` (private reporting for anything that could lose or misroute funds), `CONTRIBUTING.md`, issue templates |
 | 7 | Responsibility statement | Settle Kit never holds funds or keys; the host is responsible for its own compliance; Relay screens sanctioned addresses (`address_blocked`) |
 | 8 | Route policy | Only routes with a recorded live proof ship in the manifest; how a new route is proved and added |

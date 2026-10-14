@@ -117,7 +117,6 @@ type QuoteOptions = {
   tradeType: "EXACT_INPUT" | "EXACT_OUTPUT";
   recipient?: Address;
   refundTo?: Address;
-  recoveryAddress?: Address;
   useDepositAddress?: true;
   strict?: true;
 };

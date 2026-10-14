@@ -2,6 +2,7 @@ import type { Address, Hex } from "viem";
 
 /** "native" means the chain's own coin (ETH). Relay writes it as the zero address. */
 export type Asset = { chainId: number; token: Address | "native"; decimals: number };
+
 export type Route = {
   from: Asset;
   to: Asset;
@@ -14,7 +15,6 @@ export type AddressRequest = {
   route: Route;
   recipient: Address; // treasury
   refundTo: Address; // app-controlled refund address
-  recoveryAddress: Address; // app-controlled EOA
 };
 
 export type Source = {

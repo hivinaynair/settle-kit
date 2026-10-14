@@ -15,7 +15,6 @@ const ARBITRUM_USDC = address("0xaf88d065e77c8cc2239327c5edb3a432268e5831");
 const BASE_USDC = address("0x833589fcd6edb6e08f4c7c32d4f71b54bda02913");
 const RECIPIENT = address("0x0000000000000000000000000000000000000001");
 const REFUND_TO = address("0x0000000000000000000000000000000000000002");
-const RECOVERY = address("0x0000000000000000000000000000000000000003");
 
 const USDC_ROUTE: Route = {
   from: { chainId: 42161, token: ARBITRUM_USDC, decimals: 6 },
@@ -30,7 +29,6 @@ const NATIVE_ROUTE: Route = {
 const ADDRESS_REQUEST = {
   recipient: RECIPIENT,
   refundTo: REFUND_TO,
-  recoveryAddress: RECOVERY,
 };
 
 type FetchCall = {
@@ -127,10 +125,10 @@ describe("relay()", () => {
       tradeType: "EXACT_INPUT",
       recipient: RECIPIENT,
       refundTo: REFUND_TO,
-      recoveryAddress: RECOVERY,
       useDepositAddress: true,
     });
     expect(calls[0]?.body).not.toHaveProperty("strict");
+    expect(calls[0]?.body).not.toHaveProperty("recoveryAddress");
 
     await router.depositAddress({ route: NATIVE_ROUTE, ...ADDRESS_REQUEST });
     expect(calls[1]?.body).toMatchObject({
@@ -387,7 +385,6 @@ describe("relay()", () => {
       useDepositAddress: true,
       recipient: RECIPIENT,
       refundTo: REFUND_TO,
-      recoveryAddress: RECOVERY,
     });
   });
 

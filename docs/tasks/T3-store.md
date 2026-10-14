@@ -82,7 +82,7 @@ If Drizzle's builder can't express the partial `NULLS NOT DISTINCT` index, write
 raw SQL in the migration and leave a comment in `schema.ts` pointing to it.
 
 Normalisation: EVM addresses lowercase. `route` is canonical JSON (fixed key order:
-`from.chainId, from.token, to.chainId, to.token, treasury, refundTo, recoveryAddress`),
+`from.chainId, from.token, to.chainId, to.token, treasury, refundTo`),
 so the same route always produces the same `jsonb` value.
 
 ---
