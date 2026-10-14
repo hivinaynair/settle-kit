@@ -5,7 +5,6 @@ import {
   type Fill,
   type FillStatus,
   type PaymentRouter,
-  type Route,
 } from "@settle-kit/core";
 import { type Address, type Hash, isAddress, isHash, zeroAddress } from "viem";
 import { z } from "zod";
@@ -101,13 +100,9 @@ export function relay(options: RelayOptions): PaymentRouter {
   const apiKey = options.apiKey.trim();
   const doFetch = options.fetch ?? globalThis.fetch.bind(globalThis);
 
-  /** The one way we talk to Relay: send, map errors, validate the reply. */
-  async function call<Schema extends z.ZodType>(
-    schema: Schema,
-    path: string,
-    body?: RelayQuoteBody,
-  ): Promise<z.output<Schema>> {
-    // The key is only ever a header; errors only carry Relay's reply, so it can't leak.
+  /** Send a request and map HTTP errors; callers validate the response. */
+  async function call(path: string, body?: RelayQuoteBody): Promise<unknown> {
+    // Authenticate every request, including payment discovery.
     const headers: Record<string, string> = { accept: "application/json", "x-api-key": apiKey };
     if (body) headers["content-type"] = "application/json";
 
@@ -125,6 +120,7 @@ export function relay(options: RelayOptions): PaymentRouter {
     }
 
     const json = parseBody(text);
+
     if (!response.ok) {
       const message = isOutage(response.status)
         ? "Relay is unavailable"
@@ -132,36 +128,54 @@ export function relay(options: RelayOptions): PaymentRouter {
       throw new DepositError(errorCodeFor(response.status, json), message, json);
     }
 
-    const parsed = schema.safeParse(json);
-    if (!parsed.success) {
-      throw new DepositError(
-        "router_unavailable",
-        "Relay returned an unexpected response",
-        parsed.error.issues,
-      );
-    }
-    return parsed.data;
+    return json;
   }
 
   return {
     id: "relay",
 
-    // Strict + exact output: the merchant receives exactly `amount`, or Relay refunds.
+    /**
+     * Request a strict address for the merchant's price; return the address and payer amount.
+     * This creates payment instructions only. Settlement still needs on-chain verification.
+     */
     async orderAddress(input) {
-      const quote = await call(
-        QuoteResponse,
-        "/quote/v2",
-        quoteBody(input.route, input.amount, input),
-      );
+      const body = {
+        user: zeroAddress,
+        originChainId: input.route.from.chainId,
+        originCurrency: input.route.from.token,
+        destinationChainId: input.route.to.chainId,
+        destinationCurrency: input.route.to.token,
+        amount: input.amount.toString(), // JSON carries base units as a decimal string.
+        tradeType: "EXACT_OUTPUT",
+        recipient: input.recipient,
+        refundTo: input.refundTo,
+        useDepositAddress: true,
+        strict: true,
+      } satisfies RelayQuoteBody;
+
+      const json = await call("/quote/v2", body);
+      const parsed = QuoteResponse.safeParse(json);
+      if (!parsed.success) {
+        throw new DepositError(
+          "router_unavailable",
+          "Relay returned an unexpected quote response",
+          parsed.error.issues,
+        );
+      }
+      const quote = parsed.data;
       const quoted = quote.details.currencyOut.amount;
       if (quoted !== input.amount) {
-        // Strings, not bigints: a bigint in `cause` would break JSON.stringify(error).
+        // Keep diagnostic amounts as strings so they can be serialized as JSON.
         throw new DepositError("quote_unavailable", "Quoted arrival does not match the price", {
           requested: input.amount.toString(),
           quoted: quoted.toString(),
         });
       }
-      return { address: quotedAddress(quote), payAmount: quote.details.currencyIn.amount };
+      const address = quote.steps?.[0]?.depositAddress;
+      if (!address) {
+        throw new DepositError("router_unavailable", "Relay returned no deposit address");
+      }
+      return { address, payAmount: quote.details.currencyIn.amount };
     },
 
     // Reads every page, 100 at a time (Relay's maximum).
@@ -173,7 +187,16 @@ export function relay(options: RelayOptions): PaymentRouter {
       do {
         const params = new URLSearchParams({ depositAddress, limit: "100" });
         if (continuation) params.set("continuation", continuation);
-        const page = await call(RequestsPage, `/requests/v3?${params}`);
+        const json = await call(`/requests/v3?${params}`);
+        const parsed = RequestsPage.safeParse(json);
+        if (!parsed.success) {
+          throw new DepositError(
+            "router_unavailable",
+            "Relay returned an unexpected payments response",
+            parsed.error.issues,
+          );
+        }
+        const page = parsed.data;
         for (const request of page.requests) if (request) fills.push(toFill(request));
 
         continuation = page.continuation || undefined;
@@ -190,23 +213,6 @@ export function relay(options: RelayOptions): PaymentRouter {
 
 // --- Helpers ---
 
-/** A strict, exact-output deposit-address quote for one order. */
-function quoteBody(route: Route, amount: bigint, to: { recipient: Address; refundTo: Address }) {
-  return {
-    user: zeroAddress,
-    originChainId: route.from.chainId,
-    destinationChainId: route.to.chainId,
-    originCurrency: route.from.token,
-    destinationCurrency: route.to.token,
-    amount: amount.toString(),
-    tradeType: "EXACT_OUTPUT",
-    recipient: to.recipient,
-    refundTo: to.refundTo,
-    useDepositAddress: true,
-    strict: true,
-  } satisfies RelayQuoteBody;
-}
-
 function toFill(request: z.infer<typeof RelayRequest>): Fill {
   const outgoing = request.data?.outTxs?.[0];
   return {
@@ -221,14 +227,6 @@ function toFill(request: z.infer<typeof RelayRequest>): Fill {
         : null,
     updatedAt: request.updatedAt,
   };
-}
-
-function quotedAddress(quote: z.infer<typeof QuoteResponse>): Address {
-  const found = quote.steps?.[0]?.depositAddress;
-  if (!found) {
-    throw new DepositError("router_unavailable", "Relay returned no deposit address");
-  }
-  return found;
 }
 
 function parseBody(text: string): unknown {
