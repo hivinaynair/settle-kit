@@ -19,15 +19,16 @@ amounts, and packages the proof so a reader believes it in two minutes.
 
 ## Before starting (Vinay)
 
-- [ ] Buy ETH on Base (Onramp.money; its ₹640 minimum is plenty) to the payer wallet
+- [ ] Buy ~₹1,000 of ETH on Base (Onramp.money) to the payer wallet
       `0xc0ddaFE4d55E5ce58FDa36b85A1125F217130ebE`.
-- [ ] Swap ~$2 of it to USDC on Base, and bridge ~$0.50 USDC to Arbitrum (Relay app;
+- [ ] Swap ~$6 of it to USDC on Base, and bridge ~$1.50 USDC to Arbitrum (Relay app;
       keep a little ETH on Arbitrum for gas).
-- [ ] Fund a browser wallet (MetaMask/Rabby) with ~$0.50 USDC on Base + gas for the
+- [ ] Fund a browser wallet (MetaMask/Rabby) with ~$1 USDC on Base + gas for the
       wallet payment.
 
-Cost: prices are 0.05–0.15 USDC (T6) and land in our own treasury, so what's actually
-spent is Relay's fee (~$0.03 per payment) and gas: under $1 for all five runs.
+Cost: prices are 0.50–2.00 USDC (T6) and land in our own treasury, so what's actually
+spent is Relay's fee (~$0.03 per payment) and gas: under $1 for all five runs. About
+$5 of USDC moves in total; most of it ends up back in the treasury.
 - [ ] Vercel production env: `SETTLE_MODE=live`, `RELAY_API_KEY`, `BASE_RPC_URL`,
       `SETTLE_TREASURY=0xac44275dE5bF4109977892c4a256BbFA16B6C804`,
       `SETTLE_REFUND_ADDRESS` (an app-controlled wallet; not the treasury).

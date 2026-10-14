@@ -164,4 +164,5 @@ Strict `EXACT_OUTPUT` deposit-address quotes to Base USDC, mainnet, with our key
 **So:** strict quotes have no minimum; S2's 50000 (0.05 USDC) minimum applies to open
 `EXACT_INPUT` quotes. The fee is flat (~0.0251 from Base, ~0.034 from Arbitrum), so below
 ~0.05 the fee is larger than the price. Quotes only: whether Relay fills a tiny strict
-order is proven in T8. Demo prices: 0.05 / 0.10 / 0.15 USDC.
+order is proven in T8. Demo prices: 0.50 / 1.00 / 2.00 USDC, so the fee reads as
+2–7% rather than more than the price.

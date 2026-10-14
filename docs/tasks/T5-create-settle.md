@@ -183,11 +183,9 @@ list, so a second payment to the same address is always recorded and flagged.
 2. `router.fills(address)`. `router_unavailable` (outage or 429) → `wait` with backoff
    (double `pollEvery`, max 60 s); never fail the run for it.
 3. For each fill: `recordPayment`, then `nextStep(payment.status, fill.status)` (T2):
-   - `move` → `store.transition` with evidence `{ routerStatus, fillId }`, **except** a
-     move to `refunded`: 0.1 has no refund verifier (design §9, deferred), and a
-     provider's word never makes a final state, so it goes to `needs_attention` with
-     reason `refund_unverified` instead. Delete this exception when refund
-     verification lands.
+   - `move` → `store.transition` with evidence `{ routerStatus, fillId }`. A move to
+     `needs_attention` also records `reason`: `refund_unverified` (router said
+     refunded; T2 never trusts that as final), `router_failed` or `unknown_status`.
    - `verify` → destination chain must be 8453, then `verifyPayment` (T4) against
      `treasury`, Base USDC and `order.amount`. `verified` → build the `SettledEvent`
      (T2) and `store.settle`. `pending` → try again next pass.
