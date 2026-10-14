@@ -18,13 +18,19 @@ const REFUND_TO = address("0x0000000000000000000000000000000000000002");
 const RECOVERY = address("0x0000000000000000000000000000000000000003");
 
 const USDC_ROUTE: Route = {
-  from: { chainId: 42161, token: ARBITRUM_USDC },
-  to: { chainId: 8453, token: BASE_USDC },
+  from: { chainId: 42161, token: ARBITRUM_USDC, decimals: 6 },
+  to: { chainId: 8453, token: BASE_USDC, decimals: 6 },
 };
 
 const NATIVE_ROUTE: Route = {
-  from: { chainId: 42161, token: "native" },
-  to: { chainId: 8453, token: BASE_USDC },
+  from: { chainId: 42161, token: "native", decimals: 18 },
+  to: { chainId: 8453, token: BASE_USDC, decimals: 6 },
+};
+
+const ADDRESS_REQUEST = {
+  recipient: RECIPIENT,
+  refundTo: REFUND_TO,
+  recoveryAddress: RECOVERY,
 };
 
 type FetchCall = {
@@ -128,29 +134,23 @@ describe("relay()", () => {
     expect(chainIds).not.toContain(8453);
   });
 
-  it("returns the deposit address and sends an open exact-input quote", async () => {
+  it("returns a reusable address quoted at one whole token", async () => {
     const { router, calls } = routerFor((call) => {
       expect(call.url.pathname).toBe("/quote/v2");
       expect(call.headers.get("x-api-key")).toBeNull();
       return jsonResponse(quoteFixture);
     });
 
-    const result = await router.depositAddress({
-      route: NATIVE_ROUTE,
-      amountIn: 2000000n,
-      recipient: RECIPIENT,
-      refundTo: REFUND_TO,
-      recoveryAddress: RECOVERY,
-    });
+    const result = await router.depositAddress({ route: USDC_ROUTE, ...ADDRESS_REQUEST });
 
     expect(result.address).toBe("0xa689cfe5515c4281a7999b9133895244791b34db");
     expect(calls[0]?.body).toMatchObject({
       user: zeroAddress,
       originChainId: 42161,
       destinationChainId: 8453,
-      originCurrency: zeroAddress,
+      originCurrency: ARBITRUM_USDC,
       destinationCurrency: BASE_USDC,
-      amount: "2000000",
+      amount: "1000000",
       tradeType: "EXACT_INPUT",
       recipient: RECIPIENT,
       refundTo: REFUND_TO,
@@ -158,15 +158,21 @@ describe("relay()", () => {
       useDepositAddress: true,
     });
     expect(calls[0]?.body).not.toHaveProperty("strict");
+
+    await router.depositAddress({ route: NATIVE_ROUTE, ...ADDRESS_REQUEST });
+    expect(calls[1]?.body).toMatchObject({
+      originCurrency: zeroAddress,
+      amount: "1000000000000000000",
+    });
   });
 
   it("maps a quote to base-unit bigints", async () => {
     const { router, calls } = routerFor(() => jsonResponse(quoteFixture));
-    const quote = await router.quote({ route: USDC_ROUTE, amountIn: 2000000n });
+    const quote = await router.quote({ route: USDC_ROUTE, payAmount: 2000000n });
 
-    expect(quote.amountIn).toBe(2000000n);
-    expect(quote.amountOut).toBe(1965708n);
-    expect(quote.minimumOut).toBe(1899857n);
+    expect(quote.payAmount).toBe(2000000n);
+    expect(quote.receiveAmount).toBe(1965708n);
+    expect(quote.minimumReceiveAmount).toBe(1899857n);
     expect(quote.etaSeconds).toBe(2);
     expect(calls[0]?.body).toMatchObject({ amount: "2000000", tradeType: "EXACT_INPUT" });
     expect(calls[0]?.body).not.toHaveProperty("useDepositAddress");
@@ -176,13 +182,16 @@ describe("relay()", () => {
     const fixture = structuredClone(quoteFixture);
     fixture.details.currencyOut.amount = "1.5";
     const { router } = routerFor(() => jsonResponse(fixture));
-    await expectCode(router.quote({ route: USDC_ROUTE, amountIn: 2000000n }), "router_unavailable");
+    await expectCode(
+      router.quote({ route: USDC_ROUTE, payAmount: 2000000n }),
+      "router_unavailable",
+    );
   });
 
   it("maps the recorded error fixtures by errorCode", async () => {
     const tooLow = routerFor(() => jsonResponse(amountTooLowFixture, 400));
     const tooLowError = await expectCode(
-      tooLow.router.quote({ route: USDC_ROUTE, amountIn: 1n }),
+      tooLow.router.quote({ route: USDC_ROUTE, payAmount: 1n }),
       "amount_too_low",
     );
     expect(tooLowError.cause).toEqual(amountTooLowFixture);
@@ -190,7 +199,7 @@ describe("relay()", () => {
 
     const invalid = routerFor(() => jsonResponse(invalidCurrencyFixture, 400));
     const invalidError = await expectCode(
-      invalid.router.quote({ route: USDC_ROUTE, amountIn: 2000000n }),
+      invalid.router.quote({ route: USDC_ROUTE, payAmount: 2000000n }),
       "quote_unavailable",
     );
     expect(invalidError.cause).toEqual(invalidCurrencyFixture);
@@ -215,12 +224,12 @@ describe("relay()", () => {
       const { router } = routerFor(() =>
         jsonResponse({ message: `ignored ${errorCode}`, errorCode }, 400),
       );
-      await expectCode(router.quote({ route: USDC_ROUTE, amountIn: 2000000n }), code);
+      await expectCode(router.quote({ route: USDC_ROUTE, payAmount: 2000000n }), code);
     }
 
     const missing = routerFor(() => jsonResponse({ message: "no code" }, 400));
     await expectCode(
-      missing.router.quote({ route: USDC_ROUTE, amountIn: 2000000n }),
+      missing.router.quote({ route: USDC_ROUTE, payAmount: 2000000n }),
       "router_unavailable",
     );
 
@@ -228,7 +237,7 @@ describe("relay()", () => {
       jsonResponse({ message: `down ${API_KEY}`, errorCode: "AMOUNT_TOO_LOW" }, 500),
     );
     const serverError = await expectCode(
-      server.router.quote({ route: USDC_ROUTE, amountIn: 2000000n }),
+      server.router.quote({ route: USDC_ROUTE, payAmount: 2000000n }),
       "router_unavailable",
     );
     expect(serverError.cause).toMatchObject({
@@ -238,7 +247,7 @@ describe("relay()", () => {
 
     const limited = routerFor(() => jsonResponse({ message: "slow down" }, 429));
     await expectCode(
-      limited.router.quote({ route: USDC_ROUTE, amountIn: 2000000n }),
+      limited.router.quote({ route: USDC_ROUTE, payAmount: 2000000n }),
       "router_unavailable",
     );
 
@@ -246,7 +255,7 @@ describe("relay()", () => {
       throw new Error(`network ${API_KEY}`);
     });
     const offlineError = await expectCode(
-      offline.router.quote({ route: USDC_ROUTE, amountIn: 2000000n }),
+      offline.router.quote({ route: USDC_ROUTE, payAmount: 2000000n }),
       "router_unavailable",
     );
     expect(offlineError.cause).toMatchObject({ message: "network [redacted]" });
@@ -370,19 +379,18 @@ describe("relay()", () => {
     expect(await waiting.router.status("fill-1")).toBe("waiting");
   });
 
-  it("returns the strict exact-output order address", async () => {
+  it("returns the strict order address and what the payer must send", async () => {
     const { router, calls } = routerFor(() => jsonResponse(strictQuoteFixture));
     const order = await router.orderAddress({
       route: USDC_ROUTE,
-      amountOut: 1150000n,
-      recipient: RECIPIENT,
-      refundTo: REFUND_TO,
-      recoveryAddress: RECOVERY,
+      amount: 1150000n,
+      ...ADDRESS_REQUEST,
     });
 
-    expect(order.address).toBe("0x24a37cD2723B6FC852A7D296Bd4f20476b2Fd176");
-    expect(order.amountIn).toBe(1184248n);
-    expect(order.amountOut).toBe(1150000n);
+    expect(order).toEqual({
+      address: "0x24a37cD2723B6FC852A7D296Bd4f20476b2Fd176",
+      payAmount: 1184248n,
+    });
     expect(calls[0]?.body).toMatchObject({
       strict: true,
       tradeType: "EXACT_OUTPUT",
@@ -392,17 +400,17 @@ describe("relay()", () => {
       refundTo: REFUND_TO,
       recoveryAddress: RECOVERY,
     });
+  });
 
+  it("rejects an order when the quoted arrival differs from the price", async () => {
     const drifted = structuredClone(strictQuoteFixture);
     drifted.details.currencyOut.amount = "1";
     const mismatch = routerFor(() => jsonResponse(drifted));
     await expectCode(
       mismatch.router.orderAddress({
         route: USDC_ROUTE,
-        amountOut: 1150000n,
-        recipient: RECIPIENT,
-        refundTo: REFUND_TO,
-        recoveryAddress: RECOVERY,
+        amount: 1150000n,
+        ...ADDRESS_REQUEST,
       }),
       "quote_unavailable",
     );
@@ -449,5 +457,19 @@ describe("fakeRouter()", () => {
 
     const fresh = fakeRouter({ address: scriptAddress, fills: [[processing]] });
     await expectCode(fresh.status("r1"), "router_unavailable");
+
+    const quoted = await fresh.quote({ route: USDC_ROUTE, payAmount: 2000000n });
+    expect(quoted).toEqual({
+      payAmount: 2000000n,
+      receiveAmount: 2000000n,
+      minimumReceiveAmount: 2000000n,
+      etaSeconds: 0,
+    });
+    expect(
+      await fresh.orderAddress({ route: USDC_ROUTE, amount: 1150000n, ...ADDRESS_REQUEST }),
+    ).toEqual({ address: scriptAddress, payAmount: 1150000n });
+    expect(await fresh.depositAddress({ route: USDC_ROUTE, ...ADDRESS_REQUEST })).toEqual({
+      address: scriptAddress,
+    });
   });
 });
