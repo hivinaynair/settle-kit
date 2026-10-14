@@ -294,18 +294,20 @@ apply the credit record and balance change in the same transaction.
 
 ## 5. Relay integration
 
-The internal adapter covers `sources`, `depositAddress`, `quote`, `fills`, `status` and
-`webhook`. A fake implements the same interface for workflow tests. There is no
-public adapter registry or router selection API.
+The internal router has three methods: `depositAddress`, `orderAddress` and `fills`
+("get an address, then watch what arrives at it"). A fake implements the same interface
+for workflow tests. There is no public adapter registry or router selection API.
 
 | Operation | Relay request |
 |---|---|
-| Sources | `GET /chains`, intersected with the tested source manifest |
 | Deposit address | `POST /quote/v2` with `useDepositAddress: true` and open `EXACT_INPUT` mode, quoted once at the route minimum; the address then accepts any amount |
 | Order address | `POST /quote/v2` with `useDepositAddress: true`, `strict: true`, `tradeType: "EXACT_OUTPUT"`, `amount` = the order's USDC amount; returns the address and the exact amount to send |
-| Estimate | `POST /quote/v2` without a deposit address, reading output estimate and fees; display only |
-| Fill discovery | `GET /requests/v3?depositAddress=` with `x-api-key` |
-| Fill status | `GET /intents/status/v3?requestId=` |
+| Payments at an address | `GET /requests/v3?depositAddress=&limit=100` with `x-api-key`; each record carries its status |
+
+Deliberately not in the router: available routes come from our own route manifest (no
+`GET /chains`); v1 routes are USDC-only (no native ETH); per-payment status comes from
+`fills` (no separate status call, half the requests); a pre-send estimate (`quote`) is
+added back when deposit mode needs "You'll receive about X".
 
 `fills` follows every continuation page. The stored address, router and network
 determine ownership. Requests for sources outside the release manifest are rejected.
@@ -396,8 +398,7 @@ authorizes a credit or a declaration that funds are lost.
 
 `deliverSettlement` calls `onSettled` with the persisted event. Its identity is
 `${deposit.id}:settled` and its type is `deposit.settled`. The snapshot contains
-verified `amountOut` for credit. Quote estimates are display data from `POST /quote`,
-not required settlement fields. Replay preserves the payload and deposit ID.
+verified `amountOut` for credit. Estimates are display data, not settlement fields. Replay preserves the payload and deposit ID.
 
 The host's atomic unique credit makes a lost response after commit safe to retry.
 The SDK marks delivery complete and the deposit credited only after acknowledgment.
@@ -575,11 +576,10 @@ server callback.
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /sources` | Available routes from the tested manifest |
+| `GET /sources` | Available routes from our route manifest |
 | `POST /orders { externalId, amountUsd, route }` | Checkout (called by the host server, which sets the price): create or return an order with its strict address, exact amount and expiry |
 | `GET /orders/:id` | Checkout: order status for the widget |
 | `POST /address` | Deposit: get or create an account's route address; rate-limited per account (each new address costs a Relay quote) |
-| `POST /quote` | Current amount/fee estimate |
 | `GET /deposits?addressId=` | Account-scoped deposit records |
 | `POST /attempts { addressId, attemptKey }` | Record a wallet send attempt before the wallet opens |
 | `POST /check { addressId, txHash? }` | Bounded, rate-limited address scan on reopen or when a wallet returns a hash |
@@ -722,39 +722,33 @@ Implementation order:
    installation, deployment and recovery docs; package consumption check; versioned
    release.
 
-### Showcase cut (built first, ~6 days)
+### Demo cut (built first, ~4 days)
 
-The first build is a working, deployed slice of v1. Everything else in this doc stays
-designed and ships after it.
+The first build is the smallest thing that proves the idea with real money: **checkout
+mode, end to end, deployed**. Everything else in this doc stays designed and ships after.
 
 | Day | Build | Visible result |
 |---|---|---|
-| 1 | T1 router, T2 state machine | Foundation |
-| 2 | T3 store, receipt verifier | Duplicate-proof crediting |
-| 3 | All workflows: `processDeposit`, `deliverSettlement` with the full retry schedule, `reconcileDeposits` on Vercel Cron, `replayDelivery`; handlers; signed Relay webhook; test mode | Simulated deposits end to end, surviving restarts |
-| 4 | Checkout mode (§6a): orders, strict addresses, exact-amount QR with countdown; demo "Buy report" page; real Base USDC payment, deployed | **Demo-ready** |
-| 5 | Wallet path (exact amount locked), deposit mode top-up page, timeline page, `/states` gallery, chunked address | Product depth |
-| 6 | Live proofs for Arbitrum → Base and Ethereum → Base; README, 2-minute video, "built vs designed" table | Ready to share |
+| 1 | T1 router (done); T2 state machine; store: orders + deposits tables, record once, settle once, timeline | Duplicate-proof records |
+| 2 | Receipt verifier (USDC `Transfer` at `safe`); `payOrder` workflow: poll `fills(orderAddress)` with `sleep`, verify, settle, call `onSettled` with retries; test mode (`simulateRouter`) | Simulated payment completes end to end |
+| 3 | Demo "Buy report" page: order summary, exact amount + EIP-681 QR, countdown, progress, result, timeline; dev toolbar "Simulate payment"; deployed on Vercel | Anyone can try it in 30 s |
+| 4 | Real $2 Base USDC payment (Arbitrum if funds allow); README, 2-minute video, "built vs designed" table. Stretch: "Pay with wallet" | **Ready to share** |
 
-**In the cut:** every Workflow SDK workflow above, webhook verification, account
-scoping, secrets kept out of errors, server-config payout addresses, test mode,
-timeline, wallet path, checkout and deposit modes, three live USDC routes: Base,
-Arbitrum and Ethereum → Base. The demo leads with checkout: "Buy report".
+**In the cut:** checkout mode, Relay strict addresses, one durable workflow, on-chain
+verification, exactly-once settlement, `onSettled` with retries, test mode, timeline,
+key and secret handling, one live route proven.
 
-**After the cut:**
+**After the cut (designed, not built):**
 
 | Deferred | Meanwhile |
 |---|---|
-| Operator UI: admin page, `resolve`, `needs_attention` list, reindex | Visible in the database and on the timeline; `replayDelivery` is a server function |
-| Refund evidence verification and the manual repayment procedure | Refunds and failures go to `needs_attention` |
-| Rate limits on `POST /address` and `/check` | Known gap |
-| Extended Postgres crash/concurrency tests | Core constraint, CAS and timeline tests |
-| USDT and other chains | Three USDC routes proven live |
-| Build/pack/install check, npm release | Demo consumes workspace source |
-| `appearance` theming, copy catalogue, full accessibility audit | Default theme on CSS variables; focus, live region, keyboard basics |
-
-Reconciliation must stay within the Relay key's `/requests` budget (S7): batch size
-follows the observed limit until Relay confirms `/requests/v3` rates.
+| Deposit mode (top-ups) and `quote` estimates | Checkout only |
+| Relay webhooks and the reconciliation cron | The workflow polls the order address; one order at a time is well within rate limits |
+| Wallet path | QR / address (stretch goal on day 4) |
+| Operator tools: `replayDelivery`, `resolve`, admin page, reindex | Visible in the database and timeline |
+| Refund evidence verification and repayment procedure | Refunds and failures go to `needs_attention` |
+| Ethereum route proof, USDT | Base (and Arbitrum) proven |
+| Rate limits, extended crash tests, npm packaging, theming API | Known gaps |
 
 Optional routes that lack evidence are omitted from the release. The reference stack
 is Next.js, Workflow SDK's Vercel World and Postgres/Drizzle. The local workflow World
@@ -886,7 +880,7 @@ above.
 
 This doc describes how the system works. Publishing it as an SDK also needs a public
 contract and a maintenance plan. These are release requirements for the first
-`npm publish`; the showcase needs only items 2 and 5 (quickstart).
+`npm publish`; the demo needs only items 2 and 5 (quickstart).
 
 | # | Requirement | Contents |
 |---|---|---|

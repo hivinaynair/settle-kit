@@ -8,8 +8,5 @@ export type {
   FillStatus,
   OrderAddress,
   PaymentRouter,
-  Quote,
   Route,
-  Source,
-  Token,
 } from "./router";
