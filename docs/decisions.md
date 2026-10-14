@@ -68,6 +68,7 @@ steps cite these IDs; `bun run check-journeys` fails on an unknown or superseded
 | D43 | The widget guards the payer: address-poisoning protection, a test-mode watermark on the QR code, a "don't send twice" guard, and accessible markup | Payer mistakes cost real money and can't be undone | — | 2026-10-14 | |
 | D44 | Server SDK: `createSettle()` and `settle.handlers`; `createOrder`, `depositAddress`, `listOrders`, `resendWebhook`, `resolve`, `reindex`, `reconcile`; a `settle.webhook(handler)` helper for receiving events. `SETTLE_MODE` is required, with no default | One small surface; never fall into live mode by accident | A default mode | 2026-10-14 | |
 | D45 | Webhooks follow Standard Webhooks signing, with a 10 s timeout and 10 retries at `2^(n-1)` minutes (about 17 hours), then an operator resend | A known scheme hosts can verify; retries cover a host outage overnight | A custom signature; unlimited retries | 2026-10-13 | |
+| D46 | A host may force the lane per coin in config (e.g. `lanes: { usdc: "relay" }`); unset, Settle Kit chooses (D38). A forced lane applies to addresses issued after the change; existing addresses keep theirs | Lets a host start on Relay only, without a gas wallet or contracts, and switch USDC to own rails later | Settle Kit always choosing; changing the lane of addresses already issued | 2026-10-14 | |
 
 ## Operations and release (D50–D59)
 
