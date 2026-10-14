@@ -144,6 +144,11 @@ recovery tool and belongs in operator tooling.
   For payers in markets like India, local exchanges and INR onramps are the funding
   path, which supports building the address/QR path first.
 
+**Re-checked 2026-10-14 (later):** 8 `GET /requests/v3?depositAddress=` calls in 8 s with
+our key all returned 200, with no rate-limit headers. The 2 req/min figure doesn't apply
+to v3 at that rate, so T5's 10 s poll is fine for the demo. The real v3 limit is still
+unknown (Relay documents 200/min).
+
 ## S9 · Minimum order amount for strict quotes — 2026-10-14
 
 Strict `EXACT_OUTPUT` deposit-address quotes to Base USDC, mainnet, with our key:

@@ -51,7 +51,10 @@ keep server code out of browser bundles, and work without our workspace setup.
 ## 2. Boundaries
 
 - `@settle-kit/server` must never reach a browser bundle: add `import "server-only"`
-  at its entry (Next.js fails the build if a client component imports it).
+  at its entry (Next.js fails the build if a client component imports it). Gotcha:
+  outside Next.js that import throws by design, so `bun test` needs
+  `--conditions react-server` (add it to the test script) or tests must import the
+  modules directly rather than the entry.
 - `@settle-kit/react` starts with `"use client"` and imports only types from
   `@settle-kit/server` (none at runtime).
 - `@settle-kit/core` stays dependency-free apart from the `viem` peer.
