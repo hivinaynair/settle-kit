@@ -78,6 +78,7 @@
       "dependencies": {
         "@settle-kit/core": "workspace:*",
         "viem": "^2.57.6",
+        "zod": "4",
       },
       "devDependencies": {
         "@repo/typescript-config": "workspace:*",

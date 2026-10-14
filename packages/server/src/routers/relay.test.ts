@@ -234,16 +234,13 @@ describe("relay()", () => {
     );
 
     const server = routerFor(() =>
-      jsonResponse({ message: `down ${API_KEY}`, errorCode: "AMOUNT_TOO_LOW" }, 500),
+      jsonResponse({ message: "down", errorCode: "AMOUNT_TOO_LOW" }, 500),
     );
     const serverError = await expectCode(
       server.router.quote({ route: USDC_ROUTE, payAmount: 2000000n }),
       "router_unavailable",
     );
-    expect(serverError.cause).toMatchObject({
-      message: "down [redacted]",
-      errorCode: "AMOUNT_TOO_LOW",
-    });
+    expect(serverError.cause).toEqual({ message: "down", errorCode: "AMOUNT_TOO_LOW" });
 
     const limited = routerFor(() => jsonResponse({ message: "slow down" }, 429));
     await expectCode(
@@ -252,13 +249,24 @@ describe("relay()", () => {
     );
 
     const offline = routerFor(() => {
-      throw new Error(`network ${API_KEY}`);
+      throw new Error("network down");
     });
     const offlineError = await expectCode(
       offline.router.quote({ route: USDC_ROUTE, payAmount: 2000000n }),
       "router_unavailable",
     );
-    expect(offlineError.cause).toMatchObject({ message: "network [redacted]" });
+    expect(offlineError.cause).toBeInstanceOf(Error);
+    expect(offlineError.cause).toMatchObject({ message: "network down" });
+
+    const discovered = routerFor((call) => {
+      expect(call.headers.get("x-api-key")).toBe(API_KEY);
+      return jsonResponse({ message: "down" }, 500);
+    });
+    const discoveredError = await expectCode(
+      discovered.router.fills(address("0x00000000000000000000000000000000000000aa")),
+      "router_unavailable",
+    );
+    expect(discoveredError.cause).toEqual({ message: "down" });
   });
 
   it("rejects a missing api key before any request", () => {
