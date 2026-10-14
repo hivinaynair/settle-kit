@@ -11,7 +11,8 @@
  * or a test cites a step ID that is not on any spine. `--complete` also requires every
  * step served by a task to be cited by at least one test, and no step to cite an open
  * question (release gate). Steps may cite decisions (`decisions: [D21]`); IDs are read from
- * docs/decisions.md and must exist and not be superseded.
+ * docs/decisions.md and must exist and not be superseded. Once a spine exists, every test in
+ * apps/ and packages/ must be named after a step (`J2.S4: …`) or a decision (`D21: …`).
  *
  * Adapted from ViperNxt (github.com/hivinaynair/vipernxt, scripts/journey.ts, MIT):
  * buckets are script | human | external, "screens" are "surfaces" (a component, hook,
@@ -499,19 +500,47 @@ async function spinePaths(target: string): Promise<string[]> {
 const mdPath = (yamlPath: string) => yamlPath.replace(/\.yaml$/, ".md");
 
 /** Test sources that may cite journey steps. scripts/ is skipped: its fixtures are not citations. */
-async function testTexts(): Promise<string[]> {
-  const texts: string[] = [];
+type TestFile = { path: string; text: string };
+
+/**
+ * Every product test is traced. Its title starts with a journey step it proves (`J2.S4: …`)
+ * or, for a critical pure helper, the money or security decision it enforces (`D21: …`).
+ * Returns each problem as `<file>: <reason>`; `decisions` checks D IDs when available.
+ */
+export function untracedTests(files: TestFile[], decisions?: DecisionIndex): string[] {
+  const problems: string[] = [];
+  // it("…"), test.skip("…"), it.each(rows)("…"); not regex.test("…").
+  const title = /(?<![.\w])(?:it|test)(?:\.\w+)?(?:\([^()]*\))?\(\s*(["'`])((?:\\.|(?!\1).)*?)\1/g;
+  for (const { path, text } of files) {
+    for (const m of text.matchAll(title)) {
+      const name = m[2];
+      const id = name.match(/^(J\d+\.S\d+[a-z]?|D\d+):\s/)?.[1];
+      if (!id)
+        problems.push(
+          `${path}: "${name}" must start with a step or decision ID ("J2.S4: …" or "D21: …")`,
+        );
+      else if (id.startsWith("D") && decisions && !decisions.ids.has(id))
+        problems.push(`${path}: "${name}" cites ${id}, which is not in docs/decisions.md`);
+      else if (id.startsWith("D") && decisions?.superseded.has(id))
+        problems.push(`${path}: "${name}" cites ${id}, which was superseded`);
+    }
+  }
+  return problems;
+}
+
+async function testFiles(): Promise<TestFile[]> {
+  const files: TestFile[] = [];
   for (const dir of ["apps", "packages"]) {
     try {
       for await (const path of new Bun.Glob("**/*.{test,spec}.{ts,tsx}").scan(dir)) {
         if (path.includes("node_modules")) continue;
-        texts.push(await Bun.file(`${dir}/${path}`).text());
+        files.push({ path: `${dir}/${path}`, text: await Bun.file(`${dir}/${path}`).text() });
       }
     } catch {
       // the directory may not exist yet
     }
   }
-  return texts;
+  return files;
 }
 
 if (import.meta.main) {
@@ -571,7 +600,14 @@ if (import.meta.main) {
   if (failed) process.exit(1);
 
   if (cmd === "check") {
-    const cited = citedStepIds(await testTexts());
+    const files = await testFiles();
+    const untraced = untracedTests(files, decisions);
+    if (untraced.length) {
+      console.error("ERROR product tests must prove a journey step or a money/security decision:");
+      for (const u of untraced) console.error(`  ${u}`);
+      process.exit(1);
+    }
+    const cited = citedStepIds(files.map((f) => f.text));
     const { unknown, missing } = checkJourneyCitations({
       known,
       required: [...new Set(required)].sort(),

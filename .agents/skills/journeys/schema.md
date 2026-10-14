@@ -64,8 +64,9 @@ Decisions: a step's `decisions` must exist in `docs/decisions.md` (read from tab
 start with an ID) and must not be superseded. Citing an open question (`Q2`) is allowed
 while drafting; `check --complete` fails until it is answered.
 
-Citations: tests in `apps/` and `packages/` name the step they prove, e.g.
-`it("J2.S3: settles once")`. `check` fails on a cited ID that is not on the spine;
+Citations: every test in `apps/` and `packages/` starts with a step ID (`it("J2.S3: settles
+once")`) or, for a critical pure helper, a decision ID (`it("D21: …")`); untraced tests fail
+`check`. `check` fails on a cited ID that is not on the spine;
 `check --complete` (release gate) fails when a served step with criteria has no test.
 
 ## Why EARS

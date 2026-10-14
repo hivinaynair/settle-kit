@@ -9,6 +9,7 @@ import {
   render,
   requiredStepIds,
   type Spine,
+  untracedTests,
   validateSpine,
 } from "./journey.ts";
 
@@ -354,5 +355,35 @@ describe("example spine", () => {
     const path = join(import.meta.dir, "../.agents/skills/journeys/example.yaml");
     const spine = Bun.YAML.parse(await Bun.file(path).text()) as Spine;
     expect(validateSpine(spine)).toEqual({ errors: [], warnings: [] });
+  });
+});
+
+describe("untracedTests", () => {
+  const index = parseDecisions("| D8 | a | | | | |\n| D21 | b | | | | D8 |");
+  const file = (text: string) => [{ path: "packages/x/a.test.ts", text }];
+
+  it("accepts tests named after a step or a live decision", () => {
+    const text = [
+      'it("J2.S4: does not settle a short payment", () => {});',
+      "test('D21: rejects a receipt above the safe block', () => {});",
+      'it.each(cases)("J1.S2b: retries %s", () => {});',
+      'expect(/x/.test("not a test title")).toBe(true);',
+    ].join("\n");
+    expect(untracedTests(file(text), index)).toEqual([]);
+  });
+
+  it("rejects untraced, unknown and superseded titles", () => {
+    const text = [
+      'it("parses amounts", () => {});',
+      'it("D99: something", () => {});',
+      'it("D8: old rule", () => {});',
+      'test("J2.S4 missing colon", () => {});',
+      'it.each(rows)("untraced %s", () => {});',
+    ].join("\n");
+    const problems = untracedTests(file(text), index);
+    expect(problems).toHaveLength(5);
+    expect(problems[0]).toContain('"parses amounts" must start with');
+    expect(problems[1]).toContain("D99, which is not in docs/decisions.md");
+    expect(problems[2]).toContain("D8, which was superseded");
   });
 });

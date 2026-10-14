@@ -35,7 +35,12 @@ Two artifacts drive the spec, written in this order. How to write them:
 - Journeys: never hand-edit the generated `.md`; never renumber or reuse a step ID.
 - Journey steps list the decisions they rely on (`decisions: [D21]`); `check-journeys`
   rejects unknown or superseded IDs, and `--complete` rejects steps citing open questions.
-- Tests name the step they prove (`it("J2.S4: …")`); PRs list the step IDs they serve.
+- Tests: every test in `apps/` and `packages/` proves something traced. Most are journey
+  tests named after the step they prove (`it("J2.S4: …")`). A pure helper gets its own
+  tests only if it touches money or security, has many edge cases and needs no mocks; name
+  them after the money or security decision they enforce (`it("D21: …")`) and prefer one
+  table-driven test over many. Anything else is not tested directly. `check-journeys`
+  enforces the naming once a journey spine exists. PRs list the step IDs they serve.
 - Writing: lead with the point, plain words, explain a term on first use, keep fact,
   decision and assumption apart, no `TBD`.
 
