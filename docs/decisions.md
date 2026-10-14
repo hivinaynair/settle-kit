@@ -45,6 +45,7 @@ steps cite these IDs; `bun run check-journeys` fails on an unknown or superseded
 | D25 | On the CCTP Fast path the fee comes out of the minted USDC, so checkout accepts at least the order amount and records any surplus | CCTP Fast can't deliver an exact amount; Standard is exact but takes 15–19 minutes | CCTP Standard for checkout; rejecting every non-exact amount | 2026-10-14 | |
 | D26 | Treasury and refund addresses come from server config only. An order's or address's recipient is stored when it is created, and verification checks against the stored value, not current settings | A changed setting must not redirect or reject money already in flight | Client-supplied addresses; checking current config | 2026-10-14 | |
 | D27 | Settle Kit never holds keys that move user funds and never repays payers itself. Relay refunds go to the host's configured refund address; the host repays through its own support process | Exchange senders can't receive a refund at the sending address; automatic transfers to unverified destinations lose money | Refund to the sender automatically | 2026-10-13 | |
+| D28 | Limits: checkout price at least 0.50 USDC. Deposit minimum per route: 2 USDC on Base and Arbitrum, 25 USDC on Ethereum. Below the minimum on own rails, the deposit waits at the address and is swept and credited once the address's balance reaches it; on Relay, Relay's own minimum applies and a refund becomes `needs_attention` (D17). No displayed maximum by default; a host may set one, shown as guidance only. No per-sweep cap in the contracts | S9: Relay's fee is ~flat (0.025–0.034 USDC); Ethereum sweep gas ($0.50–5) is paid by the buyer (D39); a transfer's size can't be enforced; a per-sweep cap is bypassed by calling repeatedly | One minimum for every chain; refunding small deposits (costs more gas than they're worth); a 1,000 USDC per-sweep contract cap | 2026-10-14 | |
 
 ## Architecture (D30–D39)
 
@@ -99,7 +100,6 @@ steps cite these IDs; `bun run check-journeys` fails on an unknown or superseded
 
 | ID | Question | Recommendation | Blocks | Who answers |
 |---|---|---|---|---|
-| Q8 | Deposit limits: a minimum, a displayed maximum, and a per-transfer cap in the contracts until someone else has reviewed them? | Minimum 2 USDC (fees stay under 2%); a displayed maximum of 1,000 USDC; a contract cap of 1,000 USDC per sweep | Deposit journeys, contracts | Vinay |
 | Q9 | Is the release labelled 1.0 or 0.x "experimental" while the contracts are unaudited? | Call the launch v1.0 of the project, publish the packages as 0.x, and mark the contracts experimental with the caps from Q8 | Release and docs | Vinay |
 | Q10 | Does Relay's 2 req/min `/requests` limit apply to `/requests/v3`, and can we get a testnet key? (S7) | Design for webhooks first and treat polling as the fallback whatever the answer | Discovery reconciliation budget | Relay support |
 | Q11 | Does Relay support deposit addresses on Tron for USDT? | Check Relay's `/chains` list and quote one Tron USDT → Base USDC deposit address; add the route only if a live payment succeeds | The Tron route in D11 | Vinay (one script run) |
