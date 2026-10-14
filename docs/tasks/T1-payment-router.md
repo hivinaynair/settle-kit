@@ -1,19 +1,19 @@
 # T1 · Payment router types + `relay()` adapter
 
-**Read first:** design doc §2 (vocabulary), §6 (payment routers); lesson 16b §9.
-**You write:** all code. **Time box:** ~3 hours.
+**Read first:** design doc §2 (decisions), §5 (Relay integration); spikes S2, S6, S7.
+**You write:** all code. **Time box:** ~3 hours. **Branch:** `vinay/t1-payment-router`.
 **Done when:** every acceptance test below passes with `bun test`, and
-`bun run check-types && bun run format-and-lint` are clean.
+`bun run format-and-lint && bun run check-types` are clean.
 
 ---
 
 ## Goal
 
-The rest of Settle Kit must never know Relay exists. It talks to one interface,
-`PaymentRouter`. This task defines that interface and builds the first
-implementation, `relay()`, on Relay's HTTP API.
+The rest of Settle Kit talks to one internal interface, `PaymentRouter`, never to Relay
+directly. This task defines that interface and builds `relay()` on Relay's HTTP API,
+plus `fakeRouter()` for every later test.
 
-No database, no workflows, no UI. Pure functions and HTTP.
+No database, no workflows, no UI, no webhooks (T7). Pure functions and HTTP.
 
 ---
 
@@ -28,9 +28,9 @@ No database, no workflows, no UI. Pure functions and HTTP.
 | `packages/server/src/routers/fake.ts` | `fakeRouter(script): PaymentRouter` for tests |
 | `packages/server/src/index.ts` | Re-export `relay`, `fakeRouter` |
 | `packages/server/src/routers/relay.test.ts` | Acceptance tests |
-| `packages/server/test/fixtures/relay/*.json` | **Provided.** Real responses recorded in the spikes |
+| `packages/server/test/fixtures/relay/*.json` | **Provided.** Real mainnet responses from the spikes. The `*.testnet.json` files are unused (Relay's testnet is not a supported profile, S4a) |
 
-`viem` is the only new dependency (for `Address`, `Hex`, `isAddressEqual`). Add it to
+`viem` is the only new dependency (for `Address`, `Hex`, `zeroAddress`). Add it to
 `core` and `server`.
 
 ---
@@ -54,23 +54,21 @@ export type Source = {
 
 export type Quote = {
   amountIn: bigint;                   // base units of route.from
-  amountOut: bigint;                  // expected base units of route.to
+  amountOut: bigint;                  // expected base units of route.to (display only)
   minimumOut: bigint;                 // worst case after slippage
   etaSeconds: number;
 };
 
-export type DepositAddress = {
-  address: Address;
-  /** The exact transaction "send from wallet" submits. */
-  sendTx: { chainId: number; to: Address; data: Hex; value: bigint };
-};
+/** Only the address. The wallet path builds its own transfer to it (design §1). */
+export type DepositAddress = { address: Address };
 
+/** The router's view of a fill. Not the deposit state machine (that's T2). */
 export type FillStatus = "waiting" | "processing" | "delayed" | "filled" | "refunded" | "failed";
 
 export type Fill = {
-  id: string;                         // Relay requestId
+  id: string;                         // Relay requestId of the actual fill
   status: FillStatus;
-  depositTx: Hex | null;              // user's transfer into the address
+  depositTx: Hex | null;              // payer's transfer into the address
   destination: { chainId: number; txHash: Hex } | null;  // set once filled
   updatedAt: Date;
 };
@@ -79,7 +77,11 @@ export type PaymentRouter = {
   id: string;                         // "relay"
   sources(): Promise<Source[]>;
   depositAddress(input: {
-    route: Route; amountIn: bigint; recipient: Address; refundTo: Address; recoveryAddress: Address;
+    route: Route;
+    amountIn: bigint;                 // nominal amount to quote with (the route minimum)
+    recipient: Address;               // treasury
+    refundTo: Address;                // app-controlled refund address
+    recoveryAddress: Address;         // app-controlled EOA
   }): Promise<DepositAddress>;
   quote(input: { route: Route; amountIn: bigint }): Promise<Quote>;
   fills(address: Address): Promise<Fill[]>;
@@ -103,62 +105,58 @@ export class DepositError extends Error {
 
 ```ts
 relay({
-  apiKey?: string;                    // required for fills(); see rule 5
-  network?: "mainnet" | "testnet";    // default "mainnet"
+  apiKey: string;                     // required
   fetch?: typeof fetch;               // injectable for tests; default globalThis.fetch
 }): PaymentRouter
 ```
 
 ### Rules
 
-1. **Base URL.** mainnet `https://api.relay.link`, testnet `https://api.testnets.relay.link`.
-2. **`sources()`** → `GET /chains`. Keep only chains with `depositAddressEnabled: true`
-   and `disabled` not true. Tokens come from `solverCurrencies`. A token whose address is
-   the zero address becomes `"native"`.
-3. **`depositAddress()`** → `POST /quote/v2` with
-   `useDepositAddress: true`, `tradeType: "EXACT_INPUT"`, `user` = zero address,
-   `recipient`, `refundTo`, `recoveryAddress`, `amount` as a decimal string.
-   Return `steps[0].depositAddress` and `steps[0].items[0].data` as `sendTx`
-   (`value` parsed to `bigint`).
-4. **`quote()`** → `POST /quote/v2` without `useDepositAddress`. Map
+1. **Base URL** `https://api.relay.link`. Mainnet only; there is no `network` option.
+2. **Config.** An empty or missing `apiKey` throws `DepositError("invalid_config")` when
+   `relay()` is called, before any request.
+3. **`sources()`** → `GET /chains`. Keep chains with `depositAddressEnabled: true` and
+   `disabled` not true. Tokens come from `solverCurrencies`. A zero-address token becomes
+   `"native"`. (The tested route manifest is applied later, in `createDeposits`.)
+4. **`depositAddress()`** → `POST /quote/v2` with `useDepositAddress: true`,
+   `tradeType: "EXACT_INPUT"`, `user` = zero address, `recipient`, `refundTo`,
+   `recoveryAddress`, `amount` as a decimal string. Return `steps[0].depositAddress`.
+   Every call issues a **new** address; callers store the first one (T3).
+5. **`quote()`** → `POST /quote/v2` without `useDepositAddress`. Map
    `details.currencyIn.amount`, `currencyOut.amount`, `currencyOut.minimumAmount`,
-   `details.timeEstimate`. All amounts become `bigint`. Never use a float.
-5. **`fills(address)`** → `GET /requests/v3?depositAddress=…` with header `x-api-key`.
-   Follow `continuation` until absent. Without `apiKey`, throw
-   `DepositError("invalid_config")` before any request.
-6. **`status(fillId)`** → `GET /intents/status/v3?requestId=…`.
-7. **Status mapping, in one table** (lesson 16b §9):
-   `waiting→waiting`; `depositing|pending|submitted→processing`; `delayed→delayed`;
-   `success→filled`; `refund→refunded`; `failure→failed`. An unknown status throws
-   `DepositError("router_unavailable")` (fail loud, not silently "waiting").
-8. **Errors.** Non-2xx with an `errorCode` maps: `AMOUNT_TOO_LOW→amount_too_low`;
+   `details.timeEstimate`. Amounts become `bigint`. Never use a float.
+6. **`fills(address)`** → `GET /requests/v3?depositAddress=…` with header `x-api-key`.
+   Follow `continuation` until absent.
+7. **`status(fillId)`** → `GET /intents/status/v3?requestId=…`.
+8. **Status mapping, in one table:** `waiting→waiting`;
+   `depositing|pending|submitted→processing`; `delayed→delayed`; `success→filled`;
+   `refund→refunded`; `failure→failed`. Unknown → `DepositError("router_unavailable")`.
+9. **Errors.** Non-2xx with an `errorCode` maps: `AMOUNT_TOO_LOW→amount_too_low`;
    `INVALID_INPUT_CURRENCY|INVALID_OUTPUT_CURRENCY|NO_QUOTES|INSUFFICIENT_LIQUIDITY|SWAP_IMPACT_TOO_HIGH|UNSUPPORTED_ROUTE→quote_unavailable`;
    `CHAIN_DISABLED|ROUTE_TEMPORARILY_RESTRICTED|UNSUPPORTED_CHAIN→route_unavailable`;
    `SANCTIONED_WALLET_ADDRESS→address_blocked`; anything else, a 5xx, a 429 or a network
    error → `router_unavailable`. Keep the original body as `cause`. **Never** branch on
    `message`.
-9. **Native token.** `Asset.token === "native"` is sent to Relay as the zero address.
-10. **No secrets in errors.** The API key never appears in a thrown message or `cause`.
+10. **Native token.** `"native"` is sent to Relay as the zero address.
+11. **No secrets in errors.** The API key never appears in a thrown message or `cause`.
 
 ### Fill mapping (`/requests/v3` → `Fill`)
 
 | Fill | From the request |
 |---|---|
 | `id` | `id` |
-| `status` | `status`, via rule 7 |
+| `status` | `status`, via rule 8 |
 | `depositTx` | `depositAddress?.depositTxHash ?? data.inTxs[0]?.txHash ?? null` |
 | `destination` | `data.outTxs[0]` → `{ chainId, txHash }` when status is `success`, else `null` |
 | `updatedAt` | `new Date(updatedAt)` |
 
-The recorded v3 sample uses `inTxs[].txHash` / `outTxs[].txHash` (v2 used `hash`; don't mix them up). The exact shape of `depositAddress` on a
-deposit-address request is **unconfirmed** until S4. Parse it defensively and leave a
-`// TODO(S4)` comment.
+v3 uses `inTxs[].txHash` / `outTxs[].txHash` (v2 used `hash`). The exact shape of
+`depositAddress` on a real deposit-address request is unconfirmed until S4 on mainnet:
+parse it defensively and leave a `// TODO(S4)` comment.
 
 ---
 
 ## `fakeRouter(script)` (server)
-
-A router you can script, for every later test. Minimum:
 
 ```ts
 const router = fakeRouter({
@@ -168,7 +166,7 @@ const router = fakeRouter({
 // each call to fills() returns the next array; the last repeats forever
 ```
 
-`status(id)` returns the status of that id from the most recent `fills()` result.
+`status(id)` returns that id's status from the most recent `fills()` result.
 Record every call in `router.calls` so tests can assert on them.
 
 ---
@@ -177,21 +175,23 @@ Record every call in `router.calls` so tests can assert on them.
 
 Inject a fake `fetch` that serves the fixtures. No network.
 
-1. `sources()` on the mainnet fixture includes Arbitrum (42161) with USDC
+1. `sources()` includes Arbitrum (42161) with USDC
    `0xaf88d065e77c8cc2239327c5edb3a432268e5831` (6 decimals) and `"native"` ETH.
-2. `sources()` on the testnet fixture returns Sepolia and Base Sepolia, ETH only.
-3. `depositAddress()` (mainnet fixture) returns `0xa689cfe5515c4281a7999b9133895244791b34db`;
-   `sendTx.chainId` 42161; `sendTx.data` starts with `0xa9059cbb`; `sendTx.value` is `0n`.
+2. A chain with `depositAddressEnabled: false` or `disabled: true` (fixture edited in the
+   test) is excluded.
+3. `depositAddress()` returns `0xa689cfe5515c4281a7999b9133895244791b34db`.
 4. `depositAddress()` sends `useDepositAddress: true`, `tradeType: "EXACT_INPUT"`,
-   `amount: "2000000"`, and the zero address for a `"native"` asset.
+   `amount: "2000000"`, the given `recipient`/`refundTo`/`recoveryAddress`, and the zero
+   address for a `"native"` asset.
 5. `quote()` maps `amountIn 2000000n`, `amountOut 1965708n`, `minimumOut 1899857n`,
    `etaSeconds 2`, all `bigint`.
 6. The `AMOUNT_TOO_LOW` fixture with status 400 throws `DepositError` with code
    `amount_too_low`; the invalid-currency fixture gives `quote_unavailable`.
-7. A 500 and a thrown network error both give `router_unavailable`.
-8. `fills()` without `apiKey` throws `invalid_config` and makes zero fetch calls.
-9. `fills()` follows `continuation` across two pages and returns both pages' fills.
-10. Status mapping: each of the 8 Relay statuses maps per rule 7; `"weird"` throws.
+7. A 500, a 429 and a thrown network error all give `router_unavailable`.
+8. `relay({ apiKey: "" })` throws `invalid_config` and makes zero fetch calls.
+9. `fills()` sends `x-api-key`, follows `continuation` across two pages and returns both
+   pages' fills.
+10. Status mapping: each of the 8 Relay statuses maps per rule 8; `"weird"` throws.
 11. `status()` on `status-waiting.json` returns `"waiting"`.
 12. No thrown error or `cause` contains the API key string.
 13. `fakeRouter`: three `fills()` calls return the scripted sequence, then repeat the last.
@@ -200,9 +200,9 @@ Inject a fake `fetch` that serves the fixtures. No network.
 
 ## Out of scope
 
-Retries, caching, rate limiting, `across()`, `pickRouter`. Don't add them.
+Retries, caching, rate limiting, webhooks (T7), reindex (T11), other routers. Don't add them.
 
 ## Questions to answer in your PR description
 
-- Why does `fills()` refuse to run without a key instead of falling back to `/requests/v2`?
+- Why does `depositAddress()` never get called twice for the same account and route?
 - Why does an unknown status throw instead of mapping to `"waiting"`?

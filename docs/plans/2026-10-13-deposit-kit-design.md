@@ -168,6 +168,7 @@ settle_kit_deposit_addresses
   network                  text       -- mainnet | test
   address                  text
   last_reconciled_at       timestamptz
+  last_activity_at         timestamptz -- address created/reused or fill seen; drives scan tiers
   created_at               timestamptz
   UNIQUE (router, network, address)
   UNIQUE (account_id, router, network, route)
