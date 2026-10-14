@@ -626,6 +626,39 @@ Implementation order:
    installation, deployment and recovery docs; package consumption check; versioned
    release.
 
+### Showcase cut (built first, ~6 days)
+
+The first build is a working, deployed slice of v1. Everything else in this doc stays
+designed and ships after it.
+
+| Day | Build | Visible result |
+|---|---|---|
+| 1 | T1 router, T2 state machine | Foundation |
+| 2 | T3 store, receipt verifier | Duplicate-proof crediting |
+| 3 | All workflows: `processDeposit`, `deliverSettlement` with the full retry schedule, `reconcileDeposits` on Vercel Cron, `replayDelivery`; handlers; signed Relay webhook; test mode | Simulated deposits end to end, surviving restarts |
+| 4 | QR widget, demo credits app, real $2 Base USDC deposit, deployed | **Demo-ready** |
+| 5 | Wallet path, timeline page, `/states` gallery, chunked address, EIP-681 QR | Product depth |
+| 6 | README, 2-minute video, "built vs designed" table; Arbitrum → Base if S4 funds arrive there | Ready to share |
+
+**In the cut:** every Workflow SDK workflow above, webhook verification, account
+scoping, secrets kept out of errors, server-config payout addresses, test mode,
+timeline, wallet path, one live route (Base USDC → Base USDC).
+
+**After the cut:**
+
+| Deferred | Meanwhile |
+|---|---|
+| Operator UI: admin page, `resolve`, `needs_attention` list, reindex | Visible in the database and on the timeline; `replayDelivery` is a server function |
+| Refund evidence verification and the manual repayment procedure | Refunds and failures go to `needs_attention` |
+| Rate limits on `POST /address` and `/check` | Known gap |
+| Extended Postgres crash/concurrency tests | Core constraint, CAS and timeline tests |
+| Arbitrum and USDT routes, per-route mainnet proofs | One route proven live |
+| Build/pack/install check, npm release | Demo consumes workspace source |
+| `appearance` theming, copy catalogue, full accessibility audit | Default theme on CSS variables; focus, live region, keyboard basics |
+
+Reconciliation must stay within the Relay key's `/requests` budget (S7): batch size
+follows the observed limit until Relay confirms `/requests/v3` rates.
+
 Optional routes that lack evidence are omitted from the release. The reference stack
 is Next.js, Workflow SDK's Vercel World and Postgres/Drizzle. The local workflow World
 is not used as evidence of crash durability.
