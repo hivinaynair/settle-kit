@@ -24,7 +24,7 @@ The first release is intentionally small:
 | Payment method | Address, copy button and QR first; then send from a browser wallet |
 | Amount | Checkout: exact, set by the order. Deposit: optional input for estimates; any amount above the route minimum |
 | Sources | A tested EVM route manifest |
-| Destination | Native USDC on Base: the host's treasury, or (deposit mode) each user's own wallet (§6b) |
+| Destination | Native USDC on Base, sent to the host's treasury |
 | Router | Relay |
 | Storage | Postgres 15+ through Drizzle |
 | Execution | Workflow SDK on Vercel |
@@ -49,8 +49,7 @@ both paths. WalletConnect and mobile wallet pairing are out of v1.
 the order amount (§6a). *Deposit* tops up a balance: each account gets a reusable open
 address per route and is credited whatever arrives. Workflows, store, verification,
 timeline and widget are shared; the difference is the address type and the settlement
-rule. Deposit mode can also pay **each user's own wallet** instead of the treasury
-(§6b), the model used by trading and prediction-market apps.
+rule.
 
 ## 2. Design decisions
 
@@ -521,36 +520,6 @@ the rate it used.
 (the sender may be an exchange). On the wallet path the sender is known, so
 `refundTo` can be the payer's own address.
 
-## 6b. Deposit to the user's own wallet
-
-In treasury mode the app holds the money and keeps a credit balance. In user-wallet
-mode each deposit lands in a wallet that belongs to the user (an embedded wallet, a
-per-user smart account, or a linked external wallet), so the user's balance is their
-on-chain balance and the app never holds their funds.
-
-```ts
-destination: { mode: "treasury", address: env.TREASURY }
-destination: { mode: "user_wallet", address: (accountId) => db.walletOf(accountId) }
-```
-
-| | Treasury mode | User-wallet mode |
-|---|---|---|
-| Relay `recipient` | Treasury | The account's wallet, resolved on the server |
-| Verification | USDC `Transfer` to the treasury | USDC `Transfer` to the stored recipient |
-| `onSettled` meaning | Apply a credit | Funds arrived in the user's wallet; refresh the balance |
-| Refunds | App-controlled `refundTo` | Same (the sender may be an exchange) |
-
-Rules:
-
-- The recipient comes only from the host's server-side resolver, never from the
-  request. It is part of the address's canonical `route`, so a wallet change creates
-  new deposit addresses; old addresses keep paying the old wallet and stay reconciled.
-- Each deposit is still recorded once and shown on the timeline; there is no host
-  ledger entry to deduplicate, but `onSettled` remains at-least-once with a stable id.
-- Checkout mode always pays the treasury.
-
-In v1, after the showcase cut. The demo shows it as a configuration of deposit mode.
-
 ## 7. Public API
 
 ```ts
@@ -559,7 +528,7 @@ export const deposits = createDeposits({
   relay: { apiKey: env.RELAY_API_KEY },
   routes: ["base-usdc", "arbitrum-usdc"],         // subset of the tested manifest
   baseRpcUrl: env.BASE_RPC_URL,
-  treasury: env.TREASURY,                         // or destination: { mode: "user_wallet", … } (§6b)
+  treasury: env.TREASURY,
   refundAddress: env.REFUND_ADDRESS,              // sent to Relay as refundTo
   recoveryAddress: env.RECOVERY_ADDRESS,
   limits: { minUsd: 2, maxUsd: 10 },
@@ -755,7 +724,6 @@ Arbitrum and Ethereum → Base. The demo leads with checkout: "Buy report".
 | Deferred | Meanwhile |
 |---|---|
 | Operator UI: admin page, `resolve`, `needs_attention` list, reindex | Visible in the database and on the timeline; `replayDelivery` is a server function |
-| User-wallet destination (§6b) | Treasury destination only |
 | Refund evidence verification and the manual repayment procedure | Refunds and failures go to `needs_attention` |
 | Rate limits on `POST /address` and `/check` | Known gap |
 | Extended Postgres crash/concurrency tests | Core constraint, CAS and timeline tests |
@@ -823,7 +791,7 @@ operators and audits.
 |---|---|
 | Address poisoning: a lookalike address planted in the payer's history | Address rendered in 4-character groups with the first and last groups emphasised; "Check the first and last 4 characters" hint; copy only from our UI |
 | Clipboard-hijacking malware | After copy, show "Copied: 0x1a2b…9f8e" to compare with what gets pasted; QR offered as the primary path |
-| Account takeover redirecting funds | Treasury, refund and recovery addresses come only from server config, and user-wallet recipients only from the host's server-side resolver; never from user input or the request |
+| Account takeover redirecting funds | Treasury, refund and recovery addresses come only from server config, never user input or the request |
 | Cross-account access | Every user endpoint checks the stored address's `account_id` against `account(req)` |
 | Webhook forgery or replay | HMAC signature, 300 s timestamp freshness, constant-time compare; the event only triggers a re-check of provider state |
 | Address-creation spam | Per-account rate limit on `POST /address` |
@@ -869,7 +837,9 @@ claims and show what payers actually wait through.
 More routers, our own deposit-address contracts and card onramps widen the product
 without deepening it. A Transak card onramp is the most likely later addition; its
 feasibility work is in [S5](../spikes/2026-10-14-card-onramp.md) and it would need its
-own spec.
+own spec. Depositing into each user's own wallet instead of the treasury (the
+trading-app model: `recipient` = the user's server-resolved wallet) is a later option
+for deposit mode.
 
 ## 11. Open decisions
 
