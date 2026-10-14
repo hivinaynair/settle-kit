@@ -7,12 +7,14 @@
  *   bun scripts/journey.ts check    docs/journeys [--complete]        (merge bar; warnings fail)
  *
  * The .yaml spine is the source of truth for behavior. The .md beside it is generated:
- * never hand-edit it. `check` fails when a spine is invalid, has warnings, its .md is stale,
- * or a test cites a step ID that is not on any spine. `--complete` also requires every
- * step served by a task to be cited by at least one test, and no step to cite an open
- * question (release gate). Steps may cite decisions (`decisions: [D21]`); IDs are read from
- * docs/decisions.md and must exist and not be superseded. Once a spine exists, every test in
- * apps/ and packages/ must be named after a step (`J2.S4: …`) or a decision (`D21: …`).
+ * never hand-edit it. Each criterion has an ID (`J2.S4.c1`); invariants (`I1`) are rules
+ * that hold across every journey. `check` fails when a spine is invalid, has warnings, its
+ * .md is stale, or a test is untraced or cites an unknown ID. Once a spine exists, every
+ * test in apps/ and packages/ is named after the criterion (`J2.S4.c1: …`), invariant
+ * (`I1: …`) or money/security decision (`D21: …`) it proves. `--complete` (release gate)
+ * also requires a test for every criterion of a served step and every invariant, and no
+ * step or invariant to cite an open question. Decision IDs are read from docs/decisions.md
+ * and must exist and not be superseded.
  *
  * Adapted from ViperNxt (github.com/hivinaynair/vipernxt, scripts/journey.ts, MIT):
  * buckets are script | human | external, "screens" are "surfaces" (a component, hook,
@@ -42,8 +44,13 @@ type Step = {
   exit?: string;
   /** Decision IDs from docs/decisions.md this step relies on: D (decided), X (out of scope), Q (open). */
   decisions?: string[];
-  criteria?: string[];
+  /** Invariant IDs (I1) this step could break if it were wrong. */
+  invariants?: string[];
+  /** EARS rules keyed by a permanent ID: `c1: WHEN … THE SYSTEM SHALL …`. Tests cite `J2.S4.c1`. */
+  criteria?: Record<string, string>;
 };
+/** A rule that holds across every journey, every ordering and every crash point. */
+type Invariant = { id: string; title?: string; rule: string; decisions?: string[] };
 type Journey = {
   id: string;
   title: string;
@@ -61,21 +68,29 @@ export type Spine = {
   source?: string;
   actors?: Actor[];
   surfaces?: Surface[];
+  invariants?: Invariant[];
   journeys?: Journey[];
   tasks?: Task[];
 };
 
 const STEP_ID = /^J\d+\.S\d+[a-z]?$/;
 const DECISION_ID = /^[DXQ]\d+$/;
+const INVARIANT_ID = /^I\d+$/;
+const CRITERION_KEY = /^c\d+$/;
+/** What a test title may cite: a criterion, an invariant or a decision. */
+const TRACE_ID = /^(?:J\d+\.S\d+[a-z]?\.c\d+|I\d+|D\d+)$/;
 
-/** IDs found in docs/decisions.md, and the D IDs a later row superseded. */
-export type DecisionIndex = { ids: Set<string>; superseded: Set<string> };
+/** IDs found in docs/decisions.md, the D IDs a later row superseded, and those under a "Money" heading. */
+export type DecisionIndex = { ids: Set<string>; superseded: Set<string>; money: Set<string> };
 
 /** Reads table rows that start with an ID (`| D7 | … | Supersedes |`). */
 export function parseDecisions(markdown: string): DecisionIndex {
   const ids = new Set<string>();
   const superseded = new Set<string>();
+  const money = new Set<string>();
+  let inMoney = false;
   for (const line of markdown.split("\n")) {
+    if (line.startsWith("## ")) inMoney = /money/i.test(line);
     const cells = line
       .trim()
       .split("|")
@@ -84,18 +99,35 @@ export function parseDecisions(markdown: string): DecisionIndex {
     const id = cells[0];
     if (!id || !DECISION_ID.test(id)) continue;
     ids.add(id);
+    if (inMoney) money.add(id);
     if (id.startsWith("D") && cells.length >= 6)
       for (const ref of cells[cells.length - 1].split(/[,\s]+/))
         if (/^D\d+$/.test(ref)) superseded.add(ref);
   }
-  return { ids, superseded };
+  return { ids, superseded, money };
 }
 
-/** Steps that cite an open question (Q…). Allowed while drafting; they block --complete. */
+/** Steps and invariants that cite an open question (Q…). Allowed while drafting; they block --complete. */
 export function openQuestionSteps(spine: Spine): string[] {
-  return allSteps(spine)
+  return [...allSteps(spine), ...(spine.invariants ?? [])]
     .filter((s) => s.decisions?.some((d) => d.startsWith("Q")))
     .map((s) => `${s.id} (${s.decisions?.filter((d) => d.startsWith("Q")).join(", ")})`);
+}
+
+/** A step's criteria as [key, rule] pairs; anything but a key → rule map yields none. */
+export function criteriaOf(s: Step): [string, string][] {
+  const c = s.criteria;
+  if (!c || typeof c !== "object" || Array.isArray(c)) return [];
+  return Object.entries(c).map(([k, v]) => [k, String(v)]);
+}
+
+/** Words that make a rule untestable. Text in "double quotes" or `backticks` (UI copy) is ignored. */
+const VAGUE =
+  /\b(should|promptly|quickly|soon|timely|eventually|appropriate(?:ly)?|reasonabl[ey]|as needed|if possible|etc|and so on|properly|gracefully|seamless(?:ly)?|user-friendly|normally|usually|robust(?:ly)?)\b/gi;
+
+export function vagueWords(rule: string): string[] {
+  const text = rule.replace(/"[^"]*"|`[^`]*`/g, "");
+  return [...new Set([...text.matchAll(VAGUE)].map((m) => m[1].toLowerCase()))];
 }
 const TASK_ID = /^M\d+\.T\d+[a-z]?$/;
 /** EARS: optional trigger clause, then THE SYSTEM SHALL (or SHALL NOT). */
@@ -144,6 +176,36 @@ export function validateSpine(
   }
   const stepIds = new Set<string>();
   const usedSurfaces = new Set<string>();
+  const usedInvariants = new Set<string>();
+
+  const checkDecisionRefs = (owner: string, refs: string[] | undefined) => {
+    for (const d of refs ?? []) {
+      if (!DECISION_ID.test(d)) err(`${owner}: decision "${d}" must look like D7, X1 or Q2`);
+      else if (decisions && !decisions.ids.has(d))
+        err(`${owner}: decision ${d} is not in docs/decisions.md`);
+      else if (decisions?.superseded.has(d))
+        err(`${owner}: decision ${d} was superseded; cite the decision that replaced it`);
+    }
+  };
+  const checkRule = (owner: string, rule: string) => {
+    if (!EARS.test(rule))
+      warn(
+        `${owner}: criterion is not EARS ("WHEN <trigger> THE SYSTEM SHALL <behavior>"): ${rule.slice(0, 60)}`,
+      );
+    const vague = vagueWords(rule);
+    if (vague.length)
+      warn(`${owner}: vague words (${vague.join(", ")}); say exactly what, with a number and unit`);
+  };
+
+  const invariantIds = new Set<string>();
+  for (const inv of spine.invariants ?? []) {
+    if (!INVARIANT_ID.test(inv.id)) err(`${inv.id}: invariant id must look like I1`);
+    if (invariantIds.has(inv.id)) err(`${inv.id}: duplicate invariant id`);
+    invariantIds.add(inv.id);
+    if (!inv.rule) err(`${inv.id}: invariant needs a rule`);
+    else checkRule(inv.id, inv.rule);
+    checkDecisionRefs(inv.id, inv.decisions);
+  }
 
   for (const j of spine.journeys) {
     if (!/^J\d+$/.test(j.id)) err(`${j.id}: journey id must look like J1`);
@@ -218,20 +280,30 @@ export function validateSpine(
         else if (!exitIds.has(s.exit)) err(`${s.id}: unknown exit "${s.exit}"`);
       }
 
-      for (const d of s.decisions ?? []) {
-        if (!DECISION_ID.test(d)) err(`${s.id}: decision "${d}" must look like D7, X1 or Q2`);
-        else if (decisions && !decisions.ids.has(d))
-          err(`${s.id}: decision ${d} is not in docs/decisions.md`);
-        else if (decisions?.superseded.has(d))
-          err(`${s.id}: decision ${d} was superseded; cite the decision that replaced it`);
+      checkDecisionRefs(s.id, s.decisions);
+      for (const i of s.invariants ?? []) {
+        if (!invariantIds.has(i)) err(`${s.id}: unknown invariant "${i}"`);
+        usedInvariants.add(i);
       }
 
-      for (const c of s.criteria ?? [])
-        if (!EARS.test(c))
-          warn(
-            `${s.id}: criterion is not EARS ("WHEN <trigger> THE SYSTEM SHALL <behavior>"): ${c.slice(0, 60)}`,
-          );
-      if (!s.criteria?.length && !s.uses) warn(`${s.id}: no acceptance criteria`);
+      if (s.criteria != null && (typeof s.criteria !== "object" || Array.isArray(s.criteria)))
+        err(`${s.id}: criteria must map IDs to rules (c1: WHEN … THE SYSTEM SHALL …)`);
+      const criteria = criteriaOf(s);
+      for (const [key, rule] of criteria) {
+        if (!CRITERION_KEY.test(key)) err(`${s.id}: criterion id "${key}" must look like c1`);
+        checkRule(`${s.id}.${key}`, rule);
+      }
+      if (!criteria.length && !s.uses) warn(`${s.id}: no acceptance criteria`);
+
+      // Money steps state the unwanted case: what must not happen when it goes wrong.
+      const money = [
+        ...(s.decisions ?? []).filter((d) => decisions?.money.has(d)),
+        ...(s.invariants ?? []),
+      ];
+      if (money.length && !criteria.some(([, rule]) => /^IF\b/.test(rule)))
+        warn(
+          `${s.id}: touches money (${money.join(", ")}) but has no IF criterion; add "IF <what goes wrong> THE SYSTEM SHALL NOT …"`,
+        );
     }
 
     if (!j.exits?.length) warn(`${j.id}: no exits declared; name how the journey can end`);
@@ -271,13 +343,16 @@ export function validateSpine(
     for (const step of spine.journeys.flatMap((j) => j.steps ?? [])) {
       const by = owners.get(step.id) ?? [];
       if (by.length > 1) err(`${step.id}: served by several tasks (${by.join(", ")}); pick one`);
-      else if (!by.length && step.criteria?.length)
+      else if (!by.length && criteriaOf(step).length)
         warn(`${step.id}: has criteria but no task serves it`);
     }
   }
 
   for (const sf of spine.surfaces ?? [])
     if (!usedSurfaces.has(sf.id)) warn(`surface ${sf.id}: never used by any journey step`);
+  for (const id of invariantIds)
+    if (!usedInvariants.has(id))
+      warn(`invariant ${id}: no step lists it; add it to the steps that could break it`);
 
   return { errors, warnings };
 }
@@ -342,6 +417,26 @@ export function render(spine: Spine, mdFile?: string): string {
     out.push("");
   }
 
+  if (spine.invariants?.length) {
+    out.push(
+      "## Invariants",
+      "",
+      "Rules that hold across every journey, ordering and crash point. Tests cite `I1: …`.",
+      "",
+      "| ID | Invariant | Rule | Decisions | Steps that could break it |",
+      "|---|---|---|---|---|",
+    );
+    for (const inv of spine.invariants) {
+      const steps = allSteps(spine)
+        .filter((s) => s.invariants?.includes(inv.id))
+        .map((s) => `\`${s.id}\``);
+      out.push(
+        `| \`${inv.id}\` | ${cell(inv.title)} | ${esc(inv.rule ?? "")} | ${inv.decisions?.join(", ") || "—"} | ${steps.join(" ") || "—"} |`,
+      );
+    }
+    out.push("");
+  }
+
   for (const j of spine.journeys ?? []) {
     const who = j.actor ? (actors.get(j.actor)?.name ?? j.actor) : "—";
     out.push(`## ${j.id} · ${esc(j.title)}`, "");
@@ -383,17 +478,24 @@ export function render(spine: Spine, mdFile?: string): string {
     for (const s of j.steps) {
       const where = s.surface ? `\`${s.surface}\`${s.state ? ` · ${s.state}` : ""}` : "—";
       out.push(
-        `| \`${s.id}\` ${esc(s.title)} | ${s.bucket ?? "—"} | ${where} | ${cell(s.sees)} | ${cell(s.does)} | ${nextCell(s)} | ${s.criteria?.length ?? 0} |`,
+        `| \`${s.id}\` ${esc(s.title)} | ${s.bucket ?? "—"} | ${where} | ${cell(s.sees)} | ${cell(s.does)} | ${nextCell(s)} | ${criteriaOf(s).length} |`,
       );
     }
     out.push("");
 
-    const withCriteria = j.steps.filter((s) => s.criteria?.length);
+    const withCriteria = j.steps.filter((s) => criteriaOf(s).length);
     if (withCriteria.length) {
       out.push(`### ${j.id} acceptance criteria`, "");
       for (const s of withCriteria) {
-        out.push(`**\`${s.id}\`** ${esc(s.title)}`, "");
-        for (const c of s.criteria ?? []) out.push(`- ${c}`);
+        const refs = [
+          s.decisions?.length ? `decisions ${s.decisions.join(", ")}` : "",
+          s.invariants?.length ? `invariants ${s.invariants.join(", ")}` : "",
+        ].filter(Boolean);
+        out.push(
+          `**\`${s.id}\`** ${esc(s.title)}${refs.length ? ` · ${refs.join(" · ")}` : ""}`,
+          "",
+        );
+        for (const [key, rule] of criteriaOf(s)) out.push(`- \`${s.id}.${key}\` ${rule}`);
         out.push("");
       }
     }
@@ -431,16 +533,23 @@ export function render(spine: Spine, mdFile?: string): string {
   return `${out.join("\n").trimEnd()}\n`;
 }
 
-export function allStepIds(spine: Spine): string[] {
-  return (spine.journeys ?? []).flatMap((j) => (j.steps ?? []).map((s) => s.id).filter(Boolean));
+/** Every ID a test may cite from this spine: criteria (J2.S4.c1) and invariants (I1). */
+export function traceableIds(spine: Spine): string[] {
+  return [
+    ...allSteps(spine).flatMap((s) => criteriaOf(s).map(([key]) => `${s.id}.${key}`)),
+    ...(spine.invariants ?? []).map((i) => i.id),
+  ];
 }
 
-/** Steps a task serves that carry criteria: these must be cited by a test at release. */
-export function requiredStepIds(spine: Spine): string[] {
+/** At release, every criterion of a step a task serves, and every invariant, has a test. */
+export function requiredIds(spine: Spine): string[] {
   const byId = new Map(allSteps(spine).map((s) => [s.id, s]));
-  const ids = new Set<string>();
+  const ids = new Set<string>((spine.invariants ?? []).map((i) => i.id));
   for (const t of spine.tasks ?? [])
-    for (const ref of t.serves ?? []) if (byId.get(ref)?.criteria?.length) ids.add(ref);
+    for (const ref of t.serves ?? []) {
+      const step = byId.get(ref);
+      if (step) for (const [key] of criteriaOf(step)) ids.add(`${ref}.${key}`);
+    }
   return [...ids].sort();
 }
 
@@ -448,13 +557,7 @@ function allSteps(spine: Spine): Step[] {
   return (spine.journeys ?? []).flatMap((j) => j.steps ?? []);
 }
 
-export function citedStepIds(texts: string[]): Set<string> {
-  const found = new Set<string>();
-  for (const text of texts) for (const m of text.matchAll(/\bJ\d+\.S\d+[a-z]?\b/g)) found.add(m[0]);
-  return found;
-}
-
-export function missingStepIds(required: string[], cited: Set<string>): string[] {
+export function missingIds(required: string[], cited: Set<string>): string[] {
   return required.filter((id) => !cited.has(id));
 }
 
@@ -471,7 +574,7 @@ export function checkJourneyCitations(opts: {
 }): { unknown: string[]; missing: string[] } {
   return {
     unknown: unknownCitedIds(opts.cited, opts.known),
-    missing: opts.complete ? missingStepIds(opts.required, opts.cited) : [],
+    missing: opts.complete ? missingIds(opts.required, opts.cited) : [],
   };
 }
 
@@ -499,33 +602,44 @@ async function spinePaths(target: string): Promise<string[]> {
 
 const mdPath = (yamlPath: string) => yamlPath.replace(/\.yaml$/, ".md");
 
-/** Test sources that may cite journey steps. scripts/ is skipped: its fixtures are not citations. */
+/** Product test sources. scripts/ is skipped: it tests our tooling, and its fixtures are not citations. */
 type TestFile = { path: string; text: string };
 
 /**
- * Every product test is traced. Its title starts with a journey step it proves (`J2.S4: …`)
- * or, for a critical pure helper, the money or security decision it enforces (`D21: …`).
- * Returns each problem as `<file>: <reason>`; `decisions` checks D IDs when available.
+ * Every product test is traced. Its title starts with what it proves: a journey criterion
+ * (`J2.S4.c1: …`), an invariant (`I1: …`) or, for a critical pure helper, the money or
+ * security decision it enforces (`D21: …`). Several IDs are comma-separated
+ * (`J2.S4.c1, J2.S4.c2: …`). Returns each problem as `<file>: <reason>` and the criterion and
+ * invariant IDs cited; `decisions` checks D IDs when available.
  */
-export function untracedTests(files: TestFile[], decisions?: DecisionIndex): string[] {
+export function testCitations(
+  files: TestFile[],
+  decisions?: DecisionIndex,
+): { problems: string[]; cited: Set<string> } {
   const problems: string[] = [];
+  const cited = new Set<string>();
   // it("…"), test.skip("…"), it.each(rows)("…"); not regex.test("…").
   const title = /(?<![.\w])(?:it|test)(?:\.\w+)?(?:\([^()]*\))?\(\s*(["'`])((?:\\.|(?!\1).)*?)\1/g;
   for (const { path, text } of files) {
     for (const m of text.matchAll(title)) {
       const name = m[2];
-      const id = name.match(/^(J\d+\.S\d+[a-z]?|D\d+):\s/)?.[1];
-      if (!id)
+      const ids = name.match(/^([^:]+):\s/)?.[1].split(/,\s*/) ?? [];
+      if (!ids.length || !ids.every((id) => TRACE_ID.test(id))) {
         problems.push(
-          `${path}: "${name}" must start with a step or decision ID ("J2.S4: …" or "D21: …")`,
+          `${path}: "${name}" must start with the criterion, invariant or decision it proves ("J2.S4.c1: …", "I1: …" or "D21: …")`,
         );
-      else if (id.startsWith("D") && decisions && !decisions.ids.has(id))
-        problems.push(`${path}: "${name}" cites ${id}, which is not in docs/decisions.md`);
-      else if (id.startsWith("D") && decisions?.superseded.has(id))
-        problems.push(`${path}: "${name}" cites ${id}, which was superseded`);
+        continue;
+      }
+      for (const id of ids) {
+        if (!id.startsWith("D")) cited.add(id);
+        else if (decisions && !decisions.ids.has(id))
+          problems.push(`${path}: "${name}" cites ${id}, which is not in docs/decisions.md`);
+        else if (decisions?.superseded.has(id))
+          problems.push(`${path}: "${name}" cites ${id}, which was superseded`);
+      }
     }
   }
-  return problems;
+  return { problems, cited };
 }
 
 async function testFiles(): Promise<TestFile[]> {
@@ -590,8 +704,8 @@ if (import.meta.main) {
         console.error(`ERROR ${mdPath(path)} is stale; run: bun run journeys:render`);
         failed = true;
       }
-      for (const id of allStepIds(spine)) known.add(id);
-      required = required.concat(requiredStepIds(spine));
+      for (const id of traceableIds(spine)) known.add(id);
+      required = required.concat(requiredIds(spine));
       blocked.push(...openQuestionSteps(spine));
     } else {
       console.error(`ok: ${path} is valid (${warnings.length} warning(s)).`);
@@ -601,13 +715,14 @@ if (import.meta.main) {
 
   if (cmd === "check") {
     const files = await testFiles();
-    const untraced = untracedTests(files, decisions);
-    if (untraced.length) {
-      console.error("ERROR product tests must prove a journey step or a money/security decision:");
-      for (const u of untraced) console.error(`  ${u}`);
+    const { problems, cited } = testCitations(files, decisions);
+    if (problems.length) {
+      console.error(
+        "ERROR product tests must prove a journey criterion, an invariant or a money/security decision:",
+      );
+      for (const p of problems) console.error(`  ${p}`);
       process.exit(1);
     }
-    const cited = citedStepIds(files.map((f) => f.text));
     const { unknown, missing } = checkJourneyCitations({
       known,
       required: [...new Set(required)].sort(),
@@ -615,19 +730,21 @@ if (import.meta.main) {
       complete: rest.includes("--complete"),
     });
     if (unknown.length) {
-      console.error("ERROR tests cite step IDs that are not on any spine:");
+      console.error("ERROR tests cite criteria or invariants that are not on any spine:");
       for (const id of unknown) console.error(`  ${id}`);
       process.exit(1);
     }
     if (rest.includes("--complete") && blocked.length) {
-      console.error("ERROR steps still rely on open questions in docs/decisions.md:");
+      console.error("ERROR steps or invariants still rely on open questions in docs/decisions.md:");
       for (const b of blocked) console.error(`  ${b}`);
       process.exit(1);
     }
     if (missing.length) {
-      console.error("ERROR steps served by a task are not cited by any test:");
+      console.error("ERROR criteria of served steps, or invariants, have no test:");
       for (const id of missing) console.error(`  ${id}`);
-      console.error('Name the test after the step, e.g. it("J2.S4: verifies at the safe block").');
+      console.error(
+        'Name the test after what it proves, e.g. it("J2.S4.c1: reads at the safe block").',
+      );
       process.exit(1);
     }
     console.error(`ok: ${paths.length} spine(s) valid and rendered; citations resolve.`);
