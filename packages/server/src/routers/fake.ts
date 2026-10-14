@@ -24,11 +24,6 @@ export function fakeRouter(script: FakeRouterScript): FakeRouter {
     id: "fake",
     calls,
 
-    async depositAddress(input) {
-      calls.push({ method: "depositAddress", input });
-      return { address: script.address };
-    },
-
     // No fees in the fake: the payer sends exactly the price.
     async orderAddress(input) {
       calls.push({ method: "orderAddress", input });

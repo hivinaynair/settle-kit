@@ -146,23 +146,12 @@ export function relay(options: RelayOptions): PaymentRouter {
   return {
     id: "relay",
 
-    // Every quote issues a new address, so T3 stores the first one per account and route.
-    // Relay needs a sample amount; the route minimum is a safe one.
-    async depositAddress(input) {
-      const quote = await call(
-        QuoteResponse,
-        "/quote/v2",
-        quoteBody(input.route, input.route.minimum, "EXACT_INPUT", input),
-      );
-      return { address: quotedAddress(quote) };
-    },
-
     // Strict + exact output: the merchant receives exactly `amount`, or Relay refunds.
     async orderAddress(input) {
       const quote = await call(
         QuoteResponse,
         "/quote/v2",
-        quoteBody(input.route, input.amount, "EXACT_OUTPUT", { ...input, strict: true }),
+        quoteBody(input.route, input.amount, input),
       );
       const quoted = quote.details.currencyOut.amount;
       if (quoted !== input.amount) {
@@ -201,12 +190,8 @@ export function relay(options: RelayOptions): PaymentRouter {
 
 // --- Helpers ---
 
-function quoteBody(
-  route: Route,
-  amount: bigint,
-  tradeType: "EXACT_INPUT" | "EXACT_OUTPUT",
-  extra: { recipient: Address; refundTo: Address; strict?: true },
-) {
+/** A strict, exact-output deposit-address quote for one order. */
+function quoteBody(route: Route, amount: bigint, to: { recipient: Address; refundTo: Address }) {
   return {
     user: zeroAddress,
     originChainId: route.from.chainId,
@@ -214,11 +199,11 @@ function quoteBody(
     originCurrency: route.from.token,
     destinationCurrency: route.to.token,
     amount: amount.toString(),
-    tradeType,
-    recipient: extra.recipient,
-    refundTo: extra.refundTo,
+    tradeType: "EXACT_OUTPUT",
+    recipient: to.recipient,
+    refundTo: to.refundTo,
     useDepositAddress: true,
-    ...(extra.strict ? { strict: true } : {}),
+    strict: true,
   } satisfies RelayQuoteBody;
 }
 

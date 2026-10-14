@@ -10,11 +10,11 @@
 ## Final shape (after review, 2026-10-14)
 
 The spec below is the original brief. Review and the 4-day demo cut simplified it to
-**three methods**: `depositAddress`, `orderAddress`, `fills` ("get an address, then
-watch what arrives at it"). Removed: `sources()` (routes come from our manifest),
-`quote()` (returns with deposit mode), `status()` (`fills` already carries status),
-native ETH (v1 is USDC-only), `recoveryAddress`. Added: `Route.minimum` (deposit-address
-sample), `"unknown"` fill status, `limit=100` paging, 401/403 → `invalid_config`, the API
+**two methods**: `orderAddress` and `fills` ("get an address for an order, then watch
+what arrives at it"). Removed: `depositAddress()` and `Route.minimum` (deposit mode is
+later), `sources()` (routes come from our manifest), `quote()` (returns with deposit
+mode), `status()` (`fills` already carries status), native ETH (v1 is USDC-only),
+`recoveryAddress`. Added: `"unknown"` fill status, `limit=100` paging, 401/403 → `invalid_config`, the API
 key on every call, and `quoteBody satisfies` Relay's official request type. The PR
 description has the final decisions.
 

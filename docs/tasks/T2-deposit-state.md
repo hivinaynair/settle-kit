@@ -119,8 +119,7 @@ export type SettledEvent = {
   order: { id: string; externalId: string; amount: string };   // amount: base units
   payment: {
     id: string;
-    paidAmount: string;      // what the payer sent, base units
-    receivedAmount: string;  // verified arrival on Base, base units
+    receivedAmount: string;  // verified arrival on Base, base units (equals order.amount)
     depositTx: Hex | null;
     destination: { chainId: number; txHash: Hex; logIndex: number };
   };

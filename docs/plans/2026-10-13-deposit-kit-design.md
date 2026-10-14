@@ -323,13 +323,13 @@ apply the credit record and balance change in the same transaction.
 
 ## 5. Relay integration
 
-The internal router has three methods: `depositAddress`, `orderAddress` and `fills`
-("get an address, then watch what arrives at it"). A fake implements the same interface
+The internal router has two methods in 0.1: `orderAddress` and `fills` ("get an address
+for an order, then watch what arrives at it"); deposit mode adds `depositAddress`. A fake implements the same interface
 for workflow tests. There is no public adapter registry or router selection API.
 
 | Operation | Relay request |
 |---|---|
-| Deposit address | `POST /quote/v2` with `useDepositAddress: true` and open `EXACT_INPUT` mode, quoted once at the route minimum; the address then accepts any amount |
+| Deposit address (later) | `POST /quote/v2` with `useDepositAddress: true` and open `EXACT_INPUT` mode, quoted once at a sample amount; the address then accepts any amount |
 | Order address | `POST /quote/v2` with `useDepositAddress: true`, `strict: true`, `tradeType: "EXACT_OUTPUT"`, `amount` = the order's USDC amount; returns the address and the exact amount to send |
 | Payments at an address | `GET /requests/v3?depositAddress=&limit=100` with `x-api-key`; each record carries its status |
 

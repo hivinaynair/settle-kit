@@ -3,7 +3,6 @@ import { DepositError, type DepositErrorCode, type Fill, type Route } from "@set
 import { type Address, type Hex, isAddress, zeroAddress } from "viem";
 import amountTooLowFixture from "../../test/fixtures/relay/error-amount-too-low.json";
 import invalidCurrencyFixture from "../../test/fixtures/relay/error-invalid-currency.json";
-import quoteFixture from "../../test/fixtures/relay/quote-deposit-address.mainnet.json";
 import strictQuoteFixture from "../../test/fixtures/relay/quote-strict-exact-output.mainnet.json";
 import requestsFixture from "../../test/fixtures/relay/requests-v3.sample.json";
 import { fakeRouter, type RelayFetch, relay } from "../index";
@@ -18,7 +17,6 @@ const DEPOSIT_ADDRESS = address("0x00000000000000000000000000000000000000aa");
 const ROUTE: Route = {
   from: { chainId: 42161, token: ARBITRUM_USDC, decimals: 6 },
   to: { chainId: 8453, token: BASE_USDC, decimals: 6 },
-  minimum: 2000000n,
 };
 const REQUEST = { route: ROUTE, recipient: MERCHANT, refundTo: REFUND_TO };
 
@@ -83,28 +81,6 @@ describe("relay()", () => {
     expect(requests).toBe(0);
   });
 
-  it("returns a reusable deposit address quoted at the route minimum", async () => {
-    const { router, calls } = routerFor(() => jsonResponse(quoteFixture));
-
-    const result = await router.depositAddress(REQUEST);
-
-    expect(result).toEqual({ address: "0xa689cfe5515c4281a7999b9133895244791b34db" });
-    expect(calls[0]?.url.pathname).toBe("/quote/v2");
-    expect(calls[0]?.headers.get("x-api-key")).toBe(API_KEY);
-    expect(calls[0]?.body).toEqual({
-      user: zeroAddress,
-      originChainId: 42161,
-      destinationChainId: 8453,
-      originCurrency: ARBITRUM_USDC,
-      destinationCurrency: BASE_USDC,
-      amount: "2000000",
-      tradeType: "EXACT_INPUT",
-      recipient: MERCHANT,
-      refundTo: REFUND_TO,
-      useDepositAddress: true,
-    });
-  });
-
   it("returns a strict order address and what the payer must send", async () => {
     const { router, calls } = routerFor(() => jsonResponse(strictQuoteFixture));
 
@@ -114,13 +90,20 @@ describe("relay()", () => {
       address: "0x24a37cD2723B6FC852A7D296Bd4f20476b2Fd176",
       payAmount: 1184248n,
     });
-    expect(calls[0]?.body).toMatchObject({
+    expect(calls[0]?.url.pathname).toBe("/quote/v2");
+    expect(calls[0]?.headers.get("x-api-key")).toBe(API_KEY);
+    expect(calls[0]?.body).toEqual({
+      user: zeroAddress,
+      originChainId: 42161,
+      destinationChainId: 8453,
+      originCurrency: ARBITRUM_USDC,
+      destinationCurrency: BASE_USDC,
       amount: "1150000",
       tradeType: "EXACT_OUTPUT",
-      strict: true,
-      useDepositAddress: true,
       recipient: MERCHANT,
       refundTo: REFUND_TO,
+      useDepositAddress: true,
+      strict: true,
     });
   });
 
@@ -165,7 +148,7 @@ describe("relay()", () => {
 
     for (const [answer, code] of cases) {
       const { router } = routerFor(() => (answer instanceof Response ? answer : answer()));
-      await expectCode(router.depositAddress(REQUEST), code);
+      await expectCode(router.orderAddress({ ...REQUEST, amount: 1150000n }), code);
     }
   });
 

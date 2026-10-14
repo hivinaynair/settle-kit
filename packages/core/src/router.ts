@@ -3,15 +3,8 @@ import type { Address, Hex } from "viem";
 /** A token contract on a chain. V1 routes are USDC only, so there is no native coin. */
 export type Asset = { chainId: number; token: Address; decimals: number };
 
-export type Route = {
-  from: Asset;
-  to: Asset;
-  /**
-   * Smallest accepted payment in route.from base units, set by the route manifest.
-   * Also the sample amount Relay needs to issue a deposit address.
-   */
-  minimum: bigint;
-};
+/** Pay with `from`, arrive as `to` (always USDC on Base in v1). */
+export type Route = { from: Asset; to: Asset };
 
 /** What every address request shares: the route and where money goes. */
 export type AddressRequest = {
@@ -19,9 +12,6 @@ export type AddressRequest = {
   recipient: Address; // the merchant's own wallet (the app's treasury)
   refundTo: Address; // app-controlled refund address
 };
-
-/** Only the address. The wallet path builds its own transfer to it (design §1). */
-export type DepositAddress = { address: Address };
 
 /** payAmount: what the payer must send, in route.from's token, fee included. */
 export type OrderAddress = { address: Address; payAmount: bigint };
@@ -48,11 +38,12 @@ export type Fill = {
   updatedAt: Date;
 };
 
-/** Get an address, then watch what arrives at it. */
+/**
+ * Get an address for an order, then watch what arrives at it.
+ * (Deposit mode adds a reusable `depositAddress` later; design §4.)
+ */
 export type PaymentRouter = {
   id: string; // "relay"
-  /** Reusable address for this route; any amount sent to it is processed. */
-  depositAddress(input: AddressRequest): Promise<DepositAddress>;
   /** amount: exact USDC base units the merchant must receive (the order price). */
   orderAddress(input: AddressRequest & { amount: bigint }): Promise<OrderAddress>;
   /** Every payment that reached the address, with its current status. */

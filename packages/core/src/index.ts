@@ -3,7 +3,6 @@ export { DepositError } from "./errors";
 export type {
   AddressRequest,
   Asset,
-  DepositAddress,
   Fill,
   FillStatus,
   OrderAddress,
