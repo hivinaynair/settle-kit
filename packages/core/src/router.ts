@@ -1,8 +1,16 @@
 import type { Address, Hex } from "viem";
 
 /** "native" means the chain's own coin (ETH). Relay writes it as the zero address. */
-export type Asset = { chainId: number; token: Address | "native" };
+export type Asset = { chainId: number; token: Address | "native"; decimals: number };
 export type Route = { from: Asset; to: Asset };
+
+/** What every address request shares: the route and where money goes. */
+export type AddressRequest = {
+  route: Route;
+  recipient: Address; // treasury
+  refundTo: Address; // app-controlled refund address
+  recoveryAddress: Address; // app-controlled EOA
+};
 
 export type Source = {
   chainId: number;
@@ -11,17 +19,17 @@ export type Source = {
 };
 
 export type Quote = {
-  amountIn: bigint; // base units of route.from
-  amountOut: bigint; // expected base units of route.to (display only)
-  minimumOut: bigint; // worst case after slippage
+  payAmount: bigint; // what the payer sends
+  receiveAmount: bigint; // expected arrival in USDC, display only
+  minimumReceiveAmount: bigint; // worst case after slippage
   etaSeconds: number;
 };
 
 /** Only the address. The wallet path builds its own transfer to it (design §1). */
 export type DepositAddress = { address: Address };
 
-/** Checkout (design §6a): single-use strict address that delivers exactly amountOut. */
-export type OrderAddress = { address: Address; amountIn: bigint; amountOut: bigint };
+/** payAmount: what the payer must send, in route.from's token, fee included. */
+export type OrderAddress = { address: Address; payAmount: bigint };
 
 /** The router's view of a fill. Not the deposit state machine (that's T2). */
 export type FillStatus = "waiting" | "processing" | "delayed" | "filled" | "refunded" | "failed";
@@ -37,21 +45,11 @@ export type Fill = {
 export type PaymentRouter = {
   id: string; // "relay"
   sources(): Promise<Source[]>;
-  depositAddress(input: {
-    route: Route;
-    amountIn: bigint; // nominal amount to quote with (the route minimum)
-    recipient: Address; // treasury
-    refundTo: Address; // app-controlled refund address
-    recoveryAddress: Address; // app-controlled EOA
-  }): Promise<DepositAddress>;
-  orderAddress(input: {
-    route: Route;
-    amountOut: bigint; // exact base units the treasury must receive
-    recipient: Address;
-    refundTo: Address;
-    recoveryAddress: Address;
-  }): Promise<OrderAddress>;
-  quote(input: { route: Route; amountIn: bigint }): Promise<Quote>;
+  /** Reusable address for this route; any amount sent to it is processed. */
+  depositAddress(input: AddressRequest): Promise<DepositAddress>;
+  /** amount: exact USDC base units the treasury must receive (the order price). */
+  orderAddress(input: AddressRequest & { amount: bigint }): Promise<OrderAddress>;
+  quote(input: { route: Route; payAmount: bigint }): Promise<Quote>;
   fills(address: Address): Promise<Fill[]>;
   status(fillId: string): Promise<FillStatus>;
 };
