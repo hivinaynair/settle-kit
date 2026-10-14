@@ -48,14 +48,16 @@ settle_kit_orders
   route jsonb,             -- canonical route incl. recipient and refundTo, addresses lowercased
   display jsonb,           -- { title, image } for the checkout screen only
   address text,            -- the order's single-use deposit address (null until a route is picked)
+  router_request_id text,  -- Relay's original request ID for that quote; set with address, same CAS
   test boolean not null,   -- created in test mode; a live deployment never processes it
   simulation jsonb,        -- test mode only: { scenario, startedAt } for the simulated router (T5)
   expires_at, created_at, updated_at
   UNIQUE (account_id, external_id, test)   -- same order twice returns it; test and live never collide
   UNIQUE (address)
+  UNIQUE (router_request_id, test)         -- one router request belongs to one order per mode
 
-settle_kit_deposits        -- one row per payment Relay saw at an order's address
-  id, order_id → orders, fill_id, status,
+settle_kit_deposits        -- one row per payment Relay reported for an order (root or child request)
+  id, order_id → orders, fill_id, status,  -- fill_id: that report's own request ID, never the root's
   deposit_tx, received_amount numeric,   -- verified on chain; equals the order amount
   dest_chain_id, dest_tx, dest_log_index,
   settlement_event jsonb,  -- the immutable webhook payload
@@ -84,10 +86,11 @@ export type Store = {
     accountId: string; externalId: string; amount: bigint; expiresAt: Date; test: boolean;
     display?: { title: string; image?: string };
   }): Promise<OrderRow>;
-  findOrderByAddress(address: Address): Promise<OrderRow | null>;
+  /** Simulated router (T5) looks up the order behind a request ID, in one mode only. */
+  findOrderByRequestId(requestId: string, test: boolean): Promise<OrderRow | null>;
   /** Test mode only: start a simulated scenario once (CAS on simulation IS NULL). */
   simulate(input: { orderId: string; scenario: string; startedAt: Date }): Promise<boolean>;
-  /** Buyer picked a route: store the strict address and payAmount once. */
+  /** Buyer picked a route: store address, payAmount and requestId once, together. */
   setOrderRoute(input: { orderId: string; route: Route;
                          create: () => Promise<OrderAddress> }): Promise<OrderRow>;
   getOrder(id: string): Promise<{ order: OrderRow; payment: PaymentRow | null;
@@ -110,8 +113,15 @@ export type Store = {
    (the app may retry). No Relay call yet: the address depends on the route the buyer
    picks.
 1b. **`setOrderRoute`** calls `create()` (a strict Relay quote) only if the order has no
-   address yet, and stores `route`, `address` and `pay_amount` with a CAS on
-   `address IS NULL`. A second call for the same order returns the stored address.
+   address yet, and stores `route`, `address`, `pay_amount` and `router_request_id` in
+   one CAS on `address IS NULL`. A second call (or a retry after a lost race) returns the
+   stored row: never an address from one quote with the request ID of another, and never
+   overwriting a chosen quote. `OrderRow` gains `routerRequestId: string | null`; a
+   routed order has both or neither.
+1c. **Request ID vs payment ID.** `router_request_id` is how T5 asks Relay about the
+   order. Each payment row keeps its report's own `fill_id` (a child request has its own
+   ID); the root ID replaces none of the per-fill, per-transfer or paid-once
+   constraints. The address stays stored for the buyer's instructions and support.
 2. **`recordPayment`** inserts with status `waiting` and timeline `seq 1`; the same
    `(orderId, fill.id)` again returns the existing row with `inserted: false`.
 3. **`transition`** checks `canTransition` (T2), then in one transaction:
@@ -142,7 +152,8 @@ drops it afterwards.
 
 1. The migration applies cleanly to an empty schema.
 2. `createOrder` twice with the same `externalId`: one row. `setOrderRoute` twice:
-   `create` called once, same address.
+   `create` called once, same address and request ID; the row never shows an address
+   without its request ID.
 3. `recordPayment` twice with the same fill: one row, one timeline entry.
 4. `transition` follows the table; a repeated or disallowed move returns `null` and
    changes nothing.
@@ -157,7 +168,13 @@ drops it afterwards.
 10. Two payments of one order, different transfers: the first `settle` returns
     `"settled"`, the second `"order_paid"`.
 11. `simulate` twice: the first returns `true`, the second `false`;
-    `findOrderByAddress` finds the order by its address in any letter case.
+    `findOrderByRequestId` finds the order in its own mode and returns `null` for the
+    other mode.
+12. Two concurrent `setOrderRoute` calls whose `create` returns different quotes: one
+    pair is stored whole; both calls return that same address and request ID.
+13. The same request ID on two orders in one mode → unique violation; in test and live →
+    allowed.
+14. A root fill and a child fill (different `fill.id`) for one order → two payment rows.
 
 ---
 

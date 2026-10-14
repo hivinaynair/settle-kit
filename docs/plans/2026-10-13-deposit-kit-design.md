@@ -15,8 +15,8 @@ mode, end to end, with real money.** Everything else here is designed and ships 
 | Checkout ("Buy report: 1.15 USDC") | One order, one price, one single-use Relay strict address (§6a) |
 | Pay by address / QR | Send exactly the shown amount from any wallet or exchange; the QR pre-fills token, network and amount (EIP-681) |
 | Pay from a browser wallet (EOA) | Connect via EIP-6963, switch network, check balance and gas, sign one USDC transfer of exactly `payAmount` to the order address; no second send for the same order |
-| Router | `orderAddress` + `fills` on Relay (T1, done) |
-| Payment workflow | Polls the order's address, verifies the USDC transfer on Base at `safe`, settles once, sends a signed `order.paid` webhook with retries |
+| Router | `orderAddress` (address, `payAmount`, request ID) + `fills(requestId)` on Relay (T1, done) |
+| Payment workflow | Polls Relay by the order's stored request ID (root and child requests), verifies the USDC transfer on Base at `safe`, settles once, sends a signed `order.paid` webhook with retries |
 | Store | Orders, payments and a timeline in Postgres, with the exactly-once rules (§4) |
 | Test mode | "Simulate payment" runs the real workflow without money (§10.1) |
 | Routes | Base and Arbitrum USDC → Base USDC proven live; Ethereum in the manifest once proven |
@@ -180,10 +180,12 @@ A payment follows this path:
    an exact price and gets a single-use address. Deposit: it requests the account's
    reusable address for a route.
 2. The SDK stores the address with its order or account and routing configuration.
+   Checkout also stores Relay's original request ID for the quote, in the same write.
    Deposit addresses are reused on later requests.
 3. The payer transfers outside the widget (address/QR) or signs a transfer to the
    stored address in a connected wallet.
-4. A signed Relay event or reconciliation discovers the actual fill.
+4. A signed Relay event or reconciliation discovers the actual fill. (0.1 checkout: the
+   workflow polls the order's request ID, which also returns child requests.)
 5. A workflow verifies destination funds and persists settlement.
 6. A delivery step POSTs the signed settlement webhook. The host fulfils the order or applies the
    credit atomically; acknowledgment moves the SDK deposit to `credited`.
@@ -194,7 +196,9 @@ Closing the widget does not stop tracking.
 
 An address can receive multiple deposits. Each Relay fill has its own `requestId`
 and SDK deposit row. The quote-time request ID is not the deposit identity:
-regenerated quotes and repeat deposits can produce different fill IDs.
+regenerated quotes and repeat deposits can produce different fill IDs. Checkout stores
+it on the order as the **tracking key** (Relay keeps a strict order's original request
+ID); each payment it leads to, root or child, keeps its own fill ID.
 
 Tables use the `settle_kit_` prefix. Deposit amounts are stored as integer base units
 in `numeric` columns and represented as `bigint` in application code. Amounts inside
@@ -327,22 +331,25 @@ apply the credit record and balance change in the same transaction.
 ## 5. Relay integration
 
 The internal router has two methods in 0.1: `orderAddress` and `fills` ("get an address
-for an order, then watch what arrives at it"); deposit mode adds `depositAddress`. A fake implements the same interface
+and a request ID for an order, then read Relay's reports for that request"); deposit
+mode adds `depositAddress`. A fake implements the same interface
 for workflow tests. There is no public adapter registry or router selection API.
 
 | Operation | Relay request |
 |---|---|
 | Deposit address (later) | `POST /quote/v2` with `useDepositAddress: true` and open `EXACT_INPUT` mode, quoted once at a sample amount; the address then accepts any amount |
-| Order address | `POST /quote/v2` with `useDepositAddress: true`, `strict: true`, `tradeType: "EXACT_OUTPUT"`, `amount` = the order's USDC amount; returns the address and the exact amount to send |
-| Payments at an address | `GET /requests/v3?depositAddress=&limit=100` with `x-api-key`; each record carries its status |
+| Order address | `POST /quote/v2` with `useDepositAddress: true`, `strict: true`, `tradeType: "EXACT_OUTPUT"`, `amount` = the order's USDC amount; returns the address, the exact amount to send and the request ID (all from the same deposit step) |
+| Payments for an order | `GET /requests/v3?id=<requestId>&includeChildRequests=true&limit=100` with `x-api-key`; the root request plus child requests (e.g. a second deposit), each with its own ID and status |
+| Payments at an address (later, deposit mode) | `GET /requests/v3?depositAddress=&limit=100`; an open, reusable address has no single request to follow |
 
 Deliberately not in the router: available routes come from our own route manifest (no
 `GET /chains`); v1 routes are USDC-only (no native ETH); per-payment status comes from
 `fills` (no separate status call, half the requests); a pre-send estimate (`quote`) is
 added back when deposit mode needs "You'll receive about X".
 
-`fills` follows every continuation page. The stored address, router and network
-determine ownership. Requests for sources outside the release manifest are rejected.
+`fills` follows every continuation page. For checkout, the order's stored request ID
+determines ownership; for deposit addresses (later), the stored address, router and
+network do. Requests for sources outside the release manifest are rejected.
 Relay `errorCode` values map to SDK errors; message text is not parsed.
 
 `waiting` maps to waiting; `depositing`, `pending` and `submitted` map to processing;
@@ -532,14 +539,23 @@ settle_kit_orders
   amount_out               numeric    -- exact USDC base units the treasury must receive
   price                    jsonb      -- what the host priced: { currency: "INR", amount: "100", rate, rateAt }
   route                    jsonb      -- source chosen by the payer
-  address                  text       -- strict deposit address, single use
+  address                  text       -- strict deposit address, single use; where the buyer pays
+  router_request_id        text       -- Relay's original request ID; stored with address in one write
   amount_in                numeric    -- what the payer must send (from the quote)
   status                   text       -- pending | paid | expired | refunded | needs_attention
   expires_at               timestamptz
   created_at, updated_at   timestamptz
   UNIQUE (account_id, external_id)    -- creating the same order twice returns it
   UNIQUE (address)
+  UNIQUE (router_request_id)
 ```
+
+**Matching payments to orders.** The address is where the buyer pays; the stored
+request ID is how the workflow tracks it. An unfunded quote shows up as a `waiting`
+report with no transaction: that is not a payment, so no row is recorded and no
+attention timer starts. A second deposit to the same address is meant to surface as a
+child request: Relay documents this, but it is **unverified live** until T8's
+double-payment run. If it doesn't, address-based discovery comes back for that case.
 
 An order's fill becomes an ordinary row in `settle_kit_deposits` (linked by
 `order_id`), so processing, verification, delivery and the timeline are unchanged.
@@ -559,8 +575,8 @@ Reconciliation scans pending order addresses until a grace period after expiry, 
 addition to deposit addresses. An order address is never reused: after a refund the
 host creates a new order.
 
-Choosing a different source chain or token re-quotes and replaces the pending order's
-address (the old one is abandoned before any payment). Expired orders with no fill end
+In 0.1 the route is locked once picked; switching later needs a new quote, address and
+request ID together, never one without the others. Expired orders with no fill end
 as `expired`; a payment arriving after expiry is still processed and reported.
 
 **Pricing in other currencies.** Prices are USD in the first release. INR (and other
@@ -730,6 +746,7 @@ The [spike log](../spikes.md) separates existing evidence from pending work:
 | S4a: Testnet deposit | Failed; testnet not usable (not swept, no `/requests/v3` key) |
 | S4: $2 Base mainnet deposits (fresh and reused address) | Pending; waiting for funds |
 | S7: Relay key limits | `/requests` at 2 req/min observed; support asked |
+| Second deposit to a strict address found as a child request | Pending (T8 run 6) |
 | Signed Relay events on old/reused addresses and missed-webhook recovery | Pending |
 | Mainnet source routes, refund handling and separate-app package consumption | Release checks pending |
 
@@ -819,7 +836,7 @@ routes proven, a 3-product demo shop, npm `0.1.0`.
 | Deferred | Meanwhile |
 |---|---|
 | Deposit mode (top-ups) and estimates | Checkout only |
-| Relay webhooks and the reconciliation cron | The workflow polls the order address; one order at a time is well within rate limits |
+| Relay webhooks and the reconciliation cron | The workflow polls Relay by the order's request ID; one order at a time is well within rate limits |
 | WalletConnect / mobile wallets | Browser-extension wallets; mobile wallets scan the QR |
 | Operator tools: `replayDelivery`, `resolve`, admin page, reindex | Visible in the database and timeline |
 | Refund evidence verification and repayment procedure | Refunds and failures go to `needs_attention` |

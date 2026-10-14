@@ -27,7 +27,7 @@ amounts, and packages the proof so a reader believes it in two minutes.
       wallet payment.
 
 Cost: prices are 0.50–2.00 USDC (T6) and land in our own treasury, so what's actually
-spent is Relay's fee (~$0.03 per payment) and gas: under $1 for all five runs. About
+spent is Relay's fee (~$0.03 per payment) and gas: about $1 for all seven runs. About
 $5 of USDC moves in total; most of it ends up back in the treasury.
 - [ ] Vercel production env: `SETTLE_MODE=live`, `RELAY_API_KEY`, `BASE_RPC_URL`,
       `SETTLE_TREASURY=0xac44275dE5bF4109977892c4a256BbFA16B6C804`,
@@ -58,12 +58,20 @@ Run each, in order; stop at the first failure and fix before going on.
 | 3 | Market report, Base USDC, browser wallet via `<Checkout>` | `paid` |
 | 4 | Send 0.02 USDC less than `payAmount` on Base, by script | Relay refunds to `SETTLE_REFUND_ADDRESS`; order `needs_attention` (`refund_unverified`; record the refund tx by hand); no webhook |
 | 5 | Send 0.02 USDC more than `payAmount` on Base | `paid` with exactly the order amount; excess refunded |
+| 6 | **Double payment** (only after Vinay explicitly approves sending the second payment): pay a Market report order normally, then send `payAmount` to the same address again | First payment: `paid`, one webhook. Second: found as a child report of the order's request, recorded, `needs_attention` (`order_paid`, or `refund_unverified` if Relay refunds it); no second webhook or `demo_purchases` row |
+| 7 | Pay a Market report order 10 min after its `expiresAt`, by script | Found by the same request ID, `paid` (late payment); or, if Relay rejects or refunds it, record exactly what happens |
 
-For each, record in `docs/spikes.md` (S4): order id, Relay fill id, deposit tx, Base
-tx + log index, amount sent, amount received, seconds from send to `paid`, and the
-`/requests/v3` responses observed (status sequence, any 429s). Also record what
-`/requests/v3` actually returns for a strict address (the `depositAddress` fields the
-T1 adapter reads were never seen live).
+For each, record in `docs/spikes.md` (S4): order id, the quote's original request ID,
+each report's own fill ID (root and any child, kept separate), source deposit tx, the
+verified Base tx + log index, amount sent, amount received, seconds from send to `paid`,
+and the raw `/requests/v3?id=<requestId>&includeChildRequests=true` responses observed
+(status sequence, any 429s) for the normal, underpaid, overpaid, double and late runs.
+
+**Duplicate-deposit discovery is unverified until run 6.** Relay documents child
+requests for extra deposits, but no one has yet seen a real second deposit come back
+from this query. If run 6's second payment does not appear as a child: say so in
+`docs/spikes.md`, don't claim duplicate-payment tracking works, and add address-based
+discovery back for this case (as a follow-up task) rather than dropping the requirement.
 
 If the key's 2 req/min `/requests` limit (S7) bites, raise `pollEvery` in the demo
 config and note it; don't add new mechanisms in this task.
@@ -77,9 +85,10 @@ config and note it; don't add new mechanisms in this task.
 3. **Going live:** Relay API key, Base RPC, treasury and refund wallets (both
    app-controlled), what the payer pays in fees (S6 numbers), the webhook secret and the
    dedupe-on-`event.id` rule; fulfilling on the webhook, never on `<Checkout onPaid>`.
-4. **How it works:** the payment-to-order diagram (one address per order → Relay →
-   verify on Base at `safe` → settle once → signed webhook with retries), with links to the
-   design doc.
+4. **How it works:** the payment-to-order diagram (order → one address for the buyer
+   and its stored Relay request ID → Relay's reports for that request → verified transfer
+   on Base at `safe` → settle once → signed webhook with retries), with links to the
+   design doc. Keep the limit: a payment after the watch window ends isn't tracked in 0.1.
 5. **Live proof:** the S4 table with explorer links.
 6. Limits of 0.1 and what's next (link `docs/built-vs-designed.md`).
 7. Security note: Settle Kit never holds funds or keys; report issues privately
@@ -96,7 +105,8 @@ the merchant code: env vars, two route files, `createOrder`, `<Checkout>` (30 s)
 
 ## Acceptance
 
-1. Runs 1–4 recorded with links; every `paid` order has exactly one `demo_purchases`
+1. Runs 1–7 recorded with links (run 6 states plainly whether the child lookup found the
+   second deposit); every `paid` order has exactly one `demo_purchases`
    row; the treasury's USDC balance rose by exactly the sum of paid order amounts.
 2. A fresh clone following only the README reaches a simulated `paid` in test mode.
 3. No secret appears in the repo, logs or screenshots (`git grep` for the key prefixes).

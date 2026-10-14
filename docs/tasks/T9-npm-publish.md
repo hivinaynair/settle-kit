@@ -70,9 +70,12 @@ keep server code out of browser bundles, and work without our workspace setup.
 3. **Install test:** in the scratch directory, `bunx create-next-app@latest` a fresh
    app; `bun add` the three tarballs plus `workflow`, `viem`, `drizzle-orm`; follow
    the README quickstart literally (test mode, Neon test branch); create an order,
-   simulate payment, see one verified webhook and the order `paid`. Any step the README
-   doesn't mention is a README bug: fix it.
-4. Confirm workflow discovery compiled `payOrder` from `node_modules` (the generated
+   simulate payment, see one verified webhook and the order `paid`. This runs the
+   request-ID path through the public API (route picked → simulated request ID stored →
+   reports looked up by it). Any step the README doesn't mention is a README bug: fix it.
+4. The emitted `.d.ts` and README examples match the current router contract
+   (`OrderAddress` with `requestId`; `fills(requestId)`).
+5. Confirm workflow discovery compiled `payOrder` from `node_modules` (the generated
    `app/.well-known/workflow/v1/manifest.json` lists it).
 
 ## 4. Publish (with Vinay)
