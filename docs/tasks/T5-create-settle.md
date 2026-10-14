@@ -158,8 +158,8 @@ segments.
 | Route | Does |
 |---|---|
 | `GET /routes` | The configured `RouteView[]` (id, labels) |
-| `GET /orders/:id` | `OrderView`: status (via `orderStatusFor`), amount, payAmount, route, address, expiresAt, display, test, payment (with its attention reason, read from the latest timeline entry's `evidence.reason`; no extra column), timeline |
-| `POST /orders/:id/route { route: RouteId }` | Issues the strict address via `store.setOrderRoute` + `router.orderAddress({ route, recipient: treasury, refundTo: refundAddress, amount })`, then `start(payOrder, [id])`; returns the `OrderView` |
+| `GET /orders/:id` | `OrderView`: status (via `orderStatusFor`), amount, payAmount, route, address, expiresAt, display, test, payment (the order's main payment from `store.getOrder`, T3 rule 8, with its attention reason, read from the latest timeline entry's `evidence.reason`; no extra column), timeline. Not the router request ID: that stays inside the server and store |
+| `POST /orders/:id/route { route: RouteId }` | Issues the strict address via `store.setOrderRoute` + `router.orderAddress({ route, recipient: treasury, refundTo: refundAddress, amount })`, which stores the returned `address`, `payAmount` and `requestId` together, then `start(payOrder, [id])`; returns the `OrderView` |
 | `POST /orders/:id/simulate { scenario }` | Test mode only (404 in live): records the scenario for the simulated router |
 
 Rules:
@@ -196,15 +196,28 @@ export async function payOrder(orderId: string) {
 Every step starts with `loadConfig(process.env)` (cached), so it works on a fresh server.
 Workflow arguments are just the order id.
 
-`checkOrder` (step) does one full pass over **every** fill, then returns
-`{ deliver: boolean; done: boolean; wait: number }`. It never returns halfway through the
-list, so a second payment to the same address is always recorded and flagged.
+**How we find the order's payments.** The buyer sends money to the order's address, but
+we ask Relay about it by the quote's original request ID (Relay documents that a strict
+order keeps it). `router.fills(requestId)` returns that root request plus any child
+requests, for example a second deposit to the same address; each report keeps its own
+ID. The ID only tells us where to look: credit still needs the verified Base transfer.
 
-1. Load the order. No address, or `order.test !== (mode === "test")` → `done`
-   (a live deployment never touches test orders, and the reverse).
-2. `router.fills(address)`. `router_unavailable` (outage or 429) → `wait` with backoff
-   (double the poll interval, max 60 s); never fail the run for it.
-3. For each fill: `recordPayment`, then `nextStep(payment.status, fill.status)` (T2):
+`checkOrder` (step) does one full pass over **every** report, then returns
+`{ deliver: boolean; done: boolean; wait: number }`. It never returns halfway through the
+list, and never stops early because one report already settled, so a second payment
+(a child arriving after the parent settled) is always recorded and flagged.
+
+1. Load the order. No route yet (neither `address` nor `routerRequestId`), or
+   `order.test !== (mode === "test")` → `done` (a live deployment never touches test
+   orders, and the reverse). One without the other is a bug (T3 stores them in one
+   CAS): throw so the step fails loudly; never request another quote.
+2. `router.fills(order.routerRequestId)`. `router_unavailable` (outage or 429) → `wait`
+   with backoff (double the poll interval, max 60 s); never fail the run for it.
+3. **No payment yet.** An empty list (Relay hasn't indexed the request), or a `waiting`
+   report with neither `depositTx` nor `destination` (the quote exists, no money has
+   arrived), is not a payment: record nothing and start no attention timer. The order
+   just stays pending until its watch window ends.
+4. For every other report: `recordPayment`, then `nextStep(payment.status, fill.status)` (T2):
    - `move` → `store.transition` with evidence `{ routerStatus, fillId }`. A move to
      `needs_attention` also records `reason`: `refund_unverified` (router said
      refunded; T2 never trusts that as final), `router_failed` or `unknown_status`.
@@ -213,13 +226,14 @@ list, so a second payment to the same address is always recorded and flagged.
      (T2) and `store.settle`. `pending` → try again next pass.
      `rejected`, `transfer_claimed` or `order_paid` → `needs_attention` with the reason.
    - A payment still waiting/processing/delayed 30 min after it was recorded →
-     `needs_attention` (design §6 attention threshold).
-4. `deliver` = the order has a `settled` payment that isn't `credited` and hasn't
+     `needs_attention` (design §6 attention threshold). Rows are only recorded once
+     money is seen (rule 3), so an unfunded quote never trips this timer.
+5. `deliver` = the order has a `settled` payment that isn't `credited` and hasn't
    exhausted its retries.
-5. `done` and `wait` follow "How long a run watches" below.
+6. `done` and `wait` follow "How long a run watches" below.
 
 **How long a run watches.** There are no Relay webhooks or reconciliation in 0.1, so this
-run is the only thing watching the address; ending it early would leave a late payment
+run is the only thing watching the order; ending it early would leave a late payment
 untracked (design §6a: late payments are still processed).
 
 | Order state | Poll every | Run ends |
@@ -287,10 +301,14 @@ workflow cannot settle or credit twice; a duplicate webhook carries the same
 ## 6. Test mode (`SETTLE_MODE=test`)
 
 - `simulateRouter(store)` implements `PaymentRouter` without Relay:
-  `orderAddress` returns a random address and `payAmount = amount + 25_000n` (a
-  simulated $0.025 fee, the S6 Base figure, so the UI shows a realistic "send
-  exactly"). `fills(address)` reads the order's `simulation` (T3) and derives fills
-  from the seconds elapsed since it started:
+  `orderAddress` returns a random address, a random request ID (`sim_` + 128 bits,
+  stored with the address, so it stays stable for the order) and
+  `payAmount = amount + 25_000n` (a simulated $0.025 fee, the S6 Base figure, so the UI
+  shows a realistic "send exactly"). `fills(requestId)` finds the order with
+  `store.findOrderByRequestId(requestId, true)`. Before a scenario starts it returns one
+  `waiting` report with no `depositTx`, like Relay for an unfunded quote. After, it reads
+  the order's `simulation` (T3) and derives reports from the seconds elapsed, each with a
+  fake `depositTx`:
 
   | Scenario | Fills over time |
   |---|---|
@@ -299,6 +317,7 @@ workflow cannot settle or credit twice; a duplicate webhook carries the same
   | `underpaid` | waiting → refunded (5 s) |
   | `overpaid` | as `paid` (strict address: exact amount delivered, excess refunded) |
   | `failed` | waiting → failed (5 s) |
+  | `paid_twice` | root as `paid`; a child report (ID `<requestId>:2`) waiting (10 s) → filled (16 s) |
 
 - `simulatedVerifier` returns `verified` with `receivedAmount = order.amount`,
   `logIndex = 0` and a deterministic fake tx hash (`keccak256(fillId)`).
@@ -329,10 +348,12 @@ from T3.
    error. Test mode loads without `RELAY_API_KEY` or `BASE_RPC_URL`.
 2. `createOrder` twice with the same `externalId` → same order; `amount: 0n` and
    negative amounts rejected; same `externalId` in test and live → two orders.
-3. `POST …/route`: issues one address (router called once across two calls); different
-   route → 409; expired → 410; unknown order → 404; wrong account (with `account`) → 404.
-4. `checkOrder` with fills scripted `[] → processing → filled` and a verifier saying
-   `verified`: payment goes waiting → processing → settled; returns `deliver: true`.
+3. `POST …/route`: issues one address (router called once across two calls) and stores
+   its request ID; `OrderView` doesn't include the request ID; different route → 409;
+   expired → 410; unknown order → 404; wrong account (with `account`) → 404.
+4. `checkOrder` calls `fills` with the stored request ID (`fakeRouter` records it). With
+   reports scripted `[] → processing → filled` and a verifier saying `verified`: payment
+   goes waiting → processing → settled; returns `deliver: true`.
 5. Verifier says `pending` → not done, nothing settled. `rejected` → `needs_attention`.
 6. Fill status `refunded` → payment `needs_attention` (reason `refund_unverified`),
    never `refunded`; no webhook sent.
@@ -340,9 +361,16 @@ from T3.
    `needs_attention` (`order_paid`) in the same pass; one webhook.
 8. A test-mode order is ignored by a live-mode `checkOrder`, and vice versa.
 9. `router_unavailable` from `fills` → `wait` with backoff, no state change.
+9b. No payment yet: `[]` (request not indexed), then a `waiting` report with no
+    `depositTx` or `destination`, for 40 min → no payment row, no `needs_attention`,
+    order still pending. A routed order missing its request ID → the step throws and
+    `orderAddress` is not called again.
+9c. A child after the parent: pass 1 settles the root; pass 2 also returns a child
+    (different ID), verified → recorded, `needs_attention` (`order_paid`); still one
+    webhook.
 10. Watch window: unpaid order past expiry keeps polling with the doubling interval and
     ends at `expiresAt` + 24 h; a fill appearing 2 h after expiry is still recorded and
-    settled. Paid order ends at `expiresAt` + 10 min.
+    settled (looked up by the same request ID). Paid order ends at `expiresAt` + 10 min.
 11. Webhook signing: `verifyWebhook(signWebhook(event))` round-trips; a changed body,
     changed id, wrong secret, or timestamp 6 min old → rejected. Matches a Standard
     Webhooks test vector (from their spec repo).
@@ -352,7 +380,8 @@ from T3.
 13. Bypass header: sent for a path URL when `VERCEL_AUTOMATION_BYPASS_SECRET` is set;
     never for an absolute URL.
 14. Simulated `paid` scenario, end to end in the demo (local dev): one verified webhook
-    and `GET /orders/:id` reads `paid` with a timeline.
+    and `GET /orders/:id` reads `paid` with a timeline. `paid_twice`: still one webhook;
+    the order reads `paid`; the second payment is `needs_attention` in the database.
 
 ---
 
@@ -368,3 +397,5 @@ replay), deposit mode, changing a route after picking it, more event types.
 - What stops two runs for the same order from sending two different paid events, and
   what does the merchant dedupe on?
 - What happens if the merchant's webhook route is down for an hour?
+- Why track the order by the quote's request ID, and why does that ID never authorize
+  credit?
