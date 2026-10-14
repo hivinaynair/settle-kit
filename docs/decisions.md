@@ -34,7 +34,7 @@ steps cite these IDs; `bun run check-journeys` fails on an unknown or superseded
 
 | ID | Decision | Why | Rejected | Date | Supersedes |
 |---|---|---|---|---|---|
-| D20 | The destination is always USDC on Base. Tokens are identified by chain ID and contract address, never by symbol | One asset keeps verification exact and the host's accounting simple | Many destination chains or assets; matching by symbol | 2026-10-13 | |
+| D20 | The destination is always USDC on Base. Every order and deposit address stores its destination (chain ID and token contract) next to its recipient, and every check reads it from there; no code assumes Base. Tokens are identified by chain ID and contract address, never by symbol | One asset keeps verification exact and the host's accounting simple; a stored destination makes USDC on another chain a config entry plus a live proof later | USDC on Base, Arbitrum and Ethereum in v1.0 (up to 21 route proofs, minutes-long waits on Ethereum); any coin as destination; matching by symbol | 2026-10-14 | |
 | D21 | Credit only the amount verified on Base at the `safe` block. A provider's status alone never authorizes credit; elapsed time never authorizes credit or a "lost" verdict | S3: `safe` is about 30 s on Base and survives normal reorgs; providers can be wrong | Trusting Relay's status; a fixed confirmation count; waiting for `finalized` (~16 min) | 2026-10-13 | |
 | D22 | Amounts are base units: `bigint` in code, `numeric` in Postgres, decimal strings in JSON. Never floats | Floats lose cents | Floats; decimal libraries in the hot path | 2026-10-13 | |
 | D23 | Credit exactly once: unique keys per provider fill, per on-chain transfer `(chain ID, tx hash, log index)` and per paid order | Duplicate webhooks, retries and two workers are normal; the database must refuse the second credit | Application-level checks only | 2026-10-14 | |
@@ -79,7 +79,7 @@ steps cite these IDs; `bun run check-journeys` fails on an unknown or superseded
 |---|---|---|
 | X1 | Card onramps (Transak, MoonPay) | Need business verification and partner approval one person can't get; S5 |
 | X2 | Exchange account connections (log in to Coinbase or Binance to pay) | Partner contracts and KYC |
-| X3 | Settling anywhere but USDC on Base | D20; one destination keeps verification exact |
+| X3 | Settling anywhere but USDC on Base: no other chains in v1.0, and never a non-USDC destination such as ETH or USDT | D20. Other USDC chains are a follow-up after launch. Non-USDC destinations need a price source, multi-currency books and Relay for every payment, so own rails would no longer cover them |
 | X4 | A hosted Settle Kit service, or holding anyone's funds | D1; also avoids the regulatory side of running others' money |
 | X5 | A unified cross-chain balance (Circle Gateway) | Different product; not needed for checkout or deposits |
 
