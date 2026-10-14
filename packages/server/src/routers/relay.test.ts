@@ -13,6 +13,7 @@ const BASE_USDC = address("0x833589fcd6edb6e08f4c7c32d4f71b54bda02913");
 const MERCHANT = address("0x0000000000000000000000000000000000000001");
 const REFUND_TO = address("0x0000000000000000000000000000000000000002");
 const DEPOSIT_ADDRESS = address("0x00000000000000000000000000000000000000aa");
+const REQUEST_ID = strictQuoteFixture.requestId;
 
 const ROUTE: Route = {
   from: { chainId: 42161, token: ARBITRUM_USDC, decimals: 6 },
@@ -89,6 +90,7 @@ describe("relay()", () => {
     expect(order).toEqual({
       address: "0x24a37cD2723B6FC852A7D296Bd4f20476b2Fd176",
       payAmount: 1184248n,
+      requestId: REQUEST_ID,
     });
     expect(calls[0]?.url.pathname).toBe("/quote/v2");
     expect(calls[0]?.headers.get("x-api-key")).toBe(API_KEY);
@@ -105,6 +107,18 @@ describe("relay()", () => {
       useDepositAddress: true,
       strict: true,
     });
+  });
+
+  it("rejects quotes without a usable request ID", async () => {
+    for (const requestId of [undefined, ""]) {
+      const quote = structuredClone(strictQuoteFixture);
+      const body = {
+        ...quote,
+        steps: quote.steps.map((step) => ({ ...step, requestId })),
+      };
+      const { router } = routerFor(() => jsonResponse(body));
+      await expectCode(router.orderAddress({ ...REQUEST, amount: 1150000n }), "router_unavailable");
+    }
   });
 
   it("rejects an order whose quote would not deliver exactly the price", async () => {
@@ -152,9 +166,14 @@ describe("relay()", () => {
     }
   });
 
-  it("reads every page of payments, 100 at a time", async () => {
-    const [first, second] = requestsFixture.requests;
-    if (!first || !second) throw new Error("fixture is missing two requests");
+  it("reads the original request and its children across every page", async () => {
+    const [parentFixture, childFixture] = requestsFixture.requests;
+    if (!parentFixture || !childFixture) throw new Error("fixture is missing two requests");
+    const first = { ...parentFixture, id: REQUEST_ID };
+    const second = {
+      ...childFixture,
+      duplicateDeposits: { parentRequestId: REQUEST_ID },
+    };
 
     const { router, calls } = routerFor((call) =>
       call.url.searchParams.get("continuation") === "next-page"
@@ -162,15 +181,19 @@ describe("relay()", () => {
         : jsonResponse({ requests: [first], continuation: "next-page" }),
     );
 
-    const fills = await router.fills(DEPOSIT_ADDRESS);
+    const fills = await router.fills(REQUEST_ID);
 
     expect(calls.map((call) => call.url.searchParams.get("continuation"))).toEqual([
       null,
       "next-page",
     ]);
-    expect(calls[0]?.url.searchParams.get("depositAddress")).toBe(DEPOSIT_ADDRESS);
-    expect(calls[0]?.url.searchParams.get("limit")).toBe("100");
-    expect(calls[0]?.headers.get("x-api-key")).toBe(API_KEY);
+    for (const call of calls) {
+      expect(call.url.searchParams.get("id")).toBe(REQUEST_ID);
+      expect(call.url.searchParams.get("includeChildRequests")).toBe("true");
+      expect(call.url.searchParams.has("depositAddress")).toBe(false);
+      expect(call.url.searchParams.get("limit")).toBe("100");
+      expect(call.headers.get("x-api-key")).toBe(API_KEY);
+    }
     expect(fills.map((fill) => fill.id)).toEqual([first.id, second.id]);
     expect(fills[0]).toEqual({
       id: first.id,
@@ -184,11 +207,48 @@ describe("relay()", () => {
     });
   });
 
+  it("returns no fills while Relay has no indexed request", async () => {
+    const { router } = routerFor(() => jsonResponse({ requests: [] }));
+    expect(await router.fills(REQUEST_ID)).toEqual([]);
+  });
+
+  it("rejects an empty request ID before querying Relay", async () => {
+    const { router, calls } = routerFor(() => jsonResponse({ requests: [] }));
+    for (const requestId of ["", "   "]) {
+      await expectCode(router.fills(requestId), "invalid_config");
+    }
+    expect(calls).toHaveLength(0);
+  });
+
+  it("preserves an unfunded waiting report without inventing transaction evidence", async () => {
+    const updatedAt = "2026-10-14T00:00:00.000Z";
+    const { router } = routerFor(() =>
+      jsonResponse({ requests: [{ id: REQUEST_ID, status: "waiting", updatedAt }] }),
+    );
+    expect(await router.fills(REQUEST_ID)).toEqual([
+      {
+        id: REQUEST_ID,
+        status: "waiting",
+        depositTx: null,
+        destination: null,
+        updatedAt: new Date(updatedAt),
+      },
+    ]);
+  });
+
+  it("rejects repeated continuation tokens instead of looping", async () => {
+    const { router, calls } = routerFor(() =>
+      jsonResponse({ requests: [], continuation: "same-page" }),
+    );
+    await expectCode(router.fills(REQUEST_ID), "router_unavailable");
+    expect(calls).toHaveLength(2);
+  });
+
   it("maps each payment's status and fields defensively", async () => {
     const [record] = requestsFixture.requests;
     if (!record) throw new Error("fixture is missing a request");
     const fillsFor = (...requests: unknown[]) =>
-      routerFor(() => jsonResponse({ requests })).router.fills(DEPOSIT_ADDRESS);
+      routerFor(() => jsonResponse({ requests })).router.fills(REQUEST_ID);
 
     const statuses = [
       ["waiting", "waiting"],
@@ -238,16 +298,22 @@ describe("fakeRouter()", () => {
         txHash: "0x2222222222222222222222222222222222222222222222222222222222222222",
       },
     };
-    const router = fakeRouter({ address: DEPOSIT_ADDRESS, fills: [[], [processing], [filled]] });
+    const router = fakeRouter({
+      address: DEPOSIT_ADDRESS,
+      requestId: "r1",
+      fills: [[], [processing], [filled]],
+    });
 
-    expect(await router.fills(DEPOSIT_ADDRESS)).toEqual([]);
-    expect(await router.fills(DEPOSIT_ADDRESS)).toEqual([processing]);
-    expect(await router.fills(DEPOSIT_ADDRESS)).toEqual([filled]);
-    expect(await router.fills(DEPOSIT_ADDRESS)).toEqual([filled]);
+    expect(await router.fills("r1")).toEqual([]);
+    expect(await router.fills("r1")).toEqual([processing]);
+    expect(await router.fills("r1")).toEqual([filled]);
+    expect(await router.fills("r1")).toEqual([filled]);
     expect(await router.orderAddress({ ...REQUEST, amount: 1150000n })).toEqual({
       address: DEPOSIT_ADDRESS,
       payAmount: 1150000n,
+      requestId: "r1",
     });
+    expect(router.calls.slice(0, 4).map((call) => call.input)).toEqual(["r1", "r1", "r1", "r1"]);
     expect(router.calls.map((call) => call.method)).toEqual([
       "fills",
       "fills",

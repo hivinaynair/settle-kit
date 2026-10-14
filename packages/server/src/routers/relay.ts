@@ -51,7 +51,14 @@ const txHash = z
   );
 
 const QuoteResponse = z.object({
-  steps: z.array(z.object({ depositAddress: address.optional() })).optional(),
+  steps: z
+    .array(
+      z.object({
+        depositAddress: address.optional(),
+        requestId: z.string().min(1).optional(),
+      }),
+    )
+    .optional(),
   details: z.object({
     currencyIn: z.object({ amount: baseUnits }),
     currencyOut: z.object({ amount: baseUnits }),
@@ -135,7 +142,7 @@ export function relay(options: RelayOptions): PaymentRouter {
     id: "relay",
 
     /**
-     * Request a strict address for the merchant's price; return the address and payer amount.
+     * Request strict payment instructions: address, payer amount and original request ID.
      * This creates payment instructions only. Settlement still needs on-chain verification.
      */
     async orderAddress(input) {
@@ -175,17 +182,28 @@ export function relay(options: RelayOptions): PaymentRouter {
       if (!address) {
         throw new DepositError("router_unavailable", "Relay returned no deposit address");
       }
-      return { address, payAmount: quote.details.currencyIn.amount };
+      const requestId = quote.steps?.[0]?.requestId;
+      if (!requestId) {
+        throw new DepositError("router_unavailable", "Relay returned no request ID");
+      }
+      return { address, payAmount: quote.details.currencyIn.amount, requestId };
     },
 
-    // Reads every page, 100 at a time (Relay's maximum).
-    async fills(depositAddress) {
+    // Request related child reports for the workflow's extra-deposit handling.
+    async fills(requestId) {
+      if (typeof requestId !== "string" || requestId.trim() === "") {
+        throw new DepositError("invalid_config", "Relay request ID is required");
+      }
       const fills: Fill[] = [];
       const seen = new Set<string>();
       let continuation: string | undefined;
 
       do {
-        const params = new URLSearchParams({ depositAddress, limit: "100" });
+        const params = new URLSearchParams({
+          id: requestId,
+          includeChildRequests: "true",
+          limit: "100",
+        });
         if (continuation) params.set("continuation", continuation);
         const json = await call(`/requests/v3?${params}`);
         const parsed = RequestsPage.safeParse(json);
