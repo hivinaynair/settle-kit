@@ -78,11 +78,13 @@ const RelayRequest = z.object({
     .nullish(),
 });
 
+// Records are checked one by one in toFill, so one malformed record can't hide the others.
 const RequestsPage = z.object({
-  // A malformed record becomes null and is skipped; it can't hide the other payments.
-  requests: z.array(RelayRequest.nullable().catch(null)),
+  requests: z.array(z.unknown()),
   continuation: z.string().nullish(),
 });
+
+const RecordId = z.object({ id: z.string().min(1) });
 
 const ErrorBody = z.object({ errorCode: z.string() });
 
@@ -194,7 +196,8 @@ export function relay(options: RelayOptions): PaymentRouter {
       if (typeof requestId !== "string" || requestId.trim() === "") {
         throw new DepositError("invalid_config", "Relay request ID is required");
       }
-      const fills: Fill[] = [];
+      // Keyed by fill ID: a record repeated across pages is returned once, newest wins.
+      const fills = new Map<string, Fill>();
       const seen = new Set<string>();
       let continuation: string | undefined;
 
@@ -215,7 +218,11 @@ export function relay(options: RelayOptions): PaymentRouter {
           );
         }
         const page = parsed.data;
-        for (const request of page.requests) if (request) fills.push(toFill(request));
+        for (const record of page.requests) {
+          const fill = toFill(record);
+          const current = fill && fills.get(fill.id);
+          if (fill && (!current || fill.updatedAt >= current.updatedAt)) fills.set(fill.id, fill);
+        }
 
         continuation = page.continuation || undefined;
         if (continuation && seen.has(continuation)) {
@@ -224,14 +231,27 @@ export function relay(options: RelayOptions): PaymentRouter {
         if (continuation) seen.add(continuation);
       } while (continuation);
 
-      return fills;
+      return [...fills.values()];
     },
   };
 }
 
 // --- Helpers ---
 
-function toFill(request: z.infer<typeof RelayRequest>): Fill {
+/**
+ * A record we can't read but that has an ID becomes "unknown" (→ needs_attention), so a
+ * changed Relay format is flagged instead of looking like "no payment yet". Only a record
+ * without an ID is skipped: there is nothing to record it under.
+ */
+function toFill(record: unknown): Fill | null {
+  const parsed = RelayRequest.safeParse(record);
+  if (parsed.success) return readFill(parsed.data);
+  const id = RecordId.safeParse(record).data?.id;
+  if (!id) return null;
+  return { id, status: "unknown", depositTx: null, destination: null, updatedAt: new Date() };
+}
+
+function readFill(request: z.infer<typeof RelayRequest>): Fill {
   const outgoing = request.data?.outTxs?.[0];
   return {
     id: request.id,

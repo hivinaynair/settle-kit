@@ -67,6 +67,13 @@ verified Base tx + log index, amount sent, amount received, seconds from send to
 and the raw `/requests/v3?id=<requestId>&includeChildRequests=true` responses observed
 (status sequence, any 429s) for the normal, underpaid, overpaid, double and late runs.
 
+**Which outgoing transaction is the payment (run 5).** T1's `toFill` takes the first of
+`data.outTxs` as the Base delivery. On an overpayment Relay also refunds the excess; if
+that refund appears in `outTxs` (it would be on Base too for Base→Base), check its
+position. If it can come first, the verifier will reject a good payment
+(`needs_attention`, never a wrong credit): change `Fill` to carry every outgoing tx and
+verify each.
+
 **Duplicate-deposit discovery is unverified until run 6.** Relay documents child
 requests for extra deposits, but no one has yet seen a real second deposit come back
 from this query. If run 6's second payment does not appear as a child: say so in

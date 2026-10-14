@@ -275,9 +275,32 @@ describe("relay()", () => {
     const [badHash] = await fillsFor({ ...record, depositAddress: { depositTxHash: "nope" } });
     expect(badHash?.depositTx).toBe(record.data.inTxs[0]?.txHash as Hex);
 
-    // A malformed record is skipped instead of hiding the others.
-    const mixed = await fillsFor({ id: "broken" }, record);
-    expect(mixed.map((fill) => fill.id)).toEqual([record.id]);
+    // A malformed record with an ID is flagged as "unknown" with no evidence, not dropped;
+    // one without an ID is skipped. Neither hides the others.
+    const mixed = await fillsFor(
+      { id: "broken", updatedAt: "not a date" },
+      { status: "x" },
+      record,
+    );
+    expect(mixed.map((fill) => [fill.id, fill.status])).toEqual([
+      ["broken", "unknown"],
+      [record.id, "filled"],
+    ]);
+    expect(mixed[0]).toMatchObject({ depositTx: null, destination: null });
+  });
+
+  it("returns a record repeated across pages once, keeping the newest", async () => {
+    const [record] = requestsFixture.requests;
+    if (!record) throw new Error("fixture is missing a request");
+    const older = { ...record, status: "pending", updatedAt: "2026-10-13T09:00:00.000Z" };
+    const newer = { ...record, status: "success", updatedAt: "2026-10-13T09:44:12.513Z" };
+    const { router } = routerFor((call) =>
+      call.url.searchParams.get("continuation") === "next-page"
+        ? jsonResponse({ requests: [older] })
+        : jsonResponse({ requests: [newer], continuation: "next-page" }),
+    );
+    const fills = await router.fills(REQUEST_ID);
+    expect(fills.map((fill) => [fill.id, fill.status])).toEqual([[record.id, "filled"]]);
   });
 });
 
