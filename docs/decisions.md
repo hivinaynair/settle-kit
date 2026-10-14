@@ -30,6 +30,7 @@ steps cite these IDs; `bun run check-journeys` fails on an unknown or superseded
 | D13 | The payer bears route fees. The widget shows the estimate ("you'll receive about X") before sending; credit is the verified arrival amount | Merchants receive what they priced; fees are visible up front | The merchant absorbs fees | 2026-10-13 | |
 | D14 | The host is told by signed webhook events: `order.paid`, `order.needs_attention`, `deposit.credited` | Merchants hear about problems, not only successes; three events stay small | A settlement-only callback; a general event bus | 2026-10-14 | |
 | D15 | A checkout payment that arrives after the order expired still pays the order automatically, if the order wasn't cancelled and the amount meets the rule for its lane (exact on Relay, D24; at least the price on CCTP Fast, D25). `order.paid` then carries `late: true` so the host can tell | The buyer paid in full and shouldn't wait on a person; the host still sees it was late | Holding every late payment in `needs_attention` for an operator; a config switch between the two | 2026-10-14 | |
+| D16 | A deposit to the user's own wallet gets its recipient from the host's server when the address is created (`depositAddress({ accountId, recipient })`), never from the browser. It is stored once and never changes for that address; a new wallet means a new deposit address, and the old one keeps delivering to the old wallet | A browser-supplied recipient lets anyone redirect someone else's deposits; on own rails the recipient is part of the CREATE2 address | Taking the recipient from the widget; editing an existing address's recipient | 2026-10-14 | |
 
 ## Money rules (D20–D29)
 
@@ -97,7 +98,6 @@ steps cite these IDs; `bun run check-journeys` fails on an unknown or superseded
 
 | ID | Question | Recommendation | Blocks | Who answers |
 |---|---|---|---|---|
-| Q6 | How does a deposit to the user's own wallet (D12) get its recipient? | The host passes it server-side when creating the deposit address; it is stored once (D26) and never taken from the browser | Deposit journeys | Vinay |
 | Q7 | When does a payment go to `needs_attention`, and how often is it checked after that? | After 30 minutes without a verified outcome; then by discovery reconciliation every 15 minutes | Checkout and deposit failure branches | Vinay |
 | Q8 | Deposit limits: a minimum, a displayed maximum, and a per-transfer cap in the contracts until someone else has reviewed them? | Minimum 2 USDC (fees stay under 2%); a displayed maximum of 1,000 USDC; a contract cap of 1,000 USDC per sweep | Deposit journeys, contracts | Vinay |
 | Q9 | Is the release labelled 1.0 or 0.x "experimental" while the contracts are unaudited? | Call the launch v1.0 of the project, publish the packages as 0.x, and mark the contracts experimental with the caps from Q8 | Release and docs | Vinay |
