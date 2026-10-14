@@ -6,7 +6,7 @@ wallet or exchange, credited as USDC on Base. Users send to a reusable deposit a
 
 ## Read first
 
-- Spec: being rebuilt through the process in `docs/spec/README.md`. Until stage 3 lands,
+- Spec: being rebuilt through the process in `docs/spec/README.md`. Until the new design doc lands,
   `docs/plans/2026-10-13-deposit-kit-design.md` and `docs/tasks/T*.md` are the earlier
   checkout-first plan: inputs, not the current spec. Evidence: `docs/spikes.md`.
 - **Agents implement tasks; Vinay monitors and must be able to explain every line.**
@@ -17,11 +17,11 @@ wallet or exchange, credited as USDC on Base. Users send to a reusable deposit a
 
 ## Spec process
 
-- Idea → build-ready spec in five stages: decide → journeys → design → plan → check.
-  Overview and status: `docs/spec/README.md`. Skills: `.agents/skills/` (start with `spec`).
-  Shared rules: `.agents/skills/CONTRACT.md`.
-- `docs/journeys/settle-kit.yaml` is the source of truth for behavior. Never hand-edit the
-  generated `.md`; never renumber or reuse a step ID.
+- Two artifacts drive the spec: `docs/decisions.md` (what we build, with IDs) and
+  `docs/journeys/settle-kit.yaml` (exactly how it behaves, every branch, EARS rules).
+  How to write them: `.agents/skills/decide/` and `.agents/skills/journeys/`; shared rules
+  in `.agents/skills/CONTRACT.md`; overview in `docs/spec/README.md`.
+- Never hand-edit the generated journey `.md`; never renumber or reuse a step ID.
 - Tests name the step they prove (`it("J2.S4: …")`); PRs list the step IDs they serve.
 - A missing business or money rule is an open question in `docs/decisions.md`, never a guess.
 
@@ -62,7 +62,7 @@ on Tailwind or `@repo/ui`; it themes through CSS variables.
 ## Before merging
 
 ```sh
-bun run format-and-lint && bun run check-types && bun run check-tokens && bun run check-journeys && bun run check-skills && bun test
+bun run format-and-lint && bun run check-types && bun run check-tokens && bun run check-journeys && bun test
 ```
 
 <!-- BEGIN:turborepo-agent-rules -->

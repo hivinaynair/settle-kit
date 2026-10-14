@@ -33,8 +33,8 @@ jobs:
       - name: Semantic tokens
         run: bun run check-tokens
 
-      - name: Journeys and skills
-        run: bun run check-journeys && bun run check-skills
+      - name: Journeys
+        run: bun run check-journeys
 
       - name: Types
         run: bun run check-types

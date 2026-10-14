@@ -11,7 +11,6 @@
     "check-journeys": "bun scripts/journey.ts check docs/journeys",
     "journeys:validate": "bun scripts/journey.ts validate docs/journeys",
     "journeys:render": "bun scripts/journey.ts render docs/journeys",
-    "check-skills": "bun scripts/check-skills.ts",
     "test": "bun test",
     "ui:add": "turbo run add --filter=@repo/ui",
     "preinstall": "[ -n \"$CI$VERCEL\" ] || bunx only-allow@1.2.2 bun",

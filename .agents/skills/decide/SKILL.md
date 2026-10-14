@@ -5,8 +5,7 @@ description: Turn discussion into numbered decisions and open questions in docs/
 
 # decide
 
-Follow [CONTRACT](../CONTRACT.md). Output: `docs/decisions.md` from
-[the template](../../../docs/spec/templates/decisions.md).
+Follow [CONTRACT](../CONTRACT.md). Output: `docs/decisions.md`, keeping its sections.
 
 1. Read `docs/decisions.md`, the design doc and the source the owner names (a conversation,
    notes, an issue). Extract what is already settled; record it, do not re-ask it.
@@ -19,4 +18,4 @@ Follow [CONTRACT](../CONTRACT.md). Output: `docs/decisions.md` from
 5. Scope check: every feature named in decisions is either in scope (it will get journeys)
    or explicitly out with a reason. "Later" is out.
 
-Done when no open question blocks in-scope work. Update `docs/spec/README.md`.
+Done when no open question blocks in-scope work.

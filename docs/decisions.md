@@ -1,6 +1,6 @@
 # Decisions
 
-Status: empty; stage 1 (decide) fills it.
+Status: empty; step 1 (decide) fills it.
 
 Settled choices for Settle Kit. One row per decision; never edit a row's meaning.
 To change one, add a new row with `Supersedes`. Open questions live at the bottom.

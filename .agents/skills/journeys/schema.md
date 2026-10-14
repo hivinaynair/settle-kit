@@ -42,7 +42,7 @@ journeys:
         criteria:
           - WHEN <trigger> THE SYSTEM SHALL <behavior>
 
-tasks:                   # added in the plan stage
+tasks:                   # added when tasks are planned
   - id: M1.T1
     title: Verify and settle
     serves: [J2.S3, J2.S4]
