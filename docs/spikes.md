@@ -130,6 +130,24 @@ recommends cheap L2 mainnets over testnets. Development uses test mode (simulate
 deposits); the live proof is a small Base mainnet deposit. Reindex is a real
 recovery tool and belongs in operator tooling.
 
+## S4b · Cross-chain testnet deposit — 2026-10-14 (failed; confirms S4a)
+
+To test whether S4a failed only because ETH → ETH on one chain is a no-op route, we
+tried a real cross-chain route: Base Sepolia ETH → Sepolia ETH, open `EXACT_INPUT`.
+The minimum is ~0.0005 ETH (Sepolia's L1 fee is ~0.0004), so the payer was topped up
+from the CDP faucet (5 × 0.0001 ETH).
+
+| Step | Result |
+|---|---|
+| Deposit address | `0x3424abfc245da48f6968fba51b4841f2c7bdd6ff` (requestId `0x1791…5657`), quoted out 0.000152 ETH |
+| Transfer 0.0006 ETH | Mined, tx `0xc34e96492b695386ae3f169cf1d2fc5b3f6ddf6f69229c614a5ff9297d931cde` |
+| After 15 min (polled every 20 s) | Funds still at the deposit address; status `waiting`; nothing at the treasury on Sepolia |
+| Reindex | 200, "Triggered reindex for 1 currency", balance seen; status still `waiting` |
+
+**So:** Relay's testnet doesn't process deposit addresses at all, same-chain or
+cross-chain. S4a's failure says nothing about the mainnet Base USDC → Base USDC route;
+that still needs its own live proof (T8, run 1). Testnet is closed as a path.
+
 ## S7 · Relay account and funding findings — 2026-10-14
 
 - **Rate limit:** the Relay dashboard shows our key at `/requests` **2 req/min**
