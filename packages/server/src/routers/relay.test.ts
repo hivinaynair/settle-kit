@@ -19,11 +19,13 @@ const REFUND_TO = address("0x0000000000000000000000000000000000000002");
 const USDC_ROUTE: Route = {
   from: { chainId: 42161, token: ARBITRUM_USDC, decimals: 6 },
   to: { chainId: 8453, token: BASE_USDC, decimals: 6 },
+  minimum: 2000000n,
 };
 
 const NATIVE_ROUTE: Route = {
   from: { chainId: 42161, token: "native", decimals: 18 },
   to: { chainId: 8453, token: BASE_USDC, decimals: 6 },
+  minimum: 1000000000000000n,
 };
 
 const ADDRESS_REQUEST = {
@@ -105,7 +107,7 @@ describe("relay()", () => {
     expect(chainIds).not.toContain(8453);
   });
 
-  it("returns a reusable address quoted at one whole token", async () => {
+  it("returns a reusable address quoted at the route minimum", async () => {
     const { router, calls } = routerFor((call) => {
       expect(call.url.pathname).toBe("/quote/v2");
       expect(call.headers.get("x-api-key")).toBe(API_KEY);
@@ -121,7 +123,7 @@ describe("relay()", () => {
       destinationChainId: 8453,
       originCurrency: ARBITRUM_USDC,
       destinationCurrency: BASE_USDC,
-      amount: "1000000",
+      amount: "2000000",
       tradeType: "EXACT_INPUT",
       recipient: RECIPIENT,
       refundTo: REFUND_TO,
@@ -133,7 +135,7 @@ describe("relay()", () => {
     await router.depositAddress({ route: NATIVE_ROUTE, ...ADDRESS_REQUEST });
     expect(calls[1]?.body).toMatchObject({
       originCurrency: zeroAddress,
-      amount: "1000000000000000000",
+      amount: "1000000000000000",
     });
   });
 
@@ -284,6 +286,7 @@ describe("relay()", () => {
     const fills = await router.fills(depositAddress);
     expect(calls).toHaveLength(2);
     expect(calls[0]?.url.searchParams.get("depositAddress")).toBe(depositAddress);
+    expect(calls[0]?.url.searchParams.get("limit")).toBe("100");
     expect(calls[0]?.url.searchParams.get("continuation")).toBeNull();
     expect(calls[1]?.url.searchParams.get("continuation")).toBe("next-page");
     expect(fills.map((fill) => fill.id)).toEqual([first.id, second.id]);
@@ -326,15 +329,6 @@ describe("relay()", () => {
       [first.id, "unknown"],
       [second.id, "filled"],
     ]);
-  });
-
-  it("uses the route minimum as the deposit-address sample when the manifest sets one", async () => {
-    const { router, calls } = routerFor(() => jsonResponse(quoteFixture));
-    await router.depositAddress({
-      route: { ...USDC_ROUTE, minimum: 2000000n },
-      ...ADDRESS_REQUEST,
-    });
-    expect(calls[0]?.body).toMatchObject({ amount: "2000000" });
   });
 
   it("maps each Relay status, and an unrecognised one to unknown", async () => {

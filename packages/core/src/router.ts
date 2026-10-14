@@ -1,13 +1,17 @@
 import type { Address, Hex } from "viem";
 
 /** "native" means the chain's own coin (ETH). Relay writes it as the zero address. */
-export type Asset = { chainId: number; token: Address | "native"; decimals: number };
+export type Token = { token: Address | "native"; decimals: number };
+export type Asset = Token & { chainId: number };
 
 export type Route = {
   from: Asset;
   to: Asset;
-  /** Smallest accepted payAmount in route.from base units, from the route manifest. */
-  minimum?: bigint;
+  /**
+   * Smallest accepted payAmount in route.from base units, set by the route manifest.
+   * Also the sample amount Relay needs to issue a deposit address.
+   */
+  minimum: bigint;
 };
 
 /** What every address request shares: the route and where money goes. */
@@ -20,7 +24,7 @@ export type AddressRequest = {
 export type Source = {
   chainId: number;
   name: string; // "arbitrum"
-  tokens: { token: Address | "native"; symbol: string; decimals: number }[];
+  tokens: (Token & { symbol: string })[];
 };
 
 export type Quote = {

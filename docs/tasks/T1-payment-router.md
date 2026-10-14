@@ -43,8 +43,11 @@ Write these exactly; later tasks depend on the names.
 import type { Address, Hex } from "viem";
 
 /** "native" means the chain's own coin (ETH). Relay writes it as the zero address. */
-export type Asset = { chainId: number; token: Address | "native" };
-export type Route = { from: Asset; to: Asset };
+export type Token = { token: Address | "native"; decimals: number };
+export type Asset = Token & { chainId: number };
+/** minimum: smallest payAmount (route.from base units), from the route manifest; also the
+ *  sample amount Relay needs to issue a deposit address. */
+export type Route = { from: Asset; to: Asset; minimum: bigint };
 
 export type Source = {
   chainId: number;
@@ -138,7 +141,7 @@ relay({
    `details.currencyIn.amount`, `currencyOut.amount`, `currencyOut.minimumAmount`,
    `details.timeEstimate`. Amounts become `bigint`. Never use a float.
 7. **`fills(address)`** → `GET /requests/v3?depositAddress=…` with header `x-api-key`.
-   Follow `continuation` until absent.
+   Send `limit=100` (Relay's maximum; default 20). Follow `continuation` until absent.
 8. **`status(fillId)`** → `GET /intents/status/v3?requestId=…`.
 9. **Status mapping, in one table:** `waiting→waiting`;
    `depositing|pending|submitted→processing`; `delayed→delayed`; `success→filled`;

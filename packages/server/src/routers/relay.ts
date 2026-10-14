@@ -182,12 +182,12 @@ export function relay(options: RelayOptions): PaymentRouter {
     },
 
     // A second quote is a different address. T3 stores the first one.
-    // Relay needs a sample amount to issue the address: the route minimum from the
-    // manifest, else one whole token. Callers never see it.
+    // Relay needs a sample amount to issue the address; the route minimum is a safe one.
+    // Callers never see it.
     async depositAddress(input) {
       const quote = await quoteVia({
         ...input,
-        amount: input.route.minimum ?? 10n ** BigInt(input.route.from.decimals),
+        amount: input.route.minimum,
         tradeType: "EXACT_INPUT",
         useDepositAddress: true,
       });
@@ -232,7 +232,8 @@ export function relay(options: RelayOptions): PaymentRouter {
       let continuation: string | undefined;
 
       do {
-        const params = new URLSearchParams({ depositAddress: address });
+        // 100 is Relay's maximum page size (default 20): fewer calls under tight rate limits.
+        const params = new URLSearchParams({ depositAddress: address, limit: "100" });
         if (continuation) params.set("continuation", continuation);
         const page = await call(RequestsPage, `/requests/v3?${params}`);
         for (const request of page.requests) if (request) fills.push(toFill(request));
