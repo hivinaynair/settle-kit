@@ -93,6 +93,7 @@ export type Store = {
   /** Buyer picked a route: store address, payAmount and requestId once, together. */
   setOrderRoute(input: { orderId: string; route: Route;
                          create: () => Promise<OrderAddress> }): Promise<OrderRow>;
+  /** payment: the order's main payment (rule 8); timeline: that payment's entries. */
   getOrder(id: string): Promise<{ order: OrderRow; payment: PaymentRow | null;
                                   timeline: TimelineEntry[] } | null>;
 
@@ -137,6 +138,12 @@ export type Store = {
 6. **`recordDeliveryFailure`** increments `delivery_attempts`, stores the error, appends
    a `delivery_failed` entry; the status stays `settled`.
 7. Amounts go in and come out as `bigint`; never through `Number`.
+8. **The order's main payment.** Strict addresses mean Relay fills an order at most once,
+   but a second deposit still arrives as its own report (usually refunded), so an order
+   can have more than one payment row. `getOrder` returns the `settled`/`credited` one if
+   it exists (the paid-once index allows at most one), otherwise the most recently
+   created. Its status feeds `orderStatusFor`. Other rows stay in the database and
+   their own timelines for the merchant to follow up.
 
 ---
 
@@ -175,6 +182,9 @@ drops it afterwards.
 13. The same request ID on two orders in one mode → unique violation; in test and live →
     allowed.
 14. A root fill and a child fill (different `fill.id`) for one order → two payment rows.
+15. Root `credited`, then a child recorded and moved to `needs_attention`: `getOrder`
+    returns the root as the payment and the order reads `paid`. With no paid row, the
+    newest payment is returned.
 
 ---
 

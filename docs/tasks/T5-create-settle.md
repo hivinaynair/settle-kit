@@ -158,7 +158,7 @@ segments.
 | Route | Does |
 |---|---|
 | `GET /routes` | The configured `RouteView[]` (id, labels) |
-| `GET /orders/:id` | `OrderView`: status (via `orderStatusFor`), amount, payAmount, route, address, expiresAt, display, test, payment (with its attention reason, read from the latest timeline entry's `evidence.reason`; no extra column), timeline. Not the router request ID: that stays inside the server and store |
+| `GET /orders/:id` | `OrderView`: status (via `orderStatusFor`), amount, payAmount, route, address, expiresAt, display, test, payment (the order's main payment from `store.getOrder`, T3 rule 8, with its attention reason, read from the latest timeline entry's `evidence.reason`; no extra column), timeline. Not the router request ID: that stays inside the server and store |
 | `POST /orders/:id/route { route: RouteId }` | Issues the strict address via `store.setOrderRoute` + `router.orderAddress({ route, recipient: treasury, refundTo: refundAddress, amount })`, which stores the returned `address`, `payAmount` and `requestId` together, then `start(payOrder, [id])`; returns the `OrderView` |
 | `POST /orders/:id/simulate { scenario }` | Test mode only (404 in live): records the scenario for the simulated router |
 
@@ -381,7 +381,7 @@ from T3.
     never for an absolute URL.
 14. Simulated `paid` scenario, end to end in the demo (local dev): one verified webhook
     and `GET /orders/:id` reads `paid` with a timeline. `paid_twice`: still one webhook;
-    the second payment shows `needs_attention`.
+    the order reads `paid`; the second payment is `needs_attention` in the database.
 
 ---
 
