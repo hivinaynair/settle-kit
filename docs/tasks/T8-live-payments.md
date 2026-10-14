@@ -53,10 +53,10 @@ Run each, in order; stop at the first failure and fix before going on.
 
 | # | Payment | Expected |
 |---|---|---|
-| 1 | Market report, Base USDC, by script (stands in for "scan QR in any wallet") | `paid`, `onPaid` once, thank-you unlocked |
+| 1 | Market report, Base USDC, by script (stands in for "scan QR in any wallet") | `paid`, one verified webhook, thank-you unlocked |
 | 2 | Sticker pack, Arbitrum USDC, by script | `paid` |
 | 3 | Market report, Base USDC, browser wallet via `<Checkout>` | `paid` |
-| 4 | Send 0.02 USDC less than `payAmount` on Base, by script | Relay refunds to `SETTLE_REFUND_ADDRESS`; order `needs_attention` (`refund_unverified`; record the refund tx by hand); no `onPaid` |
+| 4 | Send 0.02 USDC less than `payAmount` on Base, by script | Relay refunds to `SETTLE_REFUND_ADDRESS`; order `needs_attention` (`refund_unverified`; record the refund tx by hand); no webhook |
 | 5 | Send 0.02 USDC more than `payAmount` on Base | `paid` with exactly the order amount; excess refunded |
 
 For each, record in `docs/spikes.md` (S4): order id, Relay fill id, deposit tx, Base
@@ -71,13 +71,14 @@ config and note it; don't add new mechanisms in this task.
 ## 2. README (repo root)
 
 1. One-paragraph pitch + a GIF of a checkout going to "Paid".
-2. **Quickstart in test mode (5 minutes):** install, the four pieces from design §7
-   (config, route file, `instrumentation.ts`, `createOrder`, `<Checkout>`), the
-   migration, "click Simulate payment".
+2. **Quickstart in test mode (5 minutes):** install, the pieces from design §7
+   (env vars, `createSettle()`, route file, webhook route, `createOrder`, `<Checkout>`),
+   the migration, "click Simulate payment".
 3. **Going live:** Relay API key, Base RPC, treasury and refund wallets (both
-   app-controlled), what the payer pays in fees (S6 numbers), the `onPaid` dedupe rule.
+   app-controlled), what the payer pays in fees (S6 numbers), the webhook secret and the
+   dedupe-on-`event.id` rule; fulfilling on the webhook, never on `<Checkout onPaid>`.
 4. **How it works:** the payment-to-order diagram (one address per order → Relay →
-   verify on Base at `safe` → settle once → `onPaid` with retries), with links to the
+   verify on Base at `safe` → settle once → signed webhook with retries), with links to the
    design doc.
 5. **Live proof:** the S4 table with explorer links.
 6. Limits of 0.1 and what's next (link `docs/built-vs-designed.md`).

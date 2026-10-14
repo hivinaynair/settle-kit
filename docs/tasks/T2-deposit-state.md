@@ -113,7 +113,7 @@ export function orderStatusFor(payment: DepositStatus | null, expired: boolean):
 ## 4. Events
 
 ```ts
-/** The onSettled payload. Persisted once; a retry sends the same object. */
+/** The `order.paid` webhook body. Persisted once; a retry sends the same object. */
 export type SettledEvent = {
   id: string;           // `${payment.id}:settled`; the app dedupes on it
   kind: "order";        // "deposit" arrives with deposit mode later

@@ -1,51 +1,59 @@
-# T5 · `createSettle`: orders, the payment workflow, handlers, test mode
+# T5 · `createSettle`: orders, the payment workflow, signed webhook, test mode
 
 **Read first:** design doc §6 (processing, delivery), §6a (checkout), §7 (Public API),
 §10.1 (test mode). **Depends on:** T1–T4.
 **Time box:** ~5 hours. **Branch:** `vinay/t5-create-settle`.
-**Done when:** in the demo app with `mode: "test"`, an order created with
-`settle.createOrder` goes pending → route picked → simulated payment → `onPaid` called
-once → order `paid`, driven only through the public API; acceptance tests pass.
+**Done when:** in the demo app with `SETTLE_MODE=test`, an order created with
+`settle.createOrder` goes pending → route picked → simulated payment → one signed
+`order.paid` webhook accepted by the demo's webhook route → order `paid`, driven only
+through the public API; acceptance tests pass.
 
 ---
 
 ## Goal
 
-Turn the pieces (router, states, store, verifier) into the four-piece developer API of
-design §7. After this task a merchant can configure Settle Kit, mount one route file,
-create orders with their own prices and get `onPaid`; only the UI (T6) is missing.
+Turn the pieces (router, states, store, verifier) into the developer API of design §7.
+After this task a merchant can set env vars, mount one route file, create orders with
+their own prices and receive a signed webhook when one is paid; only the UI (T6) is
+missing.
 
 ---
 
-## Step 0: spike S8, config inside workflow steps (30 min, do first)
+## The two decisions this task rests on
 
-Workflow steps run in their own function invocations. On a cold instance, the merchant's
-`lib/settle.ts` (router, store, `onPaid`) has never been imported there, so a step has no
-config. Workflow SDK's docs say host process setup belongs in `instrumentation.ts`
-(Next.js 16.3+, which runs `register()` before a cold instance handles requests;
-see `node_modules/workflow/docs/api-reference/workflow-api/register-lifecycle-hooks.mdx`).
+**1. The merchant's code runs behind a signed webhook, not an in-process callback.**
+When an order is paid, the workflow POSTs a signed `order.paid` event to a URL the
+merchant owns (Stripe, Coinbase Commerce and Daimo work the same way). The merchant's
+fulfilment code is an ordinary route handler: it can live in the same Next.js app or any
+other service, it can be tested with `curl`, and it never has to be loaded into our
+background job.
 
-**Plan A:** `createSettle` stores the instance on a `globalThis` symbol; steps read it
-with `settleRuntime()`, which throws `invalid_config` with a fix-it message if missing.
-The merchant adds:
+**2. All settings come from environment variables.**
+Workflow steps run on short-lived servers that start fresh, so they can't rely on the
+merchant's `lib/settle.ts` having been imported. Once the merchant's code is behind a URL,
+everything a step needs is plain data (database URL, Relay key, RPC URL, addresses,
+webhook URL and secret), and every Vercel server already has the environment variables.
+So each step rebuilds its settings from `process.env`. No `instrumentation.ts`, no
+global registry.
 
-```ts
-// instrumentation.ts
-export async function register() {
-  if (process.env.NEXT_RUNTIME === "nodejs") await import("./lib/settle");
-}
-```
+Trade-off: the SDK opens its own database connection from a URL instead of taking the
+merchant's `db` object, and the few tunables (poll interval, watch window) are constants
+in 0.1 rather than options.
 
-Prove it on a Vercel preview: a step that runs after a 2-minute `sleep` (new instance,
-as in S1) can read the config. Record the result as S8 in `docs/spikes.md`.
+---
 
-**Plan B (if A fails):** the merchant's own `workflows/settle.ts` imports `lib/settle`
-and re-declares the two workflow functions as thin wrappers. Uglier quickstart, same
-engine. Stop and tell Vinay before switching.
+## Step 0: spike S8, the background job on Vercel (30 min, do first)
 
-Also confirm in the same spike that `"use workflow"` code inside the
-`@settle-kit/server` workspace package is discovered (it should be: Workflow SDK
-compiles workflow code from dependencies that depend on `workflow`).
+On a Vercel preview, a test workflow inside `@settle-kit/server`:
+1. Is discovered and compiled (Workflow SDK compiles workflow code from dependencies that
+   list `workflow` in `dependencies` or `peerDependencies`; checked in
+   `@workflow/builders/dist/fast-discovery.js`).
+2. After a 2-minute `sleep` (forces a fresh server, as in S1), reads its settings from
+   env and POSTs a signed request to a route on the same preview, which verifies it.
+   Previews have Vercel Deployment Protection: the request needs
+   `x-vercel-protection-bypass: $VERCEL_AUTOMATION_BYPASS_SECRET` (see §5 "Webhook").
+
+Record the result as S8 in `docs/spikes.md`. If either part fails, stop and tell Vinay.
 
 ---
 
@@ -56,17 +64,19 @@ compiles workflow code from dependencies that depend on `workflow`).
 | `packages/core/src/routes.ts` | Route manifest: `RouteId`, `ROUTES` (chain, token, decimals, labels), `BASE_USDC` |
 | `packages/core/src/api.ts` | `OrderView`, `RouteView`, `ApiError` JSON shapes shared with the widget |
 | `packages/core/src/payment-uri.ts` | `paymentUri()`: EIP-681 string for the QR (design §10.4) |
-| `packages/server/src/settle.ts` | `createSettle(config)`, `SettleConfig`, config validation |
-| `packages/server/src/runtime.ts` | `globalThis` registry: `registerSettle`, `settleRuntime` |
+| `packages/server/src/config.ts` | `loadConfig(env)`: reads and validates the env vars below, cached per server |
+| `packages/server/src/settle.ts` | `createSettle(options?)`: `createOrder`, `getOrder`, `handlers` |
+| `packages/server/src/webhook.ts` | `signWebhook`, `verifyWebhook` (Standard Webhooks), `deliverWebhook` |
 | `packages/server/src/workflows/pay-order.ts` | `payOrder` workflow and its steps |
 | `packages/server/src/handlers.ts` | `GET`/`POST` route handlers |
 | `packages/server/src/simulate.ts` | `simulateRouter`, `simulatedVerifier`, scenarios |
 | `packages/server/src/*.test.ts` | Acceptance tests |
-| `apps/demo/lib/settle.ts`, `instrumentation.ts`, `app/api/settle/[...path]/route.ts` | Wiring in the demo |
+| `apps/demo/lib/settle.ts`, `app/api/settle/[...path]/route.ts`, `app/api/settle-webhook/route.ts` | Wiring in the demo |
 | delete `apps/demo/workflows/spike.ts`, `apps/demo/app/api/spike` | Spike code is replaced |
 
-Dependency: `workflow` as a peer dependency of `@settle-kit/server` (the host installs
-it; one copy).
+Dependencies: `workflow` and `drizzle-orm` as peers; `pg` (node-postgres) as a regular
+dependency. Neon works over `pg` with its pooled connection string; Neon's HTTP driver
+can't, because the store needs transactions (T3).
 
 ---
 
@@ -85,50 +95,59 @@ export type RouteId = keyof typeof ROUTES;
 Ethereum is added only after a live proof (design §1, route policy). Labels live here so
 the widget and server agree; the widget never sends a raw chain/token, only a `RouteId`.
 
-## 2. Config
+## 2. Settings (env vars)
+
+| Variable | Required | Meaning |
+|---|---|---|
+| `SETTLE_MODE` | no, default `test` | `test` (simulated payments) or `live` |
+| `DATABASE_URL` (or `SETTLE_DATABASE_URL` to use a different one) | yes | Postgres 15+; tables are prefixed `settle_kit_` |
+| `SETTLE_TREASURY` | yes | Every payment lands here |
+| `SETTLE_REFUND_ADDRESS` | yes | Relay refunds go here; must differ from the treasury |
+| `SETTLE_ROUTES` | no, default all | Comma-separated `RouteId`s offered to buyers |
+| `SETTLE_WEBHOOK_URL` | yes | Where `order.paid` is POSTed. A path (`/api/settle-webhook`) means this same app (§5) |
+| `SETTLE_WEBHOOK_SECRET` | yes | `whsec_` + 32 random bytes in base64 (`openssl rand -base64 32`) |
+| `RELAY_API_KEY` | live only | |
+| `BASE_RPC_URL` | live only | Receipt verification (T4) |
+
+`loadConfig(env)` validates once per server with Zod (a discriminated union on mode, so
+live-only variables are required only in live mode) and caches the result: the
+`relay()` router (live) or `simulateRouter` (test), the store over a `pg` pool, the Base
+client (live) or `simulatedVerifier` (test). Any problem throws
+`DepositError("invalid_config")` naming the **variable**, never its value.
+
+Constants in 0.1: order TTL 30 min (overridable per order), poll every 10 s, watch 24 h
+after expiry, webhook timeout 10 s.
+
+## 3. `createSettle`
 
 ```ts
-type CommonConfig = {
-  treasury: Address;                // every payment lands here
-  refundAddress: Address;           // Relay refunds go here
-  routes: readonly RouteId[];       // subset of ROUTES offered to buyers
-  store: Store;                     // drizzleStore(db)
-  onPaid: (event: SettledEvent) => Promise<void>;
-  account?: (request: Request) => Promise<string | null>;   // see "Access" below
-  orderTtl?: number;                // ms, default 30 min
-  pollEvery?: number;               // ms, default 10 s
-  watchAfterExpiry?: number;        // ms, default 24 h (see §5, "How long a run watches")
-};
+// lib/settle.ts (merchant)
+export const settle = createSettle({
+  account: async (request) => (await auth(request))?.userId ?? null,   // optional
+});
 
-/** Live-only dependencies are required only in live mode, so the test-mode quickstart
- *  needs no Relay key and no RPC URL. */
-export type SettleConfig =
-  | (CommonConfig & { mode: "live"; router: PaymentRouter; baseRpcUrl: string })
-  | (CommonConfig & { mode: "test" });   // simulated router and verifier (§6)
-```
-
-Validated with Zod once, in `createSettle`; any problem throws
-`DepositError("invalid_config")` naming the field (never echoing secrets).
-`treasury` and `refundAddress` must be valid, non-zero and different.
-
-## 3. `createSettle` returns
-
-```ts
+// returns
 {
   createOrder(input: { externalId: string; amount: bigint; accountId: string;
-                       display?: { title: string; image?: string } }): Promise<OrderView>;
+                       display?: { title: string; image?: string };
+                       expiresIn?: number }): Promise<OrderView>;
   getOrder(id: string): Promise<OrderView | null>;
   handlers: { GET(req: Request): Promise<Response>; POST(req: Request): Promise<Response> };
   mode: "live" | "test";
 }
 ```
 
+Only request-time hooks (`account`) are options; they run inside the merchant's own route,
+where this file is always loaded. `createSettle` calls `loadConfig(process.env)` lazily
+(first use), so a missing variable fails on the first request, not at build time.
+Tests pass `createSettle({ env: {...} })`.
+
 - `createOrder` → `store.createOrder` (idempotent on `accountId + externalId + test`,
   so a test and a live deployment sharing one database never return each other's
-  orders), with `test = (mode === "test")`, `expiresAt = now + orderTtl`. Rejects `amount <= 0n` as
-  `amount_too_low`. No other minimum is hard-coded: strict quotes have none (S9); if
-  Relay ever rejects a small amount, its `AMOUNT_TOO_LOW` maps to `amount_too_low`
-  when the buyer picks a route.
+  orders), with `test = (mode === "test")`, `expiresAt = now + (expiresIn ?? 30 min)`.
+  Rejects `amount <= 0n` as `amount_too_low`. No other minimum is hard-coded: strict
+  quotes have none (S9); if Relay ever rejects a small amount, its `AMOUNT_TOO_LOW` maps
+  to `amount_too_low` when the buyer picks a route.
 - Order IDs are random and unguessable (`ord_` + 128 random bits, base58).
 
 ## 4. Handlers
@@ -167,12 +186,15 @@ export async function payOrder(orderId: string) {
 
   for (;;) {
     const next = await checkOrder(orderId);          // step
-    if (next.deliver) await deliverOrderOrGiveUp(orderId);  // catches retry exhaustion
+    if (next.deliver) await deliverOrGiveUp(orderId);  // catches retry exhaustion
     if (next.done) return;
     await sleep(next.wait);
   }
 }
 ```
+
+Every step starts with `loadConfig(process.env)` (cached), so it works on a fresh server.
+Workflow arguments are just the order id.
 
 `checkOrder` (step) does one full pass over **every** fill, then returns
 `{ deliver: boolean; done: boolean; wait: number }`. It never returns halfway through the
@@ -181,7 +203,7 @@ list, so a second payment to the same address is always recorded and flagged.
 1. Load the order. No address, or `order.test !== (mode === "test")` → `done`
    (a live deployment never touches test orders, and the reverse).
 2. `router.fills(address)`. `router_unavailable` (outage or 429) → `wait` with backoff
-   (double `pollEvery`, max 60 s); never fail the run for it.
+   (double the poll interval, max 60 s); never fail the run for it.
 3. For each fill: `recordPayment`, then `nextStep(payment.status, fill.status)` (T2):
    - `move` → `store.transition` with evidence `{ routerStatus, fillId }`. A move to
      `needs_attention` also records `reason`: `refund_unverified` (router said
@@ -196,31 +218,73 @@ list, so a second payment to the same address is always recorded and flagged.
    exhausted its retries.
 5. `done` and `wait` follow "How long a run watches" below.
 
-**How long a run watches.** There are no webhooks or reconciliation in 0.1, so this run
-is the only thing watching the address; ending it early would leave a late payment
+**How long a run watches.** There are no Relay webhooks or reconciliation in 0.1, so this
+run is the only thing watching the address; ending it early would leave a late payment
 untracked (design §6a: late payments are still processed).
 
 | Order state | Poll every | Run ends |
 |---|---|---|
-| Before `expiresAt`, or any payment in progress | `pollEvery` | – |
-| Paid (`credited`) | `pollEvery` | at `expiresAt` + 10 min (catches an accidental second payment during checkout) |
-| Unpaid, past `expiresAt` | doubling from 1 min, capped at 1 h (~30 Relay calls a day) | at `expiresAt` + `watchAfterExpiry` (24 h) |
+| Before `expiresAt`, or any payment in progress | 10 s | – |
+| Paid (`credited`) | 10 s | at `expiresAt` + 10 min (catches an accidental second payment during checkout) |
+| Unpaid, past `expiresAt` | doubling from 1 min, capped at 1 h (~30 Relay calls a day) | at `expiresAt` + 24 h |
 
 A payment after the run ends is not tracked in 0.1; the README says so, and
 reconciliation (later) closes the gap. T8 checks whether Relay still accepts a payment
 to a strict address after its quote expires.
 
+### Webhook (`deliverOrder` step)
+
 `deliverOrder` (step, `maxRetries = 10`): load the payment; already `credited` → return.
-Call `onPaid(settlementEvent)` with a 10 s timeout. Success → `markCredited`. Failure →
-`recordDeliveryFailure`, then throw `RetryableError` with `retryAfter = 2^(attempt-1)`
-minutes (design §6, ~17 h total). `deliverOrderOrGiveUp` catches the final
-failure; the payment stays `settled` with `delivery_error`, visible on the timeline, and
-later passes don't retry it.
+POST the stored `settlementEvent` to `SETTLE_WEBHOOK_URL`, signed per
+[Standard Webhooks](https://www.standardwebhooks.com/) (used by Svix, Supabase and
+others, so any of their verifier libraries also works):
+
+```text
+content-type: application/json
+webhook-id: <event.id>                 same on every retry; the merchant dedupes on it
+webhook-timestamp: <unix seconds of this attempt>
+webhook-signature: v1,<base64 HMAC-SHA256(secret, "<id>.<timestamp>.<body>")>
+```
+
+- A 2xx within 10 s is the acknowledgement → `markCredited`. Anything else (non-2xx,
+  timeout, network error) → `recordDeliveryFailure` with the status code only (never the
+  response body or secret), then throw `RetryableError` with `retryAfter = 2^(attempt-1)`
+  minutes (design §6, ~17 h total). `deliverOrGiveUp` catches the final failure; the
+  payment stays `settled` with `delivery_error`, visible on the timeline, and later
+  passes don't retry it.
+- **A path means this same app.** `SETTLE_WEBHOOK_URL=/api/settle-webhook` resolves
+  against this deployment's own origin (`https://$VERCEL_URL` on Vercel, else
+  `http://localhost:$PORT`). Only for such
+  same-app URLs, and only when `VERCEL_AUTOMATION_BYPASS_SECRET` is set, the request
+  carries `x-vercel-protection-bypass`, so protected preview deployments can call
+  themselves. That secret is never sent to an absolute URL.
+- Test mode sends real webhooks too, with `test: true` in the event, so the merchant's
+  handler is exercised before going live (like Stripe test-mode webhooks).
+
+For the merchant, `@settle-kit/server` exports the verifier:
+
+```ts
+// app/api/settle-webhook/route.ts (merchant)
+import { verifyWebhook } from "@settle-kit/server";
+
+export async function POST(request: Request) {
+  const event = await verifyWebhook(request, process.env.SETTLE_WEBHOOK_SECRET!);
+  // throws on a bad signature or a timestamp more than 5 min old → respond 400
+  await fulfil(event.order.externalId, event.id);   // unique on event.id
+  return new Response(null, { status: 204 });
+}
+```
+
+`verifyWebhook` reads the raw body, checks the timestamp is within 5 minutes, compares
+signatures in constant time (`crypto.timingSafeEqual` or WebCrypto `verify`), and parses
+the body with Zod into a typed `SettledEvent`. Implemented with WebCrypto, no dependency
+(~40 lines).
 
 Every write is a CAS or unique insert (T3), so two runs, a retried step or a replayed
-workflow cannot settle or credit twice.
+workflow cannot settle or credit twice; a duplicate webhook carries the same
+`webhook-id`, which the merchant dedupes.
 
-## 6. Test mode (`mode: "test"`)
+## 6. Test mode (`SETTLE_MODE=test`)
 
 - `simulateRouter(store)` implements `PaymentRouter` without Relay:
   `orderAddress` returns a random address and `payAmount = amount + 25_000n` (a
@@ -243,54 +307,64 @@ workflow cannot settle or credit twice.
 
 ## 7. Demo wiring
 
-`apps/demo/lib/settle.ts` with `mode` from env (`SETTLE_MODE`, default `test`), env vars
-validated in `env.ts` (`DATABASE_URL`, `RELAY_API_KEY`, `BASE_RPC_URL`,
-`SETTLE_TREASURY`, `SETTLE_REFUND_ADDRESS`; Relay key optional in test mode). A
-throwaway page or `curl` script proves the done-when; the real UI is T6.
+- `apps/demo/.env.local` / Vercel env: the variables in §2 (`SETTLE_MODE=test`,
+  `SETTLE_WEBHOOK_URL=/api/settle-webhook`).
+- `lib/settle.ts`: `export const settle = createSettle()`.
+- `app/api/settle/[...path]/route.ts`: `export const { GET, POST } = settle.handlers`.
+- `app/api/settle-webhook/route.ts`: verifies and records the event (T6 adds the
+  purchases table; here it logs and returns 204).
+- A throwaway page or `curl` script proves the done-when; the real UI is T6.
 
 ---
 
 ## Acceptance tests
 
-Unit tests run the steps directly with `fakeRouter`/`simulateRouter`, a fake verifier
-and the real Postgres store from T3.
+Unit tests run the steps directly with `fakeRouter`/`simulateRouter`, a fake verifier,
+a local webhook receiver (`Bun.serve` on a random port) and the real Postgres store
+from T3.
 
-1. Config: missing treasury, zero address, treasury = refund address, unknown route id
-   → `invalid_config`; the Relay key never appears in the error.
+1. Settings: missing `SETTLE_TREASURY`, zero address, treasury = refund address,
+   unknown id in `SETTLE_ROUTES`, live mode without `RELAY_API_KEY` →
+   `invalid_config` naming the variable; no value (key, secret, URL) appears in the
+   error. Test mode loads without `RELAY_API_KEY` or `BASE_RPC_URL`.
 2. `createOrder` twice with the same `externalId` → same order; `amount: 0n` and
-   negative amounts rejected.
+   negative amounts rejected; same `externalId` in test and live → two orders.
 3. `POST …/route`: issues one address (router called once across two calls); different
    route → 409; expired → 410; unknown order → 404; wrong account (with `account`) → 404.
 4. `checkOrder` with fills scripted `[] → processing → filled` and a verifier saying
    `verified`: payment goes waiting → processing → settled; returns `deliver: true`.
 5. Verifier says `pending` → not done, nothing settled. `rejected` → `needs_attention`.
 6. Fill status `refunded` → payment `needs_attention` (reason `refund_unverified`),
-   never `refunded`; `onPaid` never called.
-7. `deliverOrder`: `onPaid` throws twice then succeeds → one `markCredited`, two
-   `delivery_failed` timeline entries, order `paid`. Run `deliverOrder` again →
-   `onPaid` not called.
-8. Two fills both verified for one order, in one pass → first settles, second
-   `needs_attention` (`order_paid`) in the same pass; `onPaid` called once.
-12. Watch window: unpaid order past expiry keeps polling with the doubling interval and
-    ends at `expiresAt + watchAfterExpiry`; a fill appearing 2 h after expiry is still
-    recorded and settled. Paid order ends at `expiresAt` + 10 min.
-13. Config: `mode: "test"` type-checks without `router` or `baseRpcUrl`;
-    `mode: "live"` without them is a type error.
-9. A test-mode order is ignored by a live-mode `checkOrder`, and vice versa.
-10. Simulated `paid` scenario, end to end in the demo (local dev): `onPaid` called once
+   never `refunded`; no webhook sent.
+7. Two fills both verified for one order, in one pass → first settles, second
+   `needs_attention` (`order_paid`) in the same pass; one webhook.
+8. A test-mode order is ignored by a live-mode `checkOrder`, and vice versa.
+9. `router_unavailable` from `fills` → `wait` with backoff, no state change.
+10. Watch window: unpaid order past expiry keeps polling with the doubling interval and
+    ends at `expiresAt` + 24 h; a fill appearing 2 h after expiry is still recorded and
+    settled. Paid order ends at `expiresAt` + 10 min.
+11. Webhook signing: `verifyWebhook(signWebhook(event))` round-trips; a changed body,
+    changed id, wrong secret, or timestamp 6 min old → rejected. Matches a Standard
+    Webhooks test vector (from their spec repo).
+12. `deliverOrder`: receiver answers 500, then times out, then 204 → one
+    `markCredited`, two `delivery_failed` timeline entries, order `paid`; all three
+    requests carry the same `webhook-id`. Run `deliverOrder` again → no request.
+13. Bypass header: sent for a path URL when `VERCEL_AUTOMATION_BYPASS_SECRET` is set;
+    never for an absolute URL.
+14. Simulated `paid` scenario, end to end in the demo (local dev): one verified webhook
     and `GET /orders/:id` reads `paid` with a timeline.
-11. `router_unavailable` from `fills` → `wait` with backoff, no state change.
 
 ---
 
 ## Out of scope
 
-UI (T6), wallet (T7), Relay webhooks, reconciliation cron, operator tools, deposit mode,
-changing a route after picking it.
+UI (T6), wallet (T7), Relay webhooks, reconciliation cron, operator tools (webhook
+replay), deposit mode, changing a route after picking it, more event types.
 
 ## Questions to answer in the PR description
 
-- How does a step on a fresh Vercel instance get the merchant's config?
-- What stops two runs for the same order from calling `onPaid` twice?
-- Why poll every 10 s when the key's observed `/requests` limit is 2/min, and what
-  happens on a 429?
+- Why a signed webhook instead of calling a merchant function directly?
+- How does a step on a fresh Vercel server get its settings?
+- What stops two runs for the same order from sending two different paid events, and
+  what does the merchant dedupe on?
+- What happens if the merchant's webhook route is down for an hour?

@@ -108,9 +108,11 @@ price lands in the merchant's (our) treasury, so a real T8 payment costs only th
   accountId: demoSessionId, display })` → redirect to `/checkout/[orderId]`.
   The price comes from `lib/products.ts` on the server, never from the form.
 - `/checkout/[orderId]`: `<SettleProvider endpoint="/api/settle"><Checkout … /></SettleProvider>`.
-- `onPaid` in `lib/settle.ts` inserts into `demo_purchases (event_id UNIQUE, order_id,
-  product_id)` in one statement (duplicate event → no-op): the merchant-side dedupe
-  pattern from design §7, shown for real.
+- `app/api/settle-webhook/route.ts` verifies the signed `order.paid` webhook and inserts
+  into `demo_purchases (event_id UNIQUE, order_id, product_id)` in one statement
+  (duplicate event → no-op): the merchant-side dedupe pattern from design §7, shown for
+  real.
+- `<Checkout onPaid>` only redirects to the thank-you page; it unlocks nothing.
 - `/thanks/[orderId]`: shows the "download" only if a `demo_purchases` row exists.
 - A `demoSessionId` cookie stands in for login (the demo has no accounts).
 - Footer: "Test mode: no real money" banner when `SETTLE_MODE=test`, and links to the

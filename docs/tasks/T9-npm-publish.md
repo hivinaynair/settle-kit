@@ -43,7 +43,7 @@ keep server code out of browser bundles, and work without our workspace setup.
   `@settle-kit/react` is not `sideEffects: false` if the style injection runs at import.
 - Dependencies: `workspace:*` becomes `0.1.0` on publish (`bun publish` rewrites it;
   check the packed `package.json`). `viem`, `react`, `workflow` and `drizzle-orm` are
-  **peer** dependencies (one copy in the host app); `zod` and `uqr` are regular.
+  **peer** dependencies (one copy in the host app); `zod`, `pg` and `uqr` are regular.
 - The demo switches from source to the built packages: turbo already runs `^build`
   before `dev`/`build`; drop the packages from `transpilePackages`; add `tsc --watch`
   dev scripts so edits still hot-reload.
@@ -68,9 +68,9 @@ keep server code out of browser bundles, and work without our workspace setup.
 2. `bunx publint` and `bunx @arethetypeswrong/cli --pack` on each tarball (run once; not
    added as dependencies). Fix every error.
 3. **Install test:** in the scratch directory, `bunx create-next-app@latest` a fresh
-   app; `bun add` the three tarballs plus `workflow`, `viem`, `drizzle-orm`, `pg`; follow
+   app; `bun add` the three tarballs plus `workflow`, `viem`, `drizzle-orm`; follow
    the README quickstart literally (test mode, Neon test branch); create an order,
-   simulate payment, see `onPaid` fire once and the order `paid`. Any step the README
+   simulate payment, see one verified webhook and the order `paid`. Any step the README
    doesn't mention is a README bug: fix it.
 4. Confirm workflow discovery compiled `payOrder` from `node_modules` (the generated
    `app/.well-known/workflow/v1/manifest.json` lists it).

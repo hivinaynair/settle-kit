@@ -58,7 +58,7 @@ settle_kit_deposits        -- one row per payment Relay saw at an order's addres
   id, order_id → orders, fill_id, status,
   deposit_tx, received_amount numeric,   -- verified on chain; equals the order amount
   dest_chain_id, dest_tx, dest_log_index,
-  settlement_event jsonb,  -- the immutable onSettled payload
+  settlement_event jsonb,  -- the immutable webhook payload
   delivery_attempts int default 0, delivery_error,
   created_at, updated_at
   UNIQUE (order_id, fill_id)                                   -- a payment is recorded once
