@@ -31,7 +31,8 @@ The first release is intentionally small:
 | Recovery | Reconciliation, callback replay and manual payer repayment |
 | Distribution | Installable packages and a working Next.js reference app |
 
-Base USDC → Base USDC and Arbitrum USDC → Base USDC are the initial route candidates.
+Base, Arbitrum and Ethereum USDC → Base USDC are the initial routes. Quoted fees (2026-10-14):
+Base ~$0.025, Arbitrum ~$0.035, Ethereum ~$0.08 per deposit, roughly flat, ETA ~2 s.
 Arbitrum USDT → Base USDC can be included if its fill and refund handling are proved
 without delaying release. The published manifest contains only routes that pass
 the release checks.
@@ -622,7 +623,7 @@ Implementation order:
    EIP-681 QR codes, theming, copy catalogue and accessibility pass (§10.4–10.5).
 4. Reconciliation and replay; Postgres concurrency/crash tests; old-address and
    missed-webhook checks.
-5. Mainnet Base USDC and Arbitrum USDC routes (USDT if proved) and refund handling;
+5. USDT routes if proved, and refund handling;
    installation, deployment and recovery docs; package consumption check; versioned
    release.
 
@@ -638,11 +639,11 @@ designed and ships after it.
 | 3 | All workflows: `processDeposit`, `deliverSettlement` with the full retry schedule, `reconcileDeposits` on Vercel Cron, `replayDelivery`; handlers; signed Relay webhook; test mode | Simulated deposits end to end, surviving restarts |
 | 4 | QR widget, demo credits app, real $2 Base USDC deposit, deployed | **Demo-ready** |
 | 5 | Wallet path, timeline page, `/states` gallery, chunked address, EIP-681 QR | Product depth |
-| 6 | README, 2-minute video, "built vs designed" table; Arbitrum → Base if S4 funds arrive there | Ready to share |
+| 6 | Live proofs for Arbitrum → Base and Ethereum → Base; README, 2-minute video, "built vs designed" table | Ready to share |
 
 **In the cut:** every Workflow SDK workflow above, webhook verification, account
 scoping, secrets kept out of errors, server-config payout addresses, test mode,
-timeline, wallet path, one live route (Base USDC → Base USDC).
+timeline, wallet path, three live USDC routes: Base, Arbitrum and Ethereum → Base.
 
 **After the cut:**
 
@@ -652,7 +653,7 @@ timeline, wallet path, one live route (Base USDC → Base USDC).
 | Refund evidence verification and the manual repayment procedure | Refunds and failures go to `needs_attention` |
 | Rate limits on `POST /address` and `/check` | Known gap |
 | Extended Postgres crash/concurrency tests | Core constraint, CAS and timeline tests |
-| Arbitrum and USDT routes, per-route mainnet proofs | One route proven live |
+| USDT and other chains | Three USDC routes proven live |
 | Build/pack/install check, npm release | Demo consumes workspace source |
 | `appearance` theming, copy catalogue, full accessibility audit | Default theme on CSS variables; focus, live region, keyboard basics |
 
