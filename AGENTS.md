@@ -6,13 +6,43 @@ wallet or exchange, credited as USDC on Base. Users send to a reusable deposit a
 
 ## Read first
 
-- Design: `docs/plans/2026-10-13-deposit-kit-design.md` (source of truth for scope,
-  states, API). Evidence: `docs/spikes.md`. Task specs: `docs/tasks/`.
+- Spec: being rebuilt through the process in `docs/spec/README.md`. The earlier
+  checkout-first plan (design doc, tasks T1–T9, handoffs) is in `docs/archive/`: input
+  for decisions, never instructions to build. Evidence: `docs/spikes.md`.
 - **Agents implement tasks; Vinay monitors and must be able to explain every line.**
   One task per branch/PR, small commits, and a plain-words "what and why" after each
   step (decisions, trade-offs, rejected options).
 - Docs are edited by more than one AI tool. Re-read a file right before editing it,
   make targeted edits, and don't commit others' uncommitted changes without asking.
+
+## Spec process
+
+Two artifacts drive the spec, written in this order. How to write them:
+`.agents/skills/decide/` and `.agents/skills/journeys/`. Overview: `docs/spec/README.md`.
+
+| Fact | Its one home |
+|---|---|
+| What we build, what we ruled out, open questions | `docs/decisions.md` (IDs `D7`, `X1`, `Q2`) |
+| Exactly how it behaves: steps, branches, EARS rules | `docs/journeys/settle-kit.yaml` (IDs `J2.S4`) |
+| Live evidence (fills, tx links, timings) | `docs/spikes.md` |
+
+- Other docs (design doc, task specs, PRs) link these IDs; they never restate them.
+- Decisions: record the owner's answer once with an ID and date; never re-ask a settled one.
+  To change one, add a new row that supersedes it. Ask one question at a time, with a
+  recommendation and the rejected options.
+- No guessing: a missing business, money or user-visible rule becomes an open question in
+  `docs/decisions.md`. Internal technical choices (names, layout, helpers) are the builder's.
+- Journeys: never hand-edit the generated `.md`; never renumber or reuse a step ID.
+- Journey steps list the decisions they rely on (`decisions: [D21]`); `check-journeys`
+  rejects unknown or superseded IDs, and `--complete` rejects steps citing open questions.
+- Tests: every test in `apps/` and `packages/` proves something traced. Most are journey
+  tests named after the step they prove (`it("J2.S4: …")`). A pure helper gets its own
+  tests only if it touches money or security, has many edge cases and needs no mocks; name
+  them after the money or security decision they enforce (`it("D21: …")`) and prefer one
+  table-driven test over many. Anything else is not tested directly. `check-journeys`
+  enforces the naming once a journey spine exists. PRs list the step IDs they serve.
+- Writing: lead with the point, plain words, explain a term on first use, keep fact,
+  decision and assumption apart, no `TBD`.
 
 ## Constraints
 
@@ -51,7 +81,7 @@ on Tailwind or `@repo/ui`; it themes through CSS variables.
 ## Before merging
 
 ```sh
-bun run format-and-lint && bun run check-types && bun run check-tokens && bun test
+bun run format-and-lint && bun run check-types && bun run check-tokens && bun run check-journeys && bun test
 ```
 
 <!-- BEGIN:turborepo-agent-rules -->

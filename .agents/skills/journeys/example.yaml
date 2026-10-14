@@ -1,0 +1,96 @@
+# Example spine: format reference only, not the Settle Kit spec. Small on purpose:
+# one buyer journey with a human step, an external step, script steps and three exits.
+product: settle-kit-example
+source: docs/plans/example-design.md
+
+actors:
+  - id: buyer
+    name: Buyer
+    type: person
+  - id: relay
+    name: Relay
+    type: external
+
+surfaces:
+  - id: checkout
+    kind: component
+    states: [pay, processing, paid, needs_attention]
+
+journeys:
+  - id: J1
+    title: Pay an order by QR
+    actor: buyer
+    goal: Pay the exact amount from any wallet or exchange and see Paid
+    proves: A payment counts only after the Base transfer is verified
+    exits:
+      - id: paid
+        title: Order paid; merchant notified once
+      - id: attention
+        title: Payment held for an operator
+    steps:
+      - id: J1.S1
+        title: Sees what to send
+        bucket: script
+        surface: checkout
+        state: pay
+        sees: QR, address in groups, "Send exactly 1.025 USDC on Base"
+        does: Shows the order's stored address and payAmount
+        next: J1.S2
+        criteria:
+          - WHEN the buyer opens a routed order THE SYSTEM SHALL show the stored address and payAmount and SHALL NOT request a new quote
+      - id: J1.S2
+        title: Sends from a wallet or exchange
+        bucket: human
+        does: Scans the QR or withdraws from an exchange, outside our UI
+        next: J1.S3
+        criteria:
+          - WHILE no payment is seen THE SYSTEM SHALL keep the order pending and SHALL NOT start the attention timer
+      - id: J1.S3
+        title: Relay reports the fill
+        bucket: external
+        surface: checkout
+        state: processing
+        sees: Payment seen, moving to Base
+        does: Relay delivers USDC to the treasury on Base
+        next: J1.S4
+        criteria:
+          - WHEN Relay reports a fill THE SYSTEM SHALL record it once per fill ID
+      - id: J1.S4
+        title: Verifies on Base
+        bucket: script
+        does: Reads the receipt at the safe block
+        decisions: [D21, D22]
+        next:
+          - { to: J1.S5, when: exact amount to the order's treasury }
+          - { to: J1.S4b, when: anything else }
+        criteria:
+          - WHEN a fill is reported THE SYSTEM SHALL read the Base receipt at the safe block before settling
+          - IF the received amount differs from the order amount THE SYSTEM SHALL NOT settle the order
+      - id: J1.S4b
+        title: Held for an operator
+        bucket: script
+        surface: checkout
+        state: needs_attention
+        sees: '"We are checking this payment" and the order ID'
+        does: Moves the payment to needs_attention with a reason
+        exit: attention
+        criteria:
+          - WHEN verification rejects a fill THE SYSTEM SHALL move the payment to needs_attention and SHALL NOT send order.paid
+      - id: J1.S5
+        title: Paid
+        bucket: script
+        surface: checkout
+        state: paid
+        sees: Paid, with a Base explorer link
+        does: Settles once and sends one signed order.paid webhook
+        exit: paid
+        criteria:
+          - WHEN a fill is verified THE SYSTEM SHALL settle the order once and send order.paid with a stable event ID
+
+tasks:
+  - id: M1.T1
+    title: Verify and settle
+    serves: [J1.S3, J1.S4, J1.S4b, J1.S5]
+  - id: M1.T2
+    title: Show what to send and wait
+    serves: [J1.S1, J1.S2]
