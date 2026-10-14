@@ -1,8 +1,37 @@
 # Settle Kit: v1 checkout and deposit SDK
 
-Status: draft. V1 scope agreed; implementation and release checks pending.
-Updated: 2026-10-14.
-Evidence: [integration spikes](../spikes.md).
+Status: T1 (router) built; the demo build is in progress. Updated: 2026-10-14.
+Evidence: [integration spikes](../spikes.md). Tasks: [docs/tasks](../tasks/README.md).
+
+## 0. Build scope (read this first)
+
+This doc describes the full v1. **What is being built now is the demo cut (§9): checkout
+mode, end to end, with real money.** Everything else here is designed and ships after.
+
+**Building now**
+
+| Piece | What it does |
+|---|---|
+| Checkout ("Buy report: 1.15 USDC") | One order, one price, one single-use Relay strict address (§6a) |
+| Pay by address / QR | Send exactly the shown amount from any wallet or exchange; the QR pre-fills token, network and amount (EIP-681) |
+| Pay from a browser wallet (EOA) | Connect via EIP-6963, switch network, check balance and gas, sign one USDC transfer of exactly `payAmount` to the order address; no second send for the same order |
+| Router | `orderAddress` + `fills` on Relay (T1, done) |
+| Payment workflow | Polls the order's address, verifies the USDC transfer on Base at `safe`, settles once, calls `onSettled` with retries |
+| Store | Orders, payments and a timeline in Postgres, with the exactly-once rules (§4) |
+| Test mode | "Simulate payment" runs the real workflow without money (§10.1) |
+| Routes | Base and Arbitrum USDC → Base USDC proven live; Ethereum in the manifest once proven |
+| Developer API | `createSettle` config, `settle.createOrder` with the merchant's own price, `settle.handlers`, `<Checkout>` (§7) |
+| npm `0.1.0` | `@settle-kit/core`, `@settle-kit/server`, `@settle-kit/react`, installable in any Next.js app |
+| Demo shop | Three products at different prices, built only on the published API |
+
+**Designed, built later:** deposit mode (top-ups) and estimates; Relay webhooks (§5) and
+the reconciliation cron (§6); operator tools (replay, resolve, admin page, reindex);
+refund-evidence verification; marketplace payouts; card onramps; npm packaging (§12).
+
+**How a payment is matched to its order:** each order has its own address, so a payment
+belongs to the order whose address it was sent to. The router lists payments per address
+(`fills`), the database records each payment once and lets one on-chain transfer settle
+only one order.
 
 ## 1. Scope
 
@@ -118,7 +147,7 @@ Server credentials and database access stay in the server package.
 | A scheduler calling `deposits.reconcile()` | Recovers missed webhooks and unfinished work |
 | A Relay API key with its webhook pointed at the host | Fill discovery and push events |
 | A Base RPC endpoint | Receipt verification at the `safe` block |
-| App-controlled treasury, refund and recovery addresses | Destination and the return path for refunds |
+| App-controlled treasury and refund addresses | Destination and the return path for refunds |
 
 Requiring Workflow SDK limits adoption to hosts that can run it. That is the price of
 durable execution without a separate queue; it is stated up front, not discovered.
@@ -223,7 +252,7 @@ timeout or page reload instead of offering a second send. It is never evidence o
 payment; fills still come only from Relay and are verified on chain.
 
 `route` is canonical JSON containing source and destination chain/token IDs, treasury,
-and refund/recovery addresses. EVM addresses are normalized to lowercase. A treasury
+and refund addresses. EVM addresses are normalized to lowercase. A treasury
 or refund configuration change creates a different address identity; existing
 addresses keep their original settings and remain reconciled.
 
@@ -294,18 +323,20 @@ apply the credit record and balance change in the same transaction.
 
 ## 5. Relay integration
 
-The internal adapter covers `sources`, `depositAddress`, `quote`, `fills`, `status` and
-`webhook`. A fake implements the same interface for workflow tests. There is no
-public adapter registry or router selection API.
+The internal router has two methods in 0.1: `orderAddress` and `fills` ("get an address
+for an order, then watch what arrives at it"); deposit mode adds `depositAddress`. A fake implements the same interface
+for workflow tests. There is no public adapter registry or router selection API.
 
 | Operation | Relay request |
 |---|---|
-| Sources | `GET /chains`, intersected with the tested source manifest |
-| Deposit address | `POST /quote/v2` with `useDepositAddress: true` and open `EXACT_INPUT` mode, quoted once at the route minimum; the address then accepts any amount |
+| Deposit address (later) | `POST /quote/v2` with `useDepositAddress: true` and open `EXACT_INPUT` mode, quoted once at a sample amount; the address then accepts any amount |
 | Order address | `POST /quote/v2` with `useDepositAddress: true`, `strict: true`, `tradeType: "EXACT_OUTPUT"`, `amount` = the order's USDC amount; returns the address and the exact amount to send |
-| Estimate | `POST /quote/v2` without a deposit address, reading output estimate and fees; display only |
-| Fill discovery | `GET /requests/v3?depositAddress=` with `x-api-key` |
-| Fill status | `GET /intents/status/v3?requestId=` |
+| Payments at an address | `GET /requests/v3?depositAddress=&limit=100` with `x-api-key`; each record carries its status |
+
+Deliberately not in the router: available routes come from our own route manifest (no
+`GET /chains`); v1 routes are USDC-only (no native ETH); per-payment status comes from
+`fills` (no separate status call, half the requests); a pre-send estimate (`quote`) is
+added back when deposit mode needs "You'll receive about X".
 
 `fills` follows every continuation page. The stored address, router and network
 determine ownership. Requests for sources outside the release manifest are rejected.
@@ -332,7 +363,7 @@ S2 and S6 returned deposit-address quotes for the proposed cross-chain and same-
 USDC routes. These were quote checks, not real deposits. Fees and estimated arrival
 times come from the current quote rather than fixed values in the SDK.
 
-### Webhook ingestion
+### Webhook ingestion (later)
 
 Relay's `request.status.updated` event carries the actual fill request ID and, for
 deposit-address requests, the deposit address and optional deposit transaction hash.
@@ -396,8 +427,7 @@ authorizes a credit or a declaration that funds are lost.
 
 `deliverSettlement` calls `onSettled` with the persisted event. Its identity is
 `${deposit.id}:settled` and its type is `deposit.settled`. The snapshot contains
-verified `amountOut` for credit. Quote estimates are display data from `POST /quote`,
-not required settlement fields. Replay preserves the payload and deposit ID.
+verified `amountOut` for credit. Estimates are display data, not settlement fields. Replay preserves the payload and deposit ID.
 
 The host's atomic unique credit makes a lost response after commit safe to retry.
 The SDK marks delivery complete and the deposit credited only after acknowledgment.
@@ -411,7 +441,7 @@ settled and appears in the operator list.
 `deposits.replayDelivery(depositId)` is an authenticated operator action. It restarts
 delivery of the same event and does not send funds.
 
-### Reconciliation
+### Reconciliation (later)
 
 A host scheduler starts a bounded reconciliation workflow, proposed every 15 minutes.
 It scans unscanned addresses first, then the oldest `last_reconciled_at`, including
@@ -431,10 +461,13 @@ does not depend on a user reopening the widget.
 
 `refundAddress` (sent to Relay as `refundTo`) is the app-controlled origin-chain
 address that receives Relay refunds.
-`recoveryAddress` is an app-controlled origin-chain EOA authorized to withdraw from
-Relay's depository when filling or refunding is unavailable; it does not receive
-automatic refunds. These addresses can be the same EOA for the supported EVM routes,
-subject to the host's choice and control on each origin chain.
+
+*Decision: no `recoveryAddress`.* Relay accepts an optional integrator EOA that can
+withdraw funds from its depository when it can neither fill nor auto-refund (an
+unsupported token, a failed refund, a long solver outage). V1 leaves it out to keep
+configuration to one refund address. Trade-off: in that rare case recovery goes through
+Relay (relay.link/withdraw or Relay support), and an exchange sender cannot sign the
+withdrawal itself. Adding it later is one optional config field.
 
 The SDK stores verified return evidence in `refund_evidence`: chain, token,
 recipient address, transaction and amount. The widget distinguishes return to the
@@ -535,73 +568,86 @@ the rate it used.
 on both paths (the sender may be an exchange, and refund addresses never come from
 the request).
 
-## 7. Public API
+## 7. Public API (0.1)
+
+Settle Kit never knows about products. A merchant creates an order with **their own
+price** on **their own server**; the money goes to **their own treasury**. Ten products or
+ten thousand: the integration is the same four pieces.
+
+**1. Configure once (server)**
 
 ```ts
-export const deposits = createDeposits({
-  mode: "live",                                   // "test" uses simulated deposits (§10.1)
-  relay: { apiKey: env.RELAY_API_KEY },
-  routes: ["base-usdc", "arbitrum-usdc", "ethereum-usdc"],  // subset of the tested manifest
-  baseRpcUrl: env.BASE_RPC_URL,
-  treasury: env.TREASURY,
-  refundAddress: env.REFUND_ADDRESS,              // sent to Relay as refundTo
-  recoveryAddress: env.RECOVERY_ADDRESS,
-  limits: { minUsd: 2, maxUsd: 10 },              // deposit mode only
-  store: drizzleStore(db),
-  account: (req) => getAccountId(req),
-  onSettled: async (event) => {                  // both modes; dedupe on event.id
-    if (event.kind === "order") await orders.fulfil(event.order.externalId);  // unlock the report
-    else await credits.add(event.deposit);
+// lib/settle.ts
+import { createSettle, drizzleStore, relay } from "@settle-kit/server";
+
+export const settle = createSettle({
+  router: relay({ apiKey: process.env.RELAY_API_KEY! }),
+  treasury: "0xMerchantWallet…",            // every payment lands here
+  refundAddress: "0xMerchantRefundWallet…",  // Relay refunds go here (payers may be exchanges)
+  routes: ["base-usdc", "arbitrum-usdc"],    // typed subset of the tested manifest
+  store: drizzleStore(db),                   // the merchant's Postgres
+  baseRpcUrl: process.env.BASE_RPC_URL!,
+  mode: "live",                              // "test": simulated payments, no Relay (§10.1)
+  onPaid: async (event) => {                 // at least once; dedupe on event.id
+    await fulfil(event.order.externalId, event.id);
   },
 });
-
-export const { GET, POST } = deposits.handlers;
 ```
 
-`orders.fulfil` and `credits.add` must record the event id uniquely and apply their
-effect in the same transaction. The values shown for `limits` are proposed defaults.
+**2. Mount the API (one route file)**
+
+```ts
+// app/api/settle/[...path]/route.ts
+export const { GET, POST } = settle.handlers;
+```
+
+**3. Create an order with the merchant's price (server only)**
+
+```ts
+const product = await db.products.find(productId);   // the merchant's catalog
+const order = await settle.createOrder({
+  externalId: cartId,               // the merchant's order id; idempotent
+  amount: product.priceUsdc,        // bigint base units, e.g. 24_990_000n = 24.99 USDC
+  accountId: session.userId,
+  display: { title: product.name, image: product.imageUrl },   // checkout screen only
+});
+```
+
+**4. Drop in the checkout (browser)**
 
 ```tsx
-<SettleProvider endpoint="/api/settle" wallets={injectedWallets()}>  // wallets optional; omit for QR only
-  <CheckoutButton orderId={order.id} onPaid={() => router.refresh()} />
-  <DepositButton onCredited={() => router.refresh()} />
+import { Checkout, SettleProvider } from "@settle-kit/react";
+
+<SettleProvider endpoint="/api/settle">
+  <Checkout orderId={order.id} onPaid={() => router.push("/thanks")} />
 </SettleProvider>
 ```
 
-`onPaid` and `onCredited` refresh the UI. Fulfilment and credit happen only in the
-server callback.
+`<Checkout>` lets the buyer choose a route, pay by address/QR or from a browser wallet
+(EIP-6963), and follow progress to "Paid". Headless: `useCheckout(orderId)` returns a
+typed state for custom UIs.
 
-| Endpoint | Purpose |
+**Rules**
+
+- `createOrder` is server-only: the browser can never choose its own price.
+- `externalId` is idempotent per account: a retry returns the same order.
+- `onPaid` is delivered at least once with a stable `event.id`; the merchant records the
+  id uniquely and fulfils in the same transaction.
+- `display` is shown on the checkout screen and never used for payment logic.
+- Treasury and refund addresses come only from config, never from a request.
+
+| Endpoint (mounted by `handlers`) | Purpose |
 |---|---|
-| `GET /sources` | Available routes from the tested manifest |
-| `POST /orders { externalId, amountUsd, route }` | Checkout (called by the host server, which sets the price): create or return an order with its strict address, exact amount and expiry |
-| `GET /orders/:id` | Checkout: order status for the widget |
-| `POST /address` | Deposit: get or create an account's route address; rate-limited per account (each new address costs a Relay quote) |
-| `POST /quote` | Current amount/fee estimate |
-| `GET /deposits?addressId=` | Account-scoped deposit records |
-| `POST /attempts { addressId, attemptKey }` | Record a wallet send attempt before the wallet opens |
-| `POST /check { addressId, txHash? }` | Bounded, rate-limited address scan on reopen or when a wallet returns a hash |
-| `POST /webhooks/relay/:network` | Signed provider events |
+| `GET /routes` | Payable routes from the merchant's configured subset of the manifest |
+| `GET /orders/:id` | Order, its payment, status and timeline, for the widget (account-scoped) |
+| `POST /orders/:id/route { route }` | Buyer picks a route: issues the order's strict address and exact `payAmount` |
 
-User endpoints require `account(req)` and enforce stored account ownership. The
-webhook endpoint authenticates the provider signature instead of a user session.
-The client does not submit account ownership or transaction hashes as evidence; a
-wallet-returned hash only makes the scan happen sooner.
+Orders are created by the merchant's server through `settle.createOrder`, not through a
+public endpoint.
 
-Operators find stuck work with `deposits.list({ status: "needs_attention" })` and settled
-deposits with exhausted delivery, close cases with `deposits.resolve(id, { note })`
-and retry delivery with `deposits.replayDelivery(id)`. The demo shows these on an
-authenticated admin page.
-
-The host schedules `deposits.reconcile()`. Any HTTP wrapper must authenticate its
-scheduler credential. Replay tooling likewise requires operator authorization.
-The widget does not call Relay directly.
-
-The store ships a Drizzle schema and matching SQL migration. Its internal contract
-covers address ownership/reuse, fill insertion, conditional transitions with their
-timeline events, and bounded recovery queries.
-These operations are tested against real Postgres. A minimal fake is used only for
-workflow tests.
+**Later (designed above, not in 0.1):** deposit mode (`settle.depositAddress`, credits),
+Relay webhooks (`POST /webhooks/relay`), `settle.reconcile()` on a cron, operator tools
+(`list`, `resolve`, `replayDelivery`), WalletConnect.
 
 ## 8. Widget behavior
 
@@ -720,39 +766,37 @@ Implementation order:
    installation, deployment and recovery docs; package consumption check; versioned
    release.
 
-### Showcase cut (built first, ~6 days)
+### Demo cut (built first, 2 days)
 
-The first build is a working, deployed slice of v1. Everything else in this doc stays
-designed and ships after it.
+The first build proves the idea with real money and ships it as a package: **checkout
+mode, paid by QR or from a browser wallet, installable from npm**. Everything else in
+this doc stays designed and ships after. Task list: [docs/tasks](../tasks/README.md).
 
 | Day | Build | Visible result |
 |---|---|---|
-| 1 | T1 router, T2 state machine | Foundation |
-| 2 | T3 store, receipt verifier | Duplicate-proof crediting |
-| 3 | All workflows: `processDeposit`, `deliverSettlement` with the full retry schedule, `reconcileDeposits` on Vercel Cron, `replayDelivery`; handlers; signed Relay webhook; test mode | Simulated deposits end to end, surviving restarts |
-| 4 | Checkout mode (§6a): orders, strict addresses, exact-amount QR with countdown; demo "Buy report" page; real Base USDC payment, deployed | **Demo-ready** |
-| 5 | Wallet path (exact amount locked), deposit mode top-up page, timeline page, `/states` gallery, chunked address | Product depth |
-| 6 | Live proofs for Arbitrum → Base and Ethereum → Base; README, 2-minute video, "built vs designed" table | Ready to share |
+| 1 | T1 router (done); T2 payment states (hand-written); T3 store; T4 receipt verifier; T5 `createSettle`: `createOrder`, `payOrder` workflow, handlers, `onPaid`, test mode | A simulated payment completes end to end through the public API |
+| 2 | T6 `<Checkout>` + demo shop (3 products); T7 pay from a browser wallet; T8 real payments + README + 2-minute video; T9 publish `0.1.0` to npm | **A stranger can `npm install` it and take payments** |
 
-**In the cut:** every Workflow SDK workflow above, webhook verification, account
-scoping, secrets kept out of errors, server-config payout addresses, test mode,
-timeline, wallet path, checkout and deposit modes, three live USDC routes: Base,
-Arbitrum and Ethereum → Base. The demo leads with checkout: "Buy report".
+Risks to the 2 days: the live payments need the Base funds; npm publishing needs the
+`@settle-kit` org owner's login. If time runs short, cut in this order: Arbitrum live
+proof, timeline polish, wallet-path extras (keep the basic exact-amount transfer).
 
-**After the cut:**
+**In the cut:** the 0.1 developer API (§7), checkout mode, Relay strict addresses, QR and
+browser-wallet payment, one durable workflow, on-chain verification, exactly-once
+settlement, `onPaid` with retries, test mode, timeline, key and secret handling, live
+routes proven, a 3-product demo shop, npm `0.1.0`.
+
+**After the cut (designed, not built):**
 
 | Deferred | Meanwhile |
 |---|---|
-| Operator UI: admin page, `resolve`, `needs_attention` list, reindex | Visible in the database and on the timeline; `replayDelivery` is a server function |
-| Refund evidence verification and the manual repayment procedure | Refunds and failures go to `needs_attention` |
-| Rate limits on `POST /address` and `/check` | Known gap |
-| Extended Postgres crash/concurrency tests | Core constraint, CAS and timeline tests |
-| USDT and other chains | Three USDC routes proven live |
-| Build/pack/install check, npm release | Demo consumes workspace source |
-| `appearance` theming, copy catalogue, full accessibility audit | Default theme on CSS variables; focus, live region, keyboard basics |
-
-Reconciliation must stay within the Relay key's `/requests` budget (S7): batch size
-follows the observed limit until Relay confirms `/requests/v3` rates.
+| Deposit mode (top-ups) and estimates | Checkout only |
+| Relay webhooks and the reconciliation cron | The workflow polls the order address; one order at a time is well within rate limits |
+| WalletConnect / mobile wallets | Browser-extension wallets; mobile wallets scan the QR |
+| Operator tools: `replayDelivery`, `resolve`, admin page, reindex | Visible in the database and timeline |
+| Refund evidence verification and repayment procedure | Refunds and failures go to `needs_attention` |
+| Ethereum route proof, USDT | Base and Arbitrum proven |
+| Rate limits, extended crash tests, theming API | Known gaps |
 
 Optional routes that lack evidence are omitted from the release. The reference stack
 is Next.js, Workflow SDK's Vercel World and Postgres/Drizzle. The local workflow World
@@ -812,7 +856,7 @@ operators and audits.
 |---|---|
 | Address poisoning: a lookalike address planted in the payer's history | Address rendered in 4-character groups with the first and last groups emphasised; "Check the first and last 4 characters" hint; copy only from our UI |
 | Clipboard-hijacking malware | After copy, show "Copied: 0x1a2b…9f8e" to compare with what gets pasted; QR offered as the primary path |
-| Account takeover redirecting funds | Treasury, refund and recovery addresses come only from server config, never user input or the request |
+| Account takeover redirecting funds | Treasury and refund addresses come only from server config, never user input or the request |
 | Cross-account access | Every user endpoint checks the stored address's `account_id` against `account(req)` |
 | Webhook forgery or replay | HMAC signature, 300 s timestamp freshness, constant-time compare; the event only triggers a re-check of provider state |
 | Address-creation spam | Per-account rate limit on `POST /address` |
@@ -864,8 +908,8 @@ for deposit mode.
 
 ## 11. Open decisions
 
-- Treasury, refund and recovery wallets for the reference app; same or separate
-  refund/recovery EOAs, and who handles manual payer repayment.
+- Treasury and refund wallets for the reference app, and who handles manual payer
+  repayment.
 - Final source manifest after real fill and refund/recovery checks; whether USDT
   meets the release bar without delaying launch.
 - Suggested deposit limits: $2 minimum and $10 displayed maximum, checked against
@@ -884,7 +928,7 @@ above.
 
 This doc describes how the system works. Publishing it as an SDK also needs a public
 contract and a maintenance plan. These are release requirements for the first
-`npm publish`; the showcase needs only items 2 and 5 (quickstart).
+`npm publish`; the demo needs only items 2 and 5 (quickstart).
 
 | # | Requirement | Contents |
 |---|---|---|
@@ -892,12 +936,11 @@ contract and a maintenance plan. These are release requirements for the first
 | 2 | Versioning and stability | Start at `0.x`, marked experimental. Breaking changes: config, events, error codes, handler routes and the database schema. Changelog per release |
 | 3 | Database upgrades | Tables live in the host's Postgres. Ship numbered SQL migrations plus the Drizzle schema; never edit a published migration; each release lists the migrations it needs |
 | 4 | Packaging | Build step with type declarations; separate server and client entry points so server code never reaches the browser bundle; install-from-pack check in a separate Next.js app (§9) |
-| 5 | User docs | README with a 5-minute quickstart in test mode; concepts (checkout vs deposit, states, fees); "going live" checklist (treasury, refund and recovery addresses, Relay key and webhook, cron, Base RPC); troubleshooting (stuck in `waiting` → reindex; `needs_attention` cases) |
+| 5 | User docs | README with a 5-minute quickstart in test mode; concepts (checkout vs deposit, states, fees); "going live" checklist (treasury and refund addresses, Relay key and webhook, cron, Base RPC); troubleshooting (stuck in `waiting` → reindex; `needs_attention` cases) |
 | 6 | Project files | `SECURITY.md` (private reporting for anything that could lose or misroute funds), `CONTRIBUTING.md`, issue templates |
 | 7 | Responsibility statement | Settle Kit never holds funds or keys; the host is responsible for its own compliance; Relay screens sanctioned addresses (`address_blocked`) |
 | 8 | Route policy | Only routes with a recorded live proof ship in the manifest; how a new route is proved and added |
 | 9 | Framework scope | V1 requires Next.js with Workflow SDK; other frameworks are out of scope until the workflow layer has another host |
 
-Package names `@settle-kit/core`, `@settle-kit/react`, `@settle-kit/server` and
-`settle-kit` were unclaimed on npm on 2026-10-14; claim the `@settle-kit` organisation
-before publishing.
+The `@settle-kit` npm organisation was claimed on 2026-10-14, reserving
+`@settle-kit/core`, `@settle-kit/react` and `@settle-kit/server`. Nothing is published yet.
