@@ -129,12 +129,13 @@ export function relay(options: RelayOptions): PaymentRouter {
 
     // A second quote is a different address. This method does not remember the first;
     // the store (T3) does, and reuses it for the same account and route.
+    // Relay still needs a sample amount to issue the address. Callers never see it.
     async depositAddress(input) {
       const body = await send(
         "/quote/v2",
         quoteBody({
           route: input.route,
-          amount: input.amountIn,
+          amount: 10n ** BigInt(input.route.from.decimals),
           tradeType: "EXACT_INPUT",
           useDepositAddress: true,
           recipient: input.recipient,
@@ -150,7 +151,7 @@ export function relay(options: RelayOptions): PaymentRouter {
         "/quote/v2",
         quoteBody({
           route: input.route,
-          amount: input.amountOut,
+          amount: input.amount,
           tradeType: "EXACT_OUTPUT",
           useDepositAddress: true,
           strict: true,
@@ -159,12 +160,12 @@ export function relay(options: RelayOptions): PaymentRouter {
           recoveryAddress: input.recoveryAddress,
         }),
       );
-      const amountIn = readAmount(body, "currencyIn", "amount", raise);
-      const amountOut = readAmount(body, "currencyOut", "amount", raise);
-      if (amountOut !== input.amountOut) {
-        raise("quote_unavailable", "Quote output does not match the requested amount", body);
+      const payAmount = readAmount(body, "currencyIn", "amount", raise);
+      const quotedArrival = readAmount(body, "currencyOut", "amount", raise);
+      if (quotedArrival !== input.amount) {
+        raise("quote_unavailable", "Quoted arrival does not match the requested amount", body);
       }
-      return { address: readDepositAddress(body, raise), amountIn, amountOut };
+      return { address: readDepositAddress(body, raise), payAmount };
     },
 
     async quote(input): Promise<Quote> {
@@ -172,14 +173,14 @@ export function relay(options: RelayOptions): PaymentRouter {
         "/quote/v2",
         quoteBody({
           route: input.route,
-          amount: input.amountIn,
+          amount: input.payAmount,
           tradeType: "EXACT_INPUT",
         }),
       );
       return {
-        amountIn: readAmount(body, "currencyIn", "amount", raise),
-        amountOut: readAmount(body, "currencyOut", "amount", raise),
-        minimumOut: readAmount(body, "currencyOut", "minimumAmount", raise),
+        payAmount: readAmount(body, "currencyIn", "amount", raise),
+        receiveAmount: readAmount(body, "currencyOut", "amount", raise),
+        minimumReceiveAmount: readAmount(body, "currencyOut", "minimumAmount", raise),
         etaSeconds: readEta(body, raise),
       };
     },

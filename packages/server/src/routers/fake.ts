@@ -38,18 +38,18 @@ export function fakeRouter(script: FakeRouterScript): FakeRouter {
       return { address: script.address };
     },
 
-    // The fake has no fee schedule, so the payer's amount matches the requested output.
+    // No fee schedule: the quoted arrival matches the payment, and an order's pay amount matches the price.
     async orderAddress(input) {
       record("orderAddress", input);
-      return { address: script.address, amountIn: input.amountOut, amountOut: input.amountOut };
+      return { address: script.address, payAmount: input.amount };
     },
 
     async quote(input) {
       record("quote", input);
       return {
-        amountIn: input.amountIn,
-        amountOut: input.amountIn,
-        minimumOut: input.amountIn,
+        payAmount: input.payAmount,
+        receiveAmount: input.payAmount,
+        minimumReceiveAmount: input.payAmount,
         etaSeconds: 0,
       };
     },
