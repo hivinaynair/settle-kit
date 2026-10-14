@@ -898,6 +898,5 @@ contract and a maintenance plan. These are release requirements for the first
 | 8 | Route policy | Only routes with a recorded live proof ship in the manifest; how a new route is proved and added |
 | 9 | Framework scope | V1 requires Next.js with Workflow SDK; other frameworks are out of scope until the workflow layer has another host |
 
-Package names `@settle-kit/core`, `@settle-kit/react`, `@settle-kit/server` and
-`settle-kit` were unclaimed on npm on 2026-10-14; claim the `@settle-kit` organisation
-before publishing.
+The `@settle-kit` npm organisation was claimed on 2026-10-14, reserving
+`@settle-kit/core`, `@settle-kit/react` and `@settle-kit/server`. Nothing is published yet.
