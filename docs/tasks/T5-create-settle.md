@@ -139,7 +139,7 @@ segments.
 | Route | Does |
 |---|---|
 | `GET /routes` | The configured `RouteView[]` (id, labels) |
-| `GET /orders/:id` | `OrderView`: status (via `orderStatusFor`), amount, payAmount, route, address, expiresAt, display, test, payment (with its attention reason, if any), timeline |
+| `GET /orders/:id` | `OrderView`: status (via `orderStatusFor`), amount, payAmount, route, address, expiresAt, display, test, payment (with its attention reason, read from the latest timeline entry's `evidence.reason`; no extra column), timeline |
 | `POST /orders/:id/route { route: RouteId }` | Issues the strict address via `store.setOrderRoute` + `router.orderAddress({ route, recipient: treasury, refundTo: refundAddress, amount })`, then `start(payOrder, [id])`; returns the `OrderView` |
 | `POST /orders/:id/simulate { scenario }` | Test mode only (404 in live): records the scenario for the simulated router |
 
