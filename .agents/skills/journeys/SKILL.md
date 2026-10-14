@@ -14,7 +14,8 @@ Adapted from ViperNxt's journeys skill (MIT).
    Agree the list, actors and surfaces with the owner before writing steps.
 2. **Write the happy path** as steps. Tag each `script` (our code decides), `human` (a
    person acts) or `external` (Relay, Circle, a chain, an exchange, the merchant's server).
-   A step that shows something names its `surface` and `state`.
+   A step that shows something names its `surface` and `state`. List the decisions a step
+   relies on in `decisions:`; cite an open question (`Q2`) rather than guess.
 3. **Branch every step** with the [branch checklist](branch-checklist.md). Each answer is
    a labeled `next` edge to a new step, an exit, or a criterion saying what must not happen.
 4. **Criteria in EARS**, one behavior each: `WHEN <trigger> THE SYSTEM SHALL <behavior>`;
@@ -27,5 +28,4 @@ Adapted from ViperNxt's journeys skill (MIT).
 
 Rules: IDs are permanent. Never renumber or reuse; insert `J2.S3b` between `J2.S3` and
 `J2.S4`; retire a step by deleting it, never by reusing its ID. Never hand-edit the
-generated `.md`. A rule with no decision behind it becomes an open question, not a guess.
-A step needs no surface if nothing is shown; do not invent UI for a script step.
+generated `.md`. A step needs no surface if nothing is shown; do not invent UI for a script step.

@@ -33,6 +33,8 @@ Two artifacts drive the spec, written in this order. How to write them:
 - No guessing: a missing business, money or user-visible rule becomes an open question in
   `docs/decisions.md`. Internal technical choices (names, layout, helpers) are the builder's.
 - Journeys: never hand-edit the generated `.md`; never renumber or reuse a step ID.
+- Journey steps list the decisions they rely on (`decisions: [D21]`); `check-journeys`
+  rejects unknown or superseded IDs, and `--complete` rejects steps citing open questions.
 - Tests name the step they prove (`it("J2.S4: …")`); PRs list the step IDs they serve.
 - Writing: lead with the point, plain words, explain a term on first use, keep fact,
   decision and assumption apart, no `TBD`.

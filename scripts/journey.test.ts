@@ -4,6 +4,8 @@ import {
   checkJourneyCitations,
   citedStepIds,
   nextEdges,
+  openQuestionSteps,
+  parseDecisions,
   render,
   requiredStepIds,
   type Spine,
@@ -216,6 +218,52 @@ describe("citations", () => {
       missing: [],
     });
     expect(checkJourneyCitations({ ...base, complete: true }).missing).toEqual(["J1.S2"]);
+  });
+});
+
+describe("decisions", () => {
+  const md = [
+    "| ID | Decision | Why | Rejected | Date | Supersedes |",
+    "|---|---|---|---|---|---|",
+    "| D8 | Use Workflow SDK | x | | 2026-10-13 | |",
+    "| D31 | DB-driven tick | y | | 2026-10-14 | D8 |",
+    "| X1 | Card onramps | KYC |",
+    "| Q2 | Switch route? | Yes | J2.S2 | Vinay |",
+  ].join("\n");
+  const index = parseDecisions(md);
+
+  it("reads IDs and superseded rows from markdown tables", () => {
+    expect([...index.ids].sort()).toEqual(["D31", "D8", "Q2", "X1"]);
+    expect([...index.superseded]).toEqual(["D8"]);
+  });
+
+  it("rejects unknown, superseded and malformed citations", () => {
+    const step = (decisions: string[]) => ({
+      ...base,
+      journeys: [{ id: "J1", title: "x", steps: [{ id: "J1.S1", title: "a", decisions }] }],
+    });
+    expect(validateSpine(step(["D31", "X1", "Q2"]), index).errors).toEqual([]);
+    const { errors } = validateSpine(step(["D99", "D8", "decision-1"]), index);
+    expect(errors.some((e) => e.includes("D99 is not in docs/decisions.md"))).toBe(true);
+    expect(errors.some((e) => e.includes("D8 was superseded"))).toBe(true);
+    expect(errors.some((e) => e.includes("must look like"))).toBe(true);
+  });
+
+  it("lists steps that still rely on open questions", () => {
+    const spine: Spine = {
+      product: "t",
+      journeys: [
+        {
+          id: "J1",
+          title: "x",
+          steps: [
+            { id: "J1.S1", title: "a", decisions: ["D31"], next: "J1.S2" },
+            { id: "J1.S2", title: "b", decisions: ["Q2"] },
+          ],
+        },
+      ],
+    };
+    expect(openQuestionSteps(spine)).toEqual(["J1.S2 (Q2)"]);
   });
 });
 

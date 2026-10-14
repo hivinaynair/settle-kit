@@ -9,7 +9,9 @@
  * The .yaml spine is the source of truth for behavior. The .md beside it is generated:
  * never hand-edit it. `check` fails when a spine is invalid, has warnings, its .md is stale,
  * or a test cites a step ID that is not on any spine. `--complete` also requires every
- * step served by a task to be cited by at least one test (release gate).
+ * step served by a task to be cited by at least one test, and no step to cite an open
+ * question (release gate). Steps may cite decisions (`decisions: [D21]`); IDs are read from
+ * docs/decisions.md and must exist and not be superseded.
  *
  * Adapted from ViperNxt (github.com/hivinaynair/vipernxt, scripts/journey.ts, MIT):
  * buckets are script | human | external, "screens" are "surfaces" (a component, hook,
@@ -35,6 +37,8 @@ type Step = {
   next?: NextRaw | NextRaw[];
   uses?: string;
   exit?: string;
+  /** Decision IDs from docs/decisions.md this step relies on: D (decided), X (out of scope), Q (open). */
+  decisions?: string[];
   criteria?: string[];
 };
 type Journey = {
@@ -59,6 +63,37 @@ export type Spine = {
 };
 
 const STEP_ID = /^J\d+\.S\d+[a-z]?$/;
+const DECISION_ID = /^[DXQ]\d+$/;
+
+/** IDs found in docs/decisions.md, and the D IDs a later row superseded. */
+export type DecisionIndex = { ids: Set<string>; superseded: Set<string> };
+
+/** Reads table rows that start with an ID (`| D7 | … | Supersedes |`). */
+export function parseDecisions(markdown: string): DecisionIndex {
+  const ids = new Set<string>();
+  const superseded = new Set<string>();
+  for (const line of markdown.split("\n")) {
+    const cells = line
+      .trim()
+      .split("|")
+      .slice(1, -1)
+      .map((c) => c.trim());
+    const id = cells[0];
+    if (!id || !DECISION_ID.test(id)) continue;
+    ids.add(id);
+    if (id.startsWith("D") && cells.length >= 6)
+      for (const ref of cells[cells.length - 1].split(/[,\s]+/))
+        if (/^D\d+$/.test(ref)) superseded.add(ref);
+  }
+  return { ids, superseded };
+}
+
+/** Steps that cite an open question (Q…). Allowed while drafting; they block --complete. */
+export function openQuestionSteps(spine: Spine): string[] {
+  return allSteps(spine)
+    .filter((s) => s.decisions?.some((d) => d.startsWith("Q")))
+    .map((s) => `${s.id} (${s.decisions?.filter((d) => d.startsWith("Q")).join(", ")})`);
+}
 const TASK_ID = /^M\d+\.T\d+[a-z]?$/;
 /** EARS: optional trigger clause, then THE SYSTEM SHALL (or SHALL NOT). */
 const EARS = /^((WHEN|IF|WHILE|WHERE)\b.+?\bTHE SYSTEM SHALL\b|THE SYSTEM SHALL\b)/;
@@ -81,7 +116,10 @@ export function nexts(s: Step): string[] {
   return nextEdges(s).map((e) => e.to);
 }
 
-export function validateSpine(spine: Spine): { errors: string[]; warnings: string[] } {
+export function validateSpine(
+  spine: Spine,
+  decisions?: DecisionIndex,
+): { errors: string[]; warnings: string[] } {
   const errors: string[] = [];
   const warnings: string[] = [];
   const err = (m: string) => errors.push(m);
@@ -172,6 +210,14 @@ export function validateSpine(spine: Spine): { errors: string[]; warnings: strin
         if (edges.length) err(`${s.id}: exit and next cannot both be set`);
         if (!j.exits?.length) err(`${s.id}: names exit "${s.exit}" but ${j.id} has no exits:`);
         else if (!exitIds.has(s.exit)) err(`${s.id}: unknown exit "${s.exit}"`);
+      }
+
+      for (const d of s.decisions ?? []) {
+        if (!DECISION_ID.test(d)) err(`${s.id}: decision "${d}" must look like D7, X1 or Q2`);
+        else if (decisions && !decisions.ids.has(d))
+          err(`${s.id}: decision ${d} is not in docs/decisions.md`);
+        else if (decisions?.superseded.has(d))
+          err(`${s.id}: decision ${d} was superseded; cite the decision that replaced it`);
       }
 
       for (const c of s.criteria ?? [])
@@ -428,7 +474,12 @@ if (import.meta.main) {
     process.exit(0);
   }
 
+  const decisionsFile = Bun.file("docs/decisions.md");
+  const decisions = (await decisionsFile.exists())
+    ? parseDecisions(await decisionsFile.text())
+    : undefined;
   let failed = false;
+  const blocked: string[] = [];
   const known = new Set<string>();
   let required: string[] = [];
   for (const path of paths) {
@@ -439,7 +490,7 @@ if (import.meta.main) {
       console.error((e as Error).message);
       process.exit(1);
     }
-    const { errors, warnings } = validateSpine(spine);
+    const { errors, warnings } = validateSpine(spine, decisions);
     for (const w of warnings) console.error(`${cmd === "check" ? "ERROR" : "warn "} ${path}: ${w}`);
     for (const e of errors) console.error(`ERROR ${path}: ${e}`);
     if (errors.length || (cmd === "check" && warnings.length)) {
@@ -458,6 +509,7 @@ if (import.meta.main) {
       }
       for (const id of allStepIds(spine)) known.add(id);
       required = required.concat(requiredStepIds(spine));
+      blocked.push(...openQuestionSteps(spine));
     } else {
       console.error(`ok: ${path} is valid (${warnings.length} warning(s)).`);
     }
@@ -475,6 +527,11 @@ if (import.meta.main) {
     if (unknown.length) {
       console.error("ERROR tests cite step IDs that are not on any spine:");
       for (const id of unknown) console.error(`  ${id}`);
+      process.exit(1);
+    }
+    if (rest.includes("--complete") && blocked.length) {
+      console.error("ERROR steps still rely on open questions in docs/decisions.md:");
+      for (const b of blocked) console.error(`  ${b}`);
       process.exit(1);
     }
     if (missing.length) {

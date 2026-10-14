@@ -59,6 +59,7 @@ journeys:
         title: Verifies on Base
         bucket: script
         does: Reads the receipt at the safe block
+        decisions: [D21, D22]
         next:
           - { to: J1.S5, when: exact amount to the order's treasury }
           - { to: J1.S4b, when: anything else }

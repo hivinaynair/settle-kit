@@ -39,6 +39,7 @@ journeys:
         next: J2.S2      # or [{ to: J2.S3, when: verified }, { to: J2.S3b, when: rejected }]
         # exit: paid     # instead of next, on a terminal step
         # uses: J9       # this step is the whole reusable journey J9
+        decisions: [D21, D22]  # IDs from docs/decisions.md this step relies on (D, X or Q)
         criteria:
           - WHEN <trigger> THE SYSTEM SHALL <behavior>
 
@@ -58,6 +59,10 @@ without an exit when exits are declared; unreachable steps; a journey with no te
 Warnings (fail `check`, advice in `validate`): a journey without actor, goal or exits; a
 step without bucket or criteria; a criterion that is not EARS; an unused surface or exit;
 a task serving nothing; `uses` of a journey not marked reusable.
+
+Decisions: a step's `decisions` must exist in `docs/decisions.md` (read from table rows that
+start with an ID) and must not be superseded. Citing an open question (`Q2`) is allowed
+while drafting; `check --complete` fails until it is answered.
 
 Citations: tests in `apps/` and `packages/` name the step they prove, e.g.
 `it("J2.S3: settles once")`. `check` fails on a cited ID that is not on the spine;
