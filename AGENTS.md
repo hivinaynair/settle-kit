@@ -1,8 +1,9 @@
 # settle-kit
 
-Bun-only Turborepo for **Settle Kit**: a self-hosted SDK for crypto deposits from any
-wallet or exchange, credited as USDC on Base. Users send to a reusable deposit address
-(QR or browser wallet); Relay routes it; the host's account is credited once.
+Bun-only Turborepo for **Settle Kit**: a self-hosted SDK for crypto checkout and deposits
+from any wallet or exchange, settled as USDC on Base. Payers send to an address (QR or
+browser wallet); Relay or our own contracts plus CCTP route it; the host is credited once.
+What we build and why: `docs/decisions.md`.
 
 ## Read first
 

@@ -1,7 +1,7 @@
 # Decisions
 
-Status: DRAFT, waiting for Vinay to confirm. Rows are proposed from the planning
-conversation of 2026-10-14 and the archived plan; nothing is settled until confirmed.
+Status: settled with Vinay on 2026-10-14 (step 1 done). Q10 and Q11 remain open; neither
+blocks the journeys.
 
 Settled choices for Settle Kit. One row per decision; never edit a row's meaning.
 To change one, add a new row with `Supersedes`. Open questions live at the bottom.
@@ -46,6 +46,7 @@ steps cite these IDs; `bun run check-journeys` fails on an unknown or superseded
 | D26 | Treasury and refund addresses come from server config only. An order's or address's recipient is stored when it is created, and verification checks against the stored value, not current settings | A changed setting must not redirect or reject money already in flight | Client-supplied addresses; checking current config | 2026-10-14 | |
 | D27 | Settle Kit never holds keys that move user funds and never repays payers itself. Relay refunds go to the host's configured refund address; the host repays through its own support process | Exchange senders can't receive a refund at the sending address; automatic transfers to unverified destinations lose money | Refund to the sender automatically | 2026-10-13 | |
 | D28 | Limits: checkout price at least 0.50 USDC. Deposit minimum per route: 2 USDC on Base and Arbitrum, 25 USDC on Ethereum. Below the minimum on own rails, the deposit waits at the address and is swept and credited once the address's balance reaches it; on Relay, Relay's own minimum applies and a refund becomes `needs_attention` (D17). No displayed maximum by default; a host may set one, shown as guidance only. No cap on the amount a sweep moves (the cap on its gas refund, D39, stays) | S9: Relay's fee is ~flat (0.025–0.034 USDC); Ethereum sweep gas ($0.50–5) is paid by the buyer (D39); a transfer's size can't be enforced; a per-sweep cap is bypassed by calling repeatedly | One minimum for every chain; refunding small deposits (costs more gas than they're worth); a 1,000 USDC per-sweep contract cap | 2026-10-14 | |
+| D29 | An own-rails checkout adds up every USDC arrival at the order's address. The order is paid when the total reaches the price; anything above is recorded as surplus (as D25). A short total waits and the widget asks for the rest at the same address ("Received 24.00 of 25.00 USDC. Send 1.00 more"); at 15 minutes it becomes `needs_attention: underpaid` (D17), and a later top-up still completes it | Own rails have no strict address, and exchanges often deduct their withdrawal fee from the amount; the address belongs to one order, so every arrival there is for that order | Exact amount only; judging each transfer on its own; refusing short payments in the contract | 2026-10-14 | |
 
 ## Architecture (D30–D39)
 
@@ -103,4 +104,3 @@ steps cite these IDs; `bun run check-journeys` fails on an unknown or superseded
 |---|---|---|---|---|
 | Q10 | Does Relay's 2 req/min `/requests` limit apply to `/requests/v3`, and can we get a testnet key? (S7) | Design for webhooks first and treat polling as the fallback whatever the answer | Discovery reconciliation budget | Relay support |
 | Q11 | Does Relay support deposit addresses on Tron for USDT? | Check Relay's `/chains` list and quote one Tron USDT → Base USDC deposit address; add the route only if a live payment succeeds | The Tron route in D11 | Vinay (one script run) |
-| Q13 | On the own-rails lane there is no strict address: a payer can send any amount, or several transfers. When is an own-rails checkout order paid? | Add up every USDC arrival at the order's address; the order is paid when the total reaches the price, and anything above it is recorded as surplus (as D25). A short total waits, so the buyer can send the rest to the same address; at 15 minutes it becomes `needs_attention: underpaid` (D17) | Own-rails checkout journeys, verification | Vinay |
