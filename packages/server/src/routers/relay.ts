@@ -252,19 +252,21 @@ function toFill(record: unknown): Fill | null {
 }
 
 function readFill(request: z.infer<typeof RelayRequest>): Fill {
-  const outgoing = request.data?.outTxs?.[0];
-  return {
-    id: request.id,
-    // An unrecognised status becomes "unknown" (→ needs_attention), never an error that
-    // would look like an outage and block the other payments at the address.
-    status: FILL_STATUS[request.status] ?? "unknown",
-    depositTx: request.depositAddress?.depositTxHash ?? request.data?.inTxs?.[0]?.txHash ?? null,
-    destination:
-      request.status === "success" && outgoing?.chainId !== undefined && outgoing.txHash
-        ? { chainId: outgoing.chainId, txHash: outgoing.txHash }
-        : null,
-    updatedAt: request.updatedAt,
-  };
+  // Unknown words become "unknown" (→ needs_attention), never an error that looks like an outage.
+  const status = FILL_STATUS[request.status] ?? "unknown";
+
+  // The payer's transfer into the address.
+  const depositTx =
+    request.depositAddress?.depositTxHash ?? request.data?.inTxs?.[0]?.txHash ?? null;
+
+  // Relay's delivery to the treasury: only once filled. A lead, not proof; T4 verifies it on Base.
+  const delivery = request.data?.outTxs?.[0];
+  const destination =
+    status === "filled" && delivery?.chainId !== undefined && delivery.txHash
+      ? { chainId: delivery.chainId, txHash: delivery.txHash }
+      : null;
+
+  return { id: request.id, status, depositTx, destination, updatedAt: request.updatedAt };
 }
 
 function parseBody(text: string): unknown {
