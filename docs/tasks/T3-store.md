@@ -2,7 +2,7 @@
 
 **Read first:** design doc §4 (Storage and state, Concurrency), §7 (store paragraph),
 §10.2 (timeline table). **Depends on:** T1, T2.
-**You write:** all code. **Time box:** ~4 hours. **Branch:** `vinay/t3-store`.
+**You write:** all code. **Time box:** ~5 hours. **Branch:** `vinay/t3-store`.
 **Done when:** the acceptance tests pass against a real Postgres 15+ database and
 lint/types are clean.
 
@@ -48,7 +48,7 @@ settle_kit_deposit_addresses
   UNIQUE (account_id, router, network, route)
 
 settle_kit_deposits
-  id, address_id, router, network, fill_id, deposit_tx, status, amount_in numeric,
+  id, address_id (nullable), ★ order_id (nullable), router, network, fill_id, deposit_tx, status, amount_in numeric,
   amount_out numeric, dest_chain_id, dest_tx, dest_log_index, refund_evidence jsonb,
   run_id, delivery_run_id, settlement_event jsonb, delivery_attempts int default 0,
   delivery_next_attempt_at, delivery_error, error_code, created_at, updated_at
@@ -63,7 +63,16 @@ settle_kit_deposit_events
 settle_kit_send_attempts
   id, address_id, attempt_key, tx_hash, created_at
   UNIQUE (attempt_key)
+
+★ settle_kit_orders                      (design §6a)
+  id, account_id, external_id, amount_out numeric, price jsonb, route jsonb,
+  address, amount_in numeric, status, expires_at, created_at, updated_at
+  UNIQUE (account_id, external_id)
+  UNIQUE (address)
 ```
+
+A deposit row has exactly one of `address_id` (deposit mode) or `order_id` (checkout);
+enforce it with a `CHECK`.
 
 ★ `last_activity_at` is set when an address is created or reused and when a fill is
 inserted; reconciliation tiers use it (design §6). ★ The transition table from T2 is
@@ -113,6 +122,17 @@ export type DepositStore = {
   markAddressScanned(id: string, at: Date): Promise<void>;
 
   recordSendAttempt(input: { addressId: string; attemptKey: string }): Promise<{ inserted: boolean }>;
+
+  createOrder(input: {
+    accountId: string; externalId: string; amountOut: bigint; price: unknown; expiresAt: Date;
+    route: CanonicalRoute; create: () => Promise<{ address: Address; amountIn: bigint }>;
+  }): Promise<OrderRow>;
+  getOrder(id: string): Promise<OrderRow | null>;
+  findOrderByAddress(address: Address): Promise<OrderRow | null>;
+  insertOrderFillIfNew(input: { orderId: string; fillId: string; depositTx: Hex | null }):
+    Promise<{ inserted: boolean; deposit: DepositRow }>;
+  setOrderStatus(id: string, status: OrderStatus): Promise<void>;
+  listOrdersDue(q: { now: Date; graceMs: number; limit: number }): Promise<OrderRow[]>;
 };
 ```
 
@@ -145,6 +165,11 @@ export type DepositStore = {
    `last_activity_at` is within 30 days and `last_reconciled_at` is over 15 minutes old;
    then older ones not scanned for a day. Bounded by `limit`.
 9. Amounts are written from `bigint` and read back as `bigint`; never via `Number`.
+10. **`createOrder`** returns the existing order for the same `(accountId, externalId)`
+    without calling `create` (the host may retry). Otherwise it calls `create()` (a strict
+    Relay quote) and inserts with status `pending`.
+11. **`listOrdersDue`** returns `pending` orders not yet past `expires_at + graceMs`, for
+    reconciliation to scan their addresses.
 
 ---
 
@@ -182,6 +207,10 @@ as `TEST_DATABASE_URL` (gitignored). Each test run creates a fresh schema
 13. `listAddressesDue` returns a never-scanned address before a recently active one,
     and skips an address scanned 5 minutes ago.
 14. `recordSendAttempt` with the same key twice: `inserted` true then false.
+15. `createOrder` twice with the same `externalId`: `create` called once, one row.
+16. A deposit row with both or neither of `address_id` and `order_id` is rejected.
+17. `listOrdersDue` includes a pending order within the grace period and excludes a
+    paid one and one past expiry + grace.
 
 ---
 

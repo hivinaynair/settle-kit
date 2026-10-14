@@ -79,24 +79,36 @@ Rules:
 ### Events
 
 ```ts
-/** The onSettled payload. Persisted once at settlement; replay sends the same object. */
-export type SettledEvent = {
-  id: string;                    // `${deposit.id}:settled`
-  type: "deposit.settled";
+/** The onSettled payload for both modes. Persisted once; replay sends the same object. */
+export type SettledEvent = DepositSettled | OrderSettled;
+
+type SettledBase = {
+  id: string;                    // `${deposit.id}:settled`; hosts dedupe on it
   createdAt: string;             // ISO 8601
-  test: boolean;                 // true for simulated deposits (§10.1)
-  deposit: {
+  test: boolean;                 // true for simulated payments (§10.1)
+};
+export type DepositSettled = SettledBase & { kind: "deposit"; deposit: SettledDeposit };
+export type OrderSettled = SettledBase & {
+  kind: "order";
+  deposit: SettledDeposit;
+  order: { id: string; externalId: string; amountOut: string };
+};
+
+type SettledDeposit = {
     id: string;
     accountId: string;
-    addressId: string;
+    addressId: string | null;    // null for checkout payments
     amountIn: string;            // base units, decimal string
     amountOut: string;           // verified arrival, base units; the amount to credit
     token: Address;              // destination USDC contract
     chainId: number;             // 8453
     depositTx: Hex | null;
     destination: { txHash: Hex; logIndex: number };
-  };
 };
+
+/** Checkout order status (design §6a), derived from its deposit's status. */
+export type OrderStatus = "pending" | "paid" | "refunded" | "needs_attention" | "expired";
+export function orderStatusFor(deposit: DepositStatus | null, expired: boolean): OrderStatus;
 
 export type TimelineEntry = {
   seq: number;
@@ -141,7 +153,12 @@ to `DepositErrorCode` (used by the widget in T9).
 9. `parseBaseUnits("115792089237316195423570985008687907853269984665640564039457")`
    round-trips through `toBaseUnits` exactly.
 10. `parseBaseUnits` rejects `"1.5"`, `"-1"`, `"01"`, `" 1"`, `"1e6"`, `""`.
-11. A `SettledEvent` built in a test serialises with `JSON.stringify` (no `bigint` inside).
+11. A `SettledEvent` of each `kind` serialises with `JSON.stringify` (no `bigint` inside),
+    and narrowing on `kind` gives typed access to `order` only for orders.
+12. `orderStatusFor`: no deposit and not expired → `pending`; no deposit and expired →
+    `expired`; `credited` → `paid` (even if expired: late payments count);
+    `refunded` → `refunded`; `needs_attention` → `needs_attention`; `waiting`,
+    `processing`, `delayed`, `settled` → `pending`.
 
 ---
 

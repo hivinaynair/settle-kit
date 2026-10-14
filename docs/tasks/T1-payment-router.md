@@ -62,6 +62,9 @@ export type Quote = {
 /** Only the address. The wallet path builds its own transfer to it (design §1). */
 export type DepositAddress = { address: Address };
 
+/** Checkout (design §6a): single-use strict address that delivers exactly amountOut. */
+export type OrderAddress = { address: Address; amountIn: bigint; amountOut: bigint };
+
 /** The router's view of a fill. Not the deposit state machine (that's T2). */
 export type FillStatus = "waiting" | "processing" | "delayed" | "filled" | "refunded" | "failed";
 
@@ -83,6 +86,11 @@ export type PaymentRouter = {
     refundTo: Address;                // app-controlled refund address
     recoveryAddress: Address;         // app-controlled EOA
   }): Promise<DepositAddress>;
+  orderAddress(input: {
+    route: Route;
+    amountOut: bigint;                // exact base units the treasury must receive
+    recipient: Address; refundTo: Address; recoveryAddress: Address;
+  }): Promise<OrderAddress>;
   quote(input: { route: Route; amountIn: bigint }): Promise<Quote>;
   fills(address: Address): Promise<Fill[]>;
   status(fillId: string): Promise<FillStatus>;
@@ -122,30 +130,35 @@ relay({
    `tradeType: "EXACT_INPUT"`, `user` = zero address, `recipient`, `refundTo`,
    `recoveryAddress`, `amount` as a decimal string. Return `steps[0].depositAddress`.
    Every call issues a **new** address; callers store the first one (T3).
-5. **`quote()`** → `POST /quote/v2` without `useDepositAddress`. Map
+5. **`orderAddress()`** → `POST /quote/v2` with `useDepositAddress: true`, `strict: true`,
+   `tradeType: "EXACT_OUTPUT"`, `amount` = `amountOut`, plus `recipient`, `refundTo`,
+   `recoveryAddress`. Return `steps[0].depositAddress`, `details.currencyIn.amount` as
+   `amountIn` (what the payer must send) and `details.currencyOut.amount` as `amountOut`.
+   If the returned `amountOut` differs from the requested one, throw `quote_unavailable`.
+6. **`quote()`** → `POST /quote/v2` without `useDepositAddress`. Map
    `details.currencyIn.amount`, `currencyOut.amount`, `currencyOut.minimumAmount`,
    `details.timeEstimate`. Amounts become `bigint`. Never use a float.
-6. **`fills(address)`** → `GET /requests/v3?depositAddress=…` with header `x-api-key`.
+7. **`fills(address)`** → `GET /requests/v3?depositAddress=…` with header `x-api-key`.
    Follow `continuation` until absent.
-7. **`status(fillId)`** → `GET /intents/status/v3?requestId=…`.
-8. **Status mapping, in one table:** `waiting→waiting`;
+8. **`status(fillId)`** → `GET /intents/status/v3?requestId=…`.
+9. **Status mapping, in one table:** `waiting→waiting`;
    `depositing|pending|submitted→processing`; `delayed→delayed`; `success→filled`;
    `refund→refunded`; `failure→failed`. Unknown → `DepositError("router_unavailable")`.
-9. **Errors.** Non-2xx with an `errorCode` maps: `AMOUNT_TOO_LOW→amount_too_low`;
+10. **Errors.** Non-2xx with an `errorCode` maps: `AMOUNT_TOO_LOW→amount_too_low`;
    `INVALID_INPUT_CURRENCY|INVALID_OUTPUT_CURRENCY|NO_QUOTES|INSUFFICIENT_LIQUIDITY|SWAP_IMPACT_TOO_HIGH|UNSUPPORTED_ROUTE→quote_unavailable`;
    `CHAIN_DISABLED|ROUTE_TEMPORARILY_RESTRICTED|UNSUPPORTED_CHAIN→route_unavailable`;
    `SANCTIONED_WALLET_ADDRESS→address_blocked`; anything else, a 5xx, a 429 or a network
    error → `router_unavailable`. Keep the original body as `cause`. **Never** branch on
    `message`.
-10. **Native token.** `"native"` is sent to Relay as the zero address.
-11. **No secrets in errors.** The API key never appears in a thrown message or `cause`.
+11. **Native token.** `"native"` is sent to Relay as the zero address.
+12. **No secrets in errors.** The API key never appears in a thrown message or `cause`.
 
 ### Fill mapping (`/requests/v3` → `Fill`)
 
 | Fill | From the request |
 |---|---|
 | `id` | `id` |
-| `status` | `status`, via rule 8 |
+| `status` | `status`, via rule 9 |
 | `depositTx` | `depositAddress?.depositTxHash ?? data.inTxs[0]?.txHash ?? null` |
 | `destination` | `data.outTxs[0]` → `{ chainId, txHash }` when status is `success`, else `null` |
 | `updatedAt` | `new Date(updatedAt)` |
@@ -191,10 +204,13 @@ Inject a fake `fetch` that serves the fixtures. No network.
 8. `relay({ apiKey: "" })` throws `invalid_config` and makes zero fetch calls.
 9. `fills()` sends `x-api-key`, follows `continuation` across two pages and returns both
    pages' fills.
-10. Status mapping: each of the 8 Relay statuses maps per rule 8; `"weird"` throws.
+10. Status mapping: each of the 8 Relay statuses maps per rule 9; `"weird"` throws.
 11. `status()` on `status-waiting.json` returns `"waiting"`.
 12. No thrown error or `cause` contains the API key string.
 13. `fakeRouter`: three `fills()` calls return the scripted sequence, then repeat the last.
+14. `orderAddress()` on `quote-strict-exact-output.mainnet.json` returns address
+    `0x24a37cD2723B6FC852A7D296Bd4f20476b2Fd176`, `amountIn 1184248n`, `amountOut 1150000n`,
+    and sent `strict: true`, `tradeType: "EXACT_OUTPUT"`, `amount: "1150000"`.
 
 ---
 
@@ -205,4 +221,5 @@ Retries, caching, rate limiting, webhooks (T7), reindex (T11), other routers. Do
 ## Questions to answer in your PR description
 
 - Why does `depositAddress()` never get called twice for the same account and route?
+- Why does checkout use `EXACT_OUTPUT` with a strict address instead of an open one?
 - Why does an unknown status throw instead of mapping to `"waiting"`?
