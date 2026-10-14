@@ -89,7 +89,7 @@ config and note it; don't add new mechanisms in this task.
 
 Script: problem (5 s) → buy a product on the live demo and pay from a wallet (40 s) →
 the timeline and the Base explorer showing USDC in the merchant's treasury (20 s) →
-the merchant code: four pieces (30 s) → test mode for developers (15 s) → what's next
+the merchant code: env vars, two route files, `createOrder`, `<Checkout>` (30 s) → test mode for developers (15 s) → what's next
 (10 s). Link it from the README.
 
 ---

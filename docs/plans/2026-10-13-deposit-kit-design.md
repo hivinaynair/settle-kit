@@ -20,7 +20,7 @@ mode, end to end, with real money.** Everything else here is designed and ships 
 | Store | Orders, payments and a timeline in Postgres, with the exactly-once rules (§4) |
 | Test mode | "Simulate payment" runs the real workflow without money (§10.1) |
 | Routes | Base and Arbitrum USDC → Base USDC proven live; Ethereum in the manifest once proven |
-| Developer API | `createSettle` config, `settle.createOrder` with the merchant's own price, `settle.handlers`, `<Checkout>` (§7) |
+| Developer API | Env-var settings + `createSettle()`, `settle.createOrder` with the merchant's own price, `settle.handlers`, signed `order.paid` webhook, `<Checkout>` (§7) |
 | npm `0.1.0` | `@settle-kit/core`, `@settle-kit/server`, `@settle-kit/react`, installable in any Next.js app |
 | Demo shop | Three products at different prices, built only on the published API |
 
@@ -132,7 +132,7 @@ The existing package split stays:
 | Package | Responsibility |
 |---|---|
 | `@settle-kit/core` | Types, state transitions and typed errors; no network or UI dependencies |
-| `@settle-kit/react` | Provider, `useDeposit` and the address/QR widget |
+| `@settle-kit/react` | `SettleProvider`, `useCheckout` and the `<Checkout>` widget (QR, address, wallet) |
 | `@settle-kit/server` | Handlers, Relay adapter, verification, workflows and Drizzle store |
 | `apps/demo` | Reference app: "Buy report" checkout, credits top-up, setup instructions |
 
@@ -575,7 +575,7 @@ the request).
 
 Settle Kit never knows about products. A merchant creates an order with **their own
 price** on **their own server**; the money goes to **their own treasury**. Ten products or
-ten thousand: the integration is the same four pieces.
+ten thousand: the integration is the same few pieces.
 
 **1. Configure once (server)**
 
@@ -908,7 +908,7 @@ visible beside the QR.
 - **Accessibility:** focus moves to each new screen's heading; status changes are
   announced through a polite live region; the whole flow works by keyboard; QR has a
   text alternative.
-- **Headless:** `useDeposit()` returns a discriminated union per state, so teams can
+- **Headless:** `useCheckout()` returns a discriminated union per state, so teams can
   build their own UI on the same logic.
 
 ### 10.6 Treasury reconciliation (Later)
@@ -960,7 +960,7 @@ contract and a maintenance plan. These are release requirements for the first
 
 | # | Requirement | Contents |
 |---|---|---|
-| 1 | Public API reference | Every `createDeposits` option and its type; `SettleProvider`, `CheckoutButton`, `DepositButton` props; `useDeposit()` states; handler routes; `DepositErrorCode` list; webhook event shapes and signature scheme; operator functions |
+| 1 | Public API reference | Every env var and `createSettle` option; `SettleProvider` and `<Checkout>` props; `useCheckout()` states; `verifyWebhook`; handler routes; `DepositErrorCode` list; webhook event shapes and signature scheme; operator functions |
 | 2 | Versioning and stability | Start at `0.x`, marked experimental. Breaking changes: config, events, error codes, handler routes and the database schema. Changelog per release |
 | 3 | Database upgrades | Tables live in the host's Postgres. Ship numbered SQL migrations plus the Drizzle schema; never edit a published migration; each release lists the migrations it needs |
 | 4 | Packaging | Build step with type declarations; separate server and client entry points so server code never reaches the browser bundle; install-from-pack check in a separate Next.js app (§9) |
