@@ -15,8 +15,13 @@ export type AddressRequest = {
 /** amount is the exact merchant price in the destination token's base units. */
 export type OrderAddressInput = AddressRequest & { amount: bigint };
 
-/** payAmount: what the payer must send, in route.from's token, fee included. */
-export type OrderAddress = { address: Address; payAmount: bigint };
+export type OrderAddress = {
+  address: Address;
+  /** What the payer must send in the source token's base units, fees included. */
+  payAmount: bigint;
+  /** Original Relay request for this strict order; persist it with the address. */
+  requestId: string;
+};
 
 /**
  * The router's view of a payment. Not the deposit state machine (that's T2).
@@ -41,13 +46,13 @@ export type Fill = {
 };
 
 /**
- * Get an address for an order, then watch what arrives at it.
+ * Get instructions for an order, then track its original request and any child requests.
  * (Deposit mode adds a reusable `depositAddress` later; design §4.)
  */
 export type PaymentRouter = {
   id: string; // "relay"
   /** amount: exact USDC base units the merchant must receive (the order price). */
   orderAddress(input: OrderAddressInput): Promise<OrderAddress>;
-  /** Every payment that reached the address, with its current status. */
-  fills(address: Address): Promise<Fill[]>;
+  /** Current reports for the original request and its children; each keeps its own ID. */
+  fills(requestId: string): Promise<Fill[]>;
 };

@@ -19,6 +19,19 @@ key on every call, and a quote body checked with `satisfies` against Relay's off
 request type. Response validation lives in each router method; `call` handles HTTP.
 The PR description has the final decisions.
 
+**Request-ID tracking (2026-10-14):** `orderAddress` now returns
+`{ address, payAmount, requestId }`, taking the ID from the same deposit step as the
+address. `fills(requestId: string)` queries
+`GET /requests/v3?id=<requestId>&includeChildRequests=true&limit=100`, following every
+continuation page. It returns the original request and child reports, preserving each
+report's own `Fill.id`; extra deposits must still be recorded and flagged. An empty
+ID is rejected before any HTTP request. A missing/empty quote ID is rejected as an
+unexpected provider response. `fakeRouter` scripts include `requestId` and record it
+on `fills` calls. The address remains the payer's destination, not the tracking key.
+
+The historical brief below predates this contract. Changes needed in downstream specs
+are listed in [the request-ID handoff](../handoffs/2026-10-14-request-id-tracking.md).
+
 ## Goal
 
 The rest of Settle Kit talks to one internal interface, `PaymentRouter`, never to Relay
