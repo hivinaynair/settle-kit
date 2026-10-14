@@ -1,8 +1,34 @@
 # Settle Kit: v1 checkout and deposit SDK
 
-Status: draft. V1 scope agreed; implementation and release checks pending.
-Updated: 2026-10-14.
-Evidence: [integration spikes](../spikes.md).
+Status: T1 (router) built; the demo build is in progress. Updated: 2026-10-14.
+Evidence: [integration spikes](../spikes.md). Tasks: [docs/tasks](../tasks/README.md).
+
+## 0. Build scope (read this first)
+
+This doc describes the full v1. **What is being built now is the demo cut (§9): checkout
+mode, end to end, with real money.** Everything else here is designed and ships after.
+
+**Building now**
+
+| Piece | What it does |
+|---|---|
+| Checkout ("Buy report: 1.15 USDC") | One order, one price, one single-use Relay strict address (§6a) |
+| Pay by address / QR | Send exactly the shown amount from any wallet or exchange; the QR pre-fills token, network and amount (EIP-681) |
+| Pay from a browser wallet (EOA) | Connect via EIP-6963, switch network, check balance and gas, sign one USDC transfer of exactly `payAmount` to the order address; no second send for the same order |
+| Router | `orderAddress` + `fills` on Relay (T1, done) |
+| Payment workflow | Polls the order's address, verifies the USDC transfer on Base at `safe`, settles once, calls `onSettled` with retries |
+| Store | Orders, payments and a timeline in Postgres, with the exactly-once rules (§4) |
+| Test mode | "Simulate payment" runs the real workflow without money (§10.1) |
+| Routes | Base and Arbitrum USDC → Base USDC proven live; Ethereum in the manifest once proven |
+
+**Designed, built later:** deposit mode (top-ups) and estimates; Relay webhooks (§5) and
+the reconciliation cron (§6); operator tools (replay, resolve, admin page, reindex);
+refund-evidence verification; marketplace payouts; card onramps; npm packaging (§12).
+
+**How a payment is matched to its order:** each order has its own address, so a payment
+belongs to the order whose address it was sent to. The router lists payments per address
+(`fills`), the database records each payment once and lets one on-chain transfer settle
+only one order.
 
 ## 1. Scope
 
@@ -334,7 +360,7 @@ S2 and S6 returned deposit-address quotes for the proposed cross-chain and same-
 USDC routes. These were quote checks, not real deposits. Fees and estimated arrival
 times come from the current quote rather than fixed values in the SDK.
 
-### Webhook ingestion
+### Webhook ingestion (later)
 
 Relay's `request.status.updated` event carries the actual fill request ID and, for
 deposit-address requests, the deposit address and optional deposit transaction hash.
@@ -412,7 +438,7 @@ settled and appears in the operator list.
 `deposits.replayDelivery(depositId)` is an authenticated operator action. It restarts
 delivery of the same event and does not send funds.
 
-### Reconciliation
+### Reconciliation (later)
 
 A host scheduler starts a bounded reconciliation workflow, proposed every 15 minutes.
 It scans unscanned addresses first, then the oldest `last_reconciled_at`, including
@@ -722,32 +748,34 @@ Implementation order:
    installation, deployment and recovery docs; package consumption check; versioned
    release.
 
-### Demo cut (built first, ~4 days)
+### Demo cut (built first, ~5 days)
 
 The first build is the smallest thing that proves the idea with real money: **checkout
-mode, end to end, deployed**. Everything else in this doc stays designed and ships after.
+mode, paid by QR or from a browser wallet, deployed**. Everything else in this doc stays
+designed and ships after. Task list: [docs/tasks](../tasks/README.md).
 
 | Day | Build | Visible result |
 |---|---|---|
-| 1 | T1 router (done); T2 state machine; store: orders + deposits tables, record once, settle once, timeline | Duplicate-proof records |
-| 2 | Receipt verifier (USDC `Transfer` at `safe`); `payOrder` workflow: poll `fills(orderAddress)` with `sleep`, verify, settle, call `onSettled` with retries; test mode (`simulateRouter`) | Simulated payment completes end to end |
-| 3 | Demo "Buy report" page: order summary, exact amount + EIP-681 QR, countdown, progress, result, timeline; dev toolbar "Simulate payment"; deployed on Vercel | Anyone can try it in 30 s |
-| 4 | Real $2 Base USDC payment (Arbitrum if funds allow); README, 2-minute video, "built vs designed" table. Stretch: "Pay with wallet" | **Ready to share** |
+| 1 | T1 router (done); T2 payment states; T3 store (orders, payments, timeline; record once, settle once) | Duplicate-proof records |
+| 2 | T4 receipt verifier (USDC `Transfer` at `safe`); T5 `payOrder` workflow (poll `fills`, verify, settle, `onSettled` with retries), order API routes, test mode | A simulated payment completes end to end |
+| 3 | T6 checkout widget + demo "Buy report" page: order summary, exact amount, EIP-681 QR, countdown, progress, result, timeline; deployed | Anyone can try it in 30 s |
+| 4 | T7 pay from a browser wallet: EIP-6963 connect, network switch, balance and gas checks, exact-amount transfer, no second send | The checkout experience end to end |
+| 5 | T8 real payments (QR and wallet; Base, Arbitrum if funds allow); README, 2-minute video, "built vs designed" table | **Ready to share** |
 
-**In the cut:** checkout mode, Relay strict addresses, one durable workflow, on-chain
-verification, exactly-once settlement, `onSettled` with retries, test mode, timeline,
-key and secret handling, one live route proven.
+**In the cut:** checkout mode, Relay strict addresses, QR and browser-wallet payment, one
+durable workflow, on-chain verification, exactly-once settlement, `onSettled` with
+retries, test mode, timeline, key and secret handling, live routes proven.
 
 **After the cut (designed, not built):**
 
 | Deferred | Meanwhile |
 |---|---|
-| Deposit mode (top-ups) and `quote` estimates | Checkout only |
+| Deposit mode (top-ups) and estimates | Checkout only |
 | Relay webhooks and the reconciliation cron | The workflow polls the order address; one order at a time is well within rate limits |
-| Wallet path | QR / address (stretch goal on day 4) |
+| WalletConnect / mobile wallets | Browser-extension wallets; mobile wallets scan the QR |
 | Operator tools: `replayDelivery`, `resolve`, admin page, reindex | Visible in the database and timeline |
 | Refund evidence verification and repayment procedure | Refunds and failures go to `needs_attention` |
-| Ethereum route proof, USDT | Base (and Arbitrum) proven |
+| Ethereum route proof, USDT | Base and Arbitrum proven |
 | Rate limits, extended crash tests, npm packaging, theming API | Known gaps |
 
 Optional routes that lack evidence are omitted from the release. The reference stack
