@@ -4,7 +4,7 @@ Status: empty; step 1 (decide) fills it.
 
 Settled choices for Settle Kit. One row per decision; never edit a row's meaning.
 To change one, add a new row with `Supersedes`. Open questions live at the bottom.
-Rules: [CONTRACT](../.agents/skills/CONTRACT.md).
+Rules: Spec process section of [AGENTS.md](../AGENTS.md).
 
 ## Scope
 

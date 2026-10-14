@@ -17,13 +17,25 @@ wallet or exchange, credited as USDC on Base. Users send to a reusable deposit a
 
 ## Spec process
 
-- Two artifacts drive the spec: `docs/decisions.md` (what we build, with IDs) and
-  `docs/journeys/settle-kit.yaml` (exactly how it behaves, every branch, EARS rules).
-  How to write them: `.agents/skills/decide/` and `.agents/skills/journeys/`; shared rules
-  in `.agents/skills/CONTRACT.md`; overview in `docs/spec/README.md`.
-- Never hand-edit the generated journey `.md`; never renumber or reuse a step ID.
+Two artifacts drive the spec, written in this order. How to write them:
+`.agents/skills/decide/` and `.agents/skills/journeys/`. Overview: `docs/spec/README.md`.
+
+| Fact | Its one home |
+|---|---|
+| What we build, what we ruled out, open questions | `docs/decisions.md` (IDs `D7`, `X1`, `Q2`) |
+| Exactly how it behaves: steps, branches, EARS rules | `docs/journeys/settle-kit.yaml` (IDs `J2.S4`) |
+| Live evidence (fills, tx links, timings) | `docs/spikes.md` |
+
+- Other docs (design doc, task specs, PRs) link these IDs; they never restate them.
+- Decisions: record the owner's answer once with an ID and date; never re-ask a settled one.
+  To change one, add a new row that supersedes it. Ask one question at a time, with a
+  recommendation and the rejected options.
+- No guessing: a missing business, money or user-visible rule becomes an open question in
+  `docs/decisions.md`. Internal technical choices (names, layout, helpers) are the builder's.
+- Journeys: never hand-edit the generated `.md`; never renumber or reuse a step ID.
 - Tests name the step they prove (`it("J2.S4: …")`); PRs list the step IDs they serve.
-- A missing business or money rule is an open question in `docs/decisions.md`, never a guess.
+- Writing: lead with the point, plain words, explain a term on first use, keep fact,
+  decision and assumption apart, no `TBD`.
 
 ## Constraints
 

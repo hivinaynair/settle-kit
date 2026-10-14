@@ -1,7 +1,8 @@
 # How Settle Kit goes from idea to a build-ready spec
 
 Two artifacts, written in order. Everything else (design doc, task specs, code) links to
-their IDs. Shared rules: [CONTRACT](../../.agents/skills/CONTRACT.md).
+their IDs. Shared rules: the Spec process section of
+[AGENTS.md](../../AGENTS.md).
 
 | Step | Question it answers | Artifact | How to write it | Your part |
 |---|---|---|---|---|

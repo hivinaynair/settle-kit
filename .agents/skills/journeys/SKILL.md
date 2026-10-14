@@ -5,7 +5,7 @@ description: Write the journey spine: every actor path, branch and exit, with EA
 
 # journeys
 
-Follow [CONTRACT](../CONTRACT.md). Input: `docs/decisions.md`. Output:
+Follow the Spec process section of `AGENTS.md`. Input: `docs/decisions.md`. Output:
 `docs/journeys/settle-kit.yaml` (source of truth) and its generated `.md`.
 Format: [schema](schema.md). Example: [example.yaml](example.yaml).
 Adapted from ViperNxt's journeys skill (MIT).
