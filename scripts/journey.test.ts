@@ -303,7 +303,7 @@ describe("validateSpine", () => {
     );
   });
 
-  it("requires an IF criterion on a step that touches money", () => {
+  it("requires an IF … SHALL NOT criterion on a step that touches money", () => {
     const index = parseDecisions(
       "## Money rules (D20–D29)\n| D21 | Credit at safe | | | | |\n## Architecture\n| D31 | Tick | | | | |",
     );
@@ -319,6 +319,9 @@ describe("validateSpine", () => {
       ).warnings.filter((w) => w.includes("touches money"));
     const when = { c1: "WHEN a fill arrives THE SYSTEM SHALL verify it" };
     expect(step(["D21"], when)).toHaveLength(1);
+    expect(
+      step(["D21"], { ...when, c2: "IF verification fails THE SYSTEM SHALL credit the order" }),
+    ).toHaveLength(1);
     expect(step(["D31"], when)).toEqual([]);
     expect(
       step(["D21"], { ...when, c2: "IF the amount differs THE SYSTEM SHALL NOT settle" }),
