@@ -137,7 +137,7 @@ describe("relay()", () => {
   it("returns a reusable address quoted at one whole token", async () => {
     const { router, calls } = routerFor((call) => {
       expect(call.url.pathname).toBe("/quote/v2");
-      expect(call.headers.get("x-api-key")).toBeNull();
+      expect(call.headers.get("x-api-key")).toBe(API_KEY);
       return jsonResponse(quoteFixture);
     });
 
@@ -279,12 +279,25 @@ describe("relay()", () => {
     expect(() => relay({ apiKey: "   ", fetch: fetchImpl })).toThrow(DepositError);
     expect(calls).toBe(0);
 
+    let caught: unknown;
     try {
       relay({ apiKey: "" });
     } catch (error) {
-      expect(error).toBeInstanceOf(DepositError);
-      if (!(error instanceof DepositError)) throw error;
-      expect(error.code).toBe("invalid_config");
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(DepositError);
+    expect((caught as DepositError).code).toBe("invalid_config");
+  });
+
+  it("maps a rejected API key (401/403) to invalid_config", async () => {
+    for (const status of [401, 403]) {
+      const { router } = routerFor(() =>
+        jsonResponse({ message: "Unauthorized: Check API Key" }, status),
+      );
+      await expectCode(
+        router.fills(address("0x00000000000000000000000000000000000000aa")),
+        "invalid_config",
+      );
     }
   });
 
@@ -356,6 +369,27 @@ describe("relay()", () => {
       fetch: async () => jsonResponse({ requests: [notHex] }),
     }).fills(depositAddress);
     expect(fallbackFills[0]?.depositTx).toBe(fills[0]?.depositTx);
+
+    // One unknown status or malformed request must not block the other fills.
+    const newStatus = { ...structuredClone(first), status: "expired" };
+    const malformed = { id: "broken" };
+    const mixed = await relay({
+      apiKey: API_KEY,
+      fetch: async () => jsonResponse({ requests: [newStatus, malformed, second] }),
+    }).fills(depositAddress);
+    expect(mixed.map((fill) => [fill.id, fill.status])).toEqual([
+      [first.id, "unknown"],
+      [second.id, "filled"],
+    ]);
+  });
+
+  it("uses the route minimum as the deposit-address sample when the manifest sets one", async () => {
+    const { router, calls } = routerFor(() => jsonResponse(quoteFixture));
+    await router.depositAddress({
+      route: { ...USDC_ROUTE, minimum: 2000000n },
+      ...ADDRESS_REQUEST,
+    });
+    expect(calls[0]?.body).toMatchObject({ amount: "2000000" });
   });
 
   it("maps each Relay status and rejects an unknown one", async () => {
@@ -374,7 +408,7 @@ describe("relay()", () => {
       const { router } = routerFor((call) => {
         expect(call.url.pathname).toBe("/intents/status/v3");
         expect(call.url.searchParams.get("requestId")).toBe("fill-1");
-        expect(call.headers.get("x-api-key")).toBeNull();
+        expect(call.headers.get("x-api-key")).toBe(API_KEY);
         return jsonResponse({ status: relayStatus });
       });
       expect(await router.status("fill-1")).toBe(status);
@@ -414,7 +448,7 @@ describe("relay()", () => {
     const drifted = structuredClone(strictQuoteFixture);
     drifted.details.currencyOut.amount = "1";
     const mismatch = routerFor(() => jsonResponse(drifted));
-    await expectCode(
+    const error = await expectCode(
       mismatch.router.orderAddress({
         route: USDC_ROUTE,
         amount: 1150000n,
@@ -422,6 +456,8 @@ describe("relay()", () => {
       }),
       "quote_unavailable",
     );
+    expect(error.cause).toEqual({ requested: "1150000", quoted: "1" });
+    expect(() => JSON.stringify(error.cause)).not.toThrow();
   });
 });
 

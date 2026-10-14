@@ -2,7 +2,12 @@ import type { Address, Hex } from "viem";
 
 /** "native" means the chain's own coin (ETH). Relay writes it as the zero address. */
 export type Asset = { chainId: number; token: Address | "native"; decimals: number };
-export type Route = { from: Asset; to: Asset };
+export type Route = {
+  from: Asset;
+  to: Asset;
+  /** Smallest accepted payAmount in route.from base units, from the route manifest. */
+  minimum?: bigint;
+};
 
 /** What every address request shares: the route and where money goes. */
 export type AddressRequest = {
@@ -31,8 +36,19 @@ export type DepositAddress = { address: Address };
 /** payAmount: what the payer must send, in route.from's token, fee included. */
 export type OrderAddress = { address: Address; payAmount: bigint };
 
-/** The router's view of a fill. Not the deposit state machine (that's T2). */
-export type FillStatus = "waiting" | "processing" | "delayed" | "filled" | "refunded" | "failed";
+/**
+ * The router's view of a fill. Not the deposit state machine (that's T2).
+ * "unknown": the router reported a status we don't recognise; the workflow sends it to
+ * needs_attention instead of blocking the other fills at the address.
+ */
+export type FillStatus =
+  | "waiting"
+  | "processing"
+  | "delayed"
+  | "filled"
+  | "refunded"
+  | "failed"
+  | "unknown";
 
 export type Fill = {
   id: string; // Relay requestId of the actual fill
