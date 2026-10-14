@@ -16,6 +16,7 @@
     "zod": "4"
   },
   "devDependencies": {
+    "@relayprotocol/relay-sdk": "8.0.4",
     "@repo/typescript-config": "workspace:*",
     "@types/bun": "^1.3.14",
     "typescript": "5.9.2"

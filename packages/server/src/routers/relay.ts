@@ -1,3 +1,4 @@
+import type { paths } from "@relayprotocol/relay-sdk";
 import {
   DepositError,
   type DepositErrorCode,
@@ -50,37 +51,70 @@ const txHash = z
     value !== undefined && isHash(value) ? value : undefined,
   );
 
+// Relay's official API types (generated from its OpenAPI spec; type-only, no runtime code).
+// Each schema below `satisfies Shape<…>`, so a field we read that Relay renames or drops
+// fails the typecheck instead of production. Zod still validates the real responses.
+type Ok<P extends keyof paths, M extends keyof paths[P]> = paths[P][M] extends {
+  responses: { 200: { content: { "application/json": infer T } } };
+}
+  ? NonNullable<T>
+  : never;
+type RelayQuote = Ok<"/quote/v2", "post">;
+type RelayQuoteDetails = NonNullable<RelayQuote["details"]>;
+type RelayRequest = NonNullable<NonNullable<Ok<"/requests/v3", "get">["requests"]>[number]>;
+type RelayRequestData = NonNullable<RelayRequest["data"]>;
+type RelayChain = NonNullable<NonNullable<Ok<"/chains", "get">["chains"]>[number]>;
+type RelayQuoteBody = NonNullable<
+  paths["/quote/v2"]["post"]["requestBody"]
+>["content"]["application/json"];
+/** Our schema may only use field names that exist on Relay's type. */
+type Shape<T> = { [K in keyof T]?: z.ZodType };
+
 /** An array item that fails its schema becomes null instead of failing the whole list. */
 function skippable<T extends z.ZodType>(item: T) {
   return item.nullable().catch(null);
 }
 
-const QuoteResponse = z.object({
-  steps: z.array(z.object({ depositAddress: address.optional() })).optional(),
-  details: z.object({
-    currencyIn: z.object({ amount: baseUnits }),
-    currencyOut: z.object({ amount: baseUnits, minimumAmount: baseUnits }),
-    timeEstimate: z.number(),
-  }),
-});
+type RelayCurrencyAmount = NonNullable<RelayQuoteDetails["currencyOut"]>;
+type RelayStep = NonNullable<RelayQuote["steps"]>[number];
+type RelayTx = NonNullable<RelayRequestData["outTxs"]>[number];
 
-const RelayRequest = z.object({
+const QuoteResponse = z.object({
+  steps: z
+    .array(z.object({ depositAddress: address.optional() } satisfies Shape<RelayStep>))
+    .optional(),
+  details: z.object({
+    currencyIn: z.object({ amount: baseUnits } satisfies Shape<RelayCurrencyAmount>),
+    currencyOut: z.object({
+      amount: baseUnits,
+      minimumAmount: baseUnits,
+    } satisfies Shape<RelayCurrencyAmount>),
+    timeEstimate: z.number(),
+  } satisfies Shape<RelayQuoteDetails>),
+} satisfies Shape<RelayQuote>);
+
+const RelayRequestSchema = z.object({
   id: z.string().min(1),
   status: z.string(),
   updatedAt: z.coerce.date(),
-  // TODO(S4): depositAddress on a real deposit-address request is unconfirmed.
-  depositAddress: z.object({ depositTxHash: txHash }).nullish(),
+  // Shape from Relay's API types: { address, type: "strict" | "open", depositor,
+  // depositTxHash, recoveryAddress }. A live deposit (S4) still confirms it.
+  depositAddress: z
+    .object({ depositTxHash: txHash } satisfies Shape<NonNullable<RelayRequest["depositAddress"]>>)
+    .nullish(),
   data: z
     .object({
-      inTxs: z.array(z.object({ txHash })).optional(),
-      outTxs: z.array(z.object({ chainId: z.number().optional(), txHash })).optional(),
-    })
+      inTxs: z.array(z.object({ txHash } satisfies Shape<RelayTx>)).optional(),
+      outTxs: z
+        .array(z.object({ chainId: z.number().optional(), txHash } satisfies Shape<RelayTx>))
+        .optional(),
+    } satisfies Shape<RelayRequestData>)
     .nullish(),
-});
+} satisfies Shape<RelayRequest>);
 
 // One malformed request is skipped (reconciliation re-reads it), not fatal for the address.
 const RequestsPage = z.object({
-  requests: z.array(skippable(RelayRequest)),
+  requests: z.array(skippable(RelayRequestSchema)),
   continuation: z.string().nullish(),
 });
 
@@ -90,15 +124,17 @@ const Currency = z.object({
   address,
   symbol: z.string().min(1),
   decimals: z.number().int().nonnegative(),
-});
+} satisfies Shape<NonNullable<RelayChain["solverCurrencies"]>[number]>);
 
+// depositAddressEnabled is missing from Relay's published types but present in live
+// /chains responses (spike S2), so it's added to the shape explicitly.
 const Chain = z.object({
   id: z.number(),
   name: z.string().min(1),
   depositAddressEnabled: z.boolean().optional(),
   disabled: z.boolean().optional(),
   solverCurrencies: z.array(skippable(Currency)).optional(),
-});
+} satisfies Shape<RelayChain & { depositAddressEnabled?: boolean }>);
 
 const ChainsResponse = z.object({ chains: z.array(skippable(Chain)) });
 
@@ -273,7 +309,8 @@ function fromRelayToken(token: Address): Address | "native" {
   return isAddressEqual(token, zeroAddress) ? "native" : token;
 }
 
-// Undefined optional fields are dropped by JSON.stringify.
+// Undefined optional fields are dropped by JSON.stringify. `satisfies` checks every field
+// name and type against Relay's official request type.
 function quoteBody({ route, amount, ...rest }: QuoteOptions) {
   return {
     ...rest,
@@ -283,7 +320,7 @@ function quoteBody({ route, amount, ...rest }: QuoteOptions) {
     originCurrency: toRelayToken(route.from.token),
     destinationCurrency: toRelayToken(route.to.token),
     amount: amount.toString(),
-  };
+  } satisfies RelayQuoteBody;
 }
 
 function toSource(chain: z.infer<typeof Chain>): Source | null {
@@ -302,7 +339,7 @@ function toSource(chain: z.infer<typeof Chain>): Source | null {
   return { chainId: chain.id, name: chain.name, tokens };
 }
 
-function toFill(request: z.infer<typeof RelayRequest>): Fill {
+function toFill(request: z.infer<typeof RelayRequestSchema>): Fill {
   const outgoing = request.data?.outTxs?.[0];
   return {
     id: request.id,
