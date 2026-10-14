@@ -117,6 +117,13 @@ the CDP faucet.
 | `GET /requests/v3` on testnet with our key | **401** (same key → 200 on mainnet) |
 | `GET /requests/v3` on testnet without a key | 400, `x-api-key` required |
 
+Re-checked later the same day: the 0.00015 ETH is still sitting at the deposit address
+(not swept, not refunded). Testnet `/chains` reports `depositAddressEnabled: true` for
+Base Sepolia and Sepolia, so it's not switched off. Testnet `/requests/v2?depositAddress=`
+(no key) answers 500 "Query read timeout". Untested: whether a **cross-chain** testnet
+deposit (Base Sepolia → Sepolia) sweeps. S4a was same-chain *and* same-token (ETH → ETH),
+which may simply be a route Relay never executes.
+
 **So:** Relay's testnet can't be our development profile: it didn't sweep the
 deposit, and `/requests/v3` has no usable key there. Relay's own testnet guide
 recommends cheap L2 mainnets over testnets. Development uses test mode (simulated
@@ -137,3 +144,19 @@ recovery tool and belongs in operator tooling.
   For payers in markets like India, local exchanges and INR onramps are the funding
   path, which supports building the address/QR path first.
 
+## S9 · Minimum order amount for strict quotes — 2026-10-14
+
+Strict `EXACT_OUTPUT` deposit-address quotes to Base USDC, mainnet, with our key:
+
+| Order amount (USDC) | From Base, payer sends | From Arbitrum, payer sends |
+|---|---|---|
+| 0.000001 (1 base unit) | 0.025103 | 0.034058 |
+| 0.01 | 0.035092 | 0.044391 |
+| 0.05 | 0.075092 | 0.084055 |
+| 0.10 | 0.125092 | 0.134070 |
+| 0.25 | 0.275092 | 0.284089 |
+
+**So:** strict quotes have no minimum; S2's 50000 (0.05 USDC) minimum applies to open
+`EXACT_INPUT` quotes. The fee is flat (~0.0251 from Base, ~0.034 from Arbitrum), so below
+~0.05 the fee is larger than the price. Quotes only: whether Relay fills a tiny strict
+order is proven in T8. Demo prices: 0.05 / 0.10 / 0.15 USDC.

@@ -19,12 +19,15 @@ amounts, and packages the proof so a reader believes it in two minutes.
 
 ## Before starting (Vinay)
 
-- [ ] Buy ₹1,500 of ETH on Base (Onramp.money) to the payer wallet
+- [ ] Buy ETH on Base (Onramp.money; its ₹640 minimum is plenty) to the payer wallet
       `0xc0ddaFE4d55E5ce58FDa36b85A1125F217130ebE`.
-- [ ] Swap ~$10 of it to USDC on Base, and bridge ~$4 USDC to Arbitrum (Relay app;
+- [ ] Swap ~$2 of it to USDC on Base, and bridge ~$0.50 USDC to Arbitrum (Relay app;
       keep a little ETH on Arbitrum for gas).
-- [ ] Fund a browser wallet (MetaMask/Rabby) with ~$4 USDC on Base + gas for the wallet
-      payment.
+- [ ] Fund a browser wallet (MetaMask/Rabby) with ~$0.50 USDC on Base + gas for the
+      wallet payment.
+
+Cost: prices are 0.05–0.15 USDC (T6) and land in our own treasury, so what's actually
+spent is Relay's fee (~$0.03 per payment) and gas: under $1 for all five runs.
 - [ ] Vercel production env: `SETTLE_MODE=live`, `RELAY_API_KEY`, `BASE_RPC_URL`,
       `SETTLE_TREASURY=0xac44275dE5bF4109977892c4a256BbFA16B6C804`,
       `SETTLE_REFUND_ADDRESS` (an app-controlled wallet; not the treasury).
@@ -52,8 +55,8 @@ Run each, in order; stop at the first failure and fix before going on.
 | 1 | Market report, Base USDC, by script (stands in for "scan QR in any wallet") | `paid`, `onPaid` once, thank-you unlocked |
 | 2 | Sticker pack, Arbitrum USDC, by script | `paid` |
 | 3 | Market report, Base USDC, browser wallet via `<Checkout>` | `paid` |
-| 4 | Underpay by 0.1 USDC on Base, by script | Relay refunds to `SETTLE_REFUND_ADDRESS`; order `refunded`; no `onPaid` |
-| 5 | (if funds allow) Overpay by 0.1 USDC | `paid` with exactly the order amount; excess refunded |
+| 4 | Send 0.02 USDC less than `payAmount` on Base, by script | Relay refunds to `SETTLE_REFUND_ADDRESS`; order `refunded`; no `onPaid` |
+| 5 | Send 0.02 USDC more than `payAmount` on Base | `paid` with exactly the order amount; excess refunded |
 
 For each, record in `docs/spikes.md` (S4): order id, Relay fill id, deposit tx, Base
 tx + log index, amount sent, amount received, seconds from send to `paid`, and the

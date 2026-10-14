@@ -120,9 +120,10 @@ Validated with Zod once, in `createSettle`; any problem throws
 ```
 
 - `createOrder` → `store.createOrder` (idempotent on `accountId + externalId`), with
-  `test = (mode === "test")`, `expiresAt = now + orderTtl`. Rejects `amount <= 0n`
-  and amounts below the route minimum Relay enforces (50000 base units, S2) as
-  `amount_too_low`.
+  `test = (mode === "test")`, `expiresAt = now + orderTtl`. Rejects `amount <= 0n` as
+  `amount_too_low`. No other minimum is hard-coded: strict quotes have none (S9); if
+  Relay ever rejects a small amount, its `AMOUNT_TOO_LOW` maps to `amount_too_low`
+  when the buyer picks a route.
 - Order IDs are random and unguessable (`ord_` + 128 random bits, base58).
 
 ## 4. Handlers
@@ -132,7 +133,7 @@ segments.
 
 | Route | Does |
 |---|---|
-| `GET /routes` | The configured `RouteView[]` (id, labels, min) |
+| `GET /routes` | The configured `RouteView[]` (id, labels) |
 | `GET /orders/:id` | `OrderView`: status (via `orderStatusFor`), amount, payAmount, route, address, expiresAt, display, test, payment, timeline |
 | `POST /orders/:id/route { route: RouteId }` | Issues the strict address via `store.setOrderRoute` + `router.orderAddress({ route, recipient: treasury, refundTo: refundAddress, amount })`, then `start(payOrder, [id])`; returns the `OrderView` |
 | `POST /orders/:id/simulate { scenario }` | Test mode only (404 in live): records the scenario for the simulated router |
@@ -233,7 +234,7 @@ and the real Postgres store from T3.
 1. Config: missing treasury, zero address, treasury = refund address, unknown route id
    → `invalid_config`; the Relay key never appears in the error.
 2. `createOrder` twice with the same `externalId` → same order; `amount: 0n` and
-   below-minimum amounts rejected.
+   negative amounts rejected.
 3. `POST …/route`: issues one address (router called once across two calls); different
    route → 409; expired → 410; unknown order → 404; wrong account (with `account`) → 404.
 4. `checkOrder` with fills scripted `[] → processing → filled` and a verifier saying

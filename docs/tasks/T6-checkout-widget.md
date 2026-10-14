@@ -67,7 +67,7 @@ function useCheckout(orderId: string): CheckoutState & {
 
 | State | Shows |
 |---|---|
-| Summary (always on top) | `display.title`, image, price "1.15 USDC", countdown to `expiresAt` |
+| Summary (always on top) | `display.title`, image, price "0.10 USDC", countdown to `expiresAt` |
 | `choose_route` | One button per route: "USDC on Base", "USDC on Arbitrum" |
 | `pay` | QR of `paymentUri` (EIP-681: token, chain, address, `payAmount`); "Send exactly **1.184248 USDC** on **Arbitrum**"; address in 4-character groups with the first and last groups emphasised and a "check the first and last 4 characters" hint; copy buttons for address and amount with "Copied: 0x1a2b…9f8e" feedback; "Exchanges: withdraw on the Arbitrum network" note; the fee line (`payAmount − amount`) |
 | `processing` | Timeline: Payment seen → Moving to Base → Verified on Base → Paid, with times and explorer links for `depositTx` / destination tx |
@@ -92,13 +92,16 @@ Test mode (`order.test`): a clearly labelled "Test mode" ribbon and a toolbar wi
 
 ## 4. Demo shop (`apps/demo`)
 
-Three products in `lib/products.ts`, priced low enough for real payments in T8:
+Three products in `lib/products.ts`, priced just above 0.05 USDC (the only minimum
+Relay has enforced on us, S2) so the T8 real payments cost cents. Strict quotes have no
+minimum of their own (S9), but the flat fee (~0.025 USDC from Base, ~0.034 from
+Arbitrum) is added on top, so going lower makes the fee bigger than the price:
 
 | Product | Price |
 |---|---|
-| Market report (PDF) | 1.15 USDC |
-| Sticker pack | 2.50 USDC |
-| Pro plan, one month | 4.99 USDC |
+| Market report (PDF) | 0.05 USDC |
+| Sticker pack | 0.10 USDC |
+| Pro plan, one month | 0.15 USDC |
 
 - `/`: product grid (shadcn `@repo/ui` is fine here; it's the merchant's app).
 - "Buy" is a server action: `settle.createOrder({ externalId: purchaseId, amount,

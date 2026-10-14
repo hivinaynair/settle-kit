@@ -59,7 +59,7 @@ the section shows "No browser wallet found; scan the QR with your phone wallet".
    attempt.
 
 The confirm panel shows: wallet + account (shortened), "You send 1.184248 USDC on
-Arbitrum", "Merchant receives 1.15 USDC on Base", the network-fee note, one **Pay**
+Arbitrum", "Merchant receives 0.10 USDC on Base", the network-fee note, one **Pay**
 button.
 
 ## 3. No second send
