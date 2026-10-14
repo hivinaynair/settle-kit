@@ -7,7 +7,7 @@ export type FakeRouterScript = {
 };
 
 export type FakeRouterCall = {
-  method: "sources" | "depositAddress" | "orderAddress" | "quote" | "fills" | "status";
+  method: Exclude<keyof PaymentRouter, "id">;
   input: unknown;
 };
 
@@ -18,7 +18,7 @@ export type FakeRouter = PaymentRouter & {
 export function fakeRouter(script: FakeRouterScript): FakeRouter {
   const calls: FakeRouterCall[] = [];
   let cursor = 0;
-  let latest: readonly Fill[] = [];
+  let latest: Fill[] = [];
 
   function record(method: FakeRouterCall["method"], input: unknown) {
     calls.push({ method, input });
@@ -54,12 +54,12 @@ export function fakeRouter(script: FakeRouterScript): FakeRouter {
       };
     },
 
+    // Each call returns the next scripted page; the last one repeats forever.
     async fills(address) {
       record("fills", address);
-      const frame = script.fills[Math.min(cursor, Math.max(script.fills.length - 1, 0))] ?? [];
+      latest = script.fills[cursor] ?? [];
       if (cursor < script.fills.length - 1) cursor += 1;
-      latest = frame;
-      return frame.map(copyFill);
+      return structuredClone(latest);
     },
 
     async status(fillId) {
@@ -70,15 +70,5 @@ export function fakeRouter(script: FakeRouterScript): FakeRouter {
       }
       return fill.status;
     },
-  };
-}
-
-function copyFill(fill: Fill): Fill {
-  return {
-    id: fill.id,
-    status: fill.status,
-    depositTx: fill.depositTx,
-    destination: fill.destination === null ? null : { ...fill.destination },
-    updatedAt: new Date(fill.updatedAt),
   };
 }

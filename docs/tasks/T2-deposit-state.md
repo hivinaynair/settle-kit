@@ -71,7 +71,8 @@ export function nextStep(current: DepositStatus, fill: FillStatus): Step;
 
 Rules:
 1. A final `current` always returns `stay`. So does `settled` (only delivery moves it).
-2. `filled` → `verify_settlement`; `refunded` and `failed` → `verify_refund`.
+2. `filled` → `verify_settlement`; `refunded` and `failed` → `verify_refund`; `unknown` →
+   `move` to `needs_attention` (if allowed from `current`, else `stay`).
 3. `waiting`/`processing`/`delayed` → `move` to the matching state, or `stay` if equal.
 4. Never return a `move` that `canTransition` rejects (`needs_attention → waiting`
    becomes `stay`).
@@ -145,8 +146,8 @@ to `DepositErrorCode` (used by the widget in T9).
    table (no hand-written exceptions).
 4. `isFinal` is true for exactly `credited`, `refunded`, `resolved`.
 5. `isInFlight` is true for exactly `waiting`, `processing`, `delayed`, `settled`.
-6. `nextStep`: every combination of the 8 statuses × 6 fill statuses returns a `Step`,
-   and every `move` passes `canTransition` (generated, 48 cases).
+6. `nextStep`: every combination of the 8 statuses × 7 fill statuses returns a `Step`,
+   and every `move` passes `canTransition` (generated, 56 cases).
 7. `nextStep("credited", "filled")` and `nextStep("settled", "failed")` are `stay`.
 8. `nextStep("waiting", "filled")` is `verify_settlement`; `("processing", "failed")` is
    `verify_refund`; `("needs_attention", "waiting")` is `stay`.

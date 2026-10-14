@@ -9,7 +9,7 @@ import {
   type Route,
   type Source,
 } from "@settle-kit/core";
-import { type Address, type Hex, isAddress, isHex, zeroAddress } from "viem";
+import { type Address, type Hash, isAddress, isAddressEqual, isHash, zeroAddress } from "viem";
 import { z } from "zod";
 
 const RELAY_API = "https://api.relay.link";
@@ -42,15 +42,25 @@ const ERROR_CODES: Record<string, DepositErrorCode | undefined> = {
 const baseUnits = z.string().regex(/^\d+$/).transform(BigInt);
 // isAddress only accepts a string, so the check narrows before calling it.
 const address = z.custom<Address>((value) => typeof value === "string" && isAddress(value));
-// Hashes are checked with isHex when mapped (firstHex / toFill), not here.
-const txHash = z.string().optional();
+// Anything that isn't a 32-byte hash becomes undefined, so mappers can fall back with `??`.
+const txHash = z
+  .string()
+  .optional()
+  .transform((value): Hash | undefined =>
+    value !== undefined && isHash(value) ? value : undefined,
+  );
+
+/** An array item that fails its schema becomes null instead of failing the whole list. */
+function skippable<T extends z.ZodType>(item: T) {
+  return item.nullable().catch(null);
+}
 
 const QuoteResponse = z.object({
   steps: z.array(z.object({ depositAddress: address.optional() })).optional(),
   details: z.object({
     currencyIn: z.object({ amount: baseUnits }),
     currencyOut: z.object({ amount: baseUnits, minimumAmount: baseUnits }),
-    timeEstimate: z.number().finite(),
+    timeEstimate: z.number(),
   }),
 });
 
@@ -68,30 +78,31 @@ const RelayRequest = z.object({
     .nullish(),
 });
 
-// Items are parsed one by one so a single malformed request can't block the address.
+// One malformed request is skipped (reconciliation re-reads it), not fatal for the address.
 const RequestsPage = z.object({
-  requests: z.array(z.unknown()),
+  requests: z.array(skippable(RelayRequest)),
   continuation: z.string().nullish(),
 });
 
 const StatusResponse = z.object({ status: z.string() });
-
-const Chain = z.object({
-  id: z.number(),
-  name: z.string(),
-  depositAddressEnabled: z.boolean().optional(),
-  disabled: z.boolean().optional(),
-  solverCurrencies: z.array(z.unknown()).optional(),
-});
-
-// Chains are parsed one by one so a single malformed chain can't hide the others.
-const ChainsResponse = z.object({ chains: z.array(z.unknown()) });
 
 const Currency = z.object({
   address,
   symbol: z.string().min(1),
   decimals: z.number().int().nonnegative(),
 });
+
+const Chain = z.object({
+  id: z.number(),
+  name: z.string().min(1),
+  depositAddressEnabled: z.boolean().optional(),
+  disabled: z.boolean().optional(),
+  solverCurrencies: z.array(skippable(Currency)).optional(),
+});
+
+const ChainsResponse = z.object({ chains: z.array(skippable(Chain)) });
+
+const ErrorBody = z.object({ errorCode: z.string() });
 
 export type RelayFetch = (input: RequestInfo | URL, init?: RequestInit) => Promise<Response>;
 
@@ -130,39 +141,24 @@ export function relay(options: RelayOptions): PaymentRouter {
     if (body !== undefined) headers["content-type"] = "application/json";
 
     let response: Response;
+    let text: string;
     try {
       response = await doFetch(`${RELAY_API}${path}`, {
         method: body === undefined ? "GET" : "POST",
         headers,
-        ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+        body: body === undefined ? null : JSON.stringify(body),
       });
-    } catch (error) {
-      throw new DepositError("router_unavailable", "Relay request failed", error);
-    }
-
-    let text: string;
-    try {
       text = await response.text();
     } catch (error) {
       throw new DepositError("router_unavailable", "Relay request failed", error);
     }
 
-    let json: unknown = null;
-    if (text.trim() !== "") {
-      try {
-        json = JSON.parse(text) as unknown;
-      } catch {
-        json = text;
-      }
-    }
-
+    const json = parseBody(text);
     if (!response.ok) {
-      const unavailable = response.status >= 500 || response.status === 429;
-      throw new DepositError(
-        errorCodeFor(response.status, json),
-        unavailable ? "Relay is unavailable" : "Relay rejected the request",
-        json,
-      );
+      const message = isOutage(response.status)
+        ? "Relay is unavailable"
+        : "Relay rejected the request";
+      throw new DepositError(errorCodeFor(response.status, json), message, json);
     }
 
     const parsed = schema.safeParse(json);
@@ -176,48 +172,36 @@ export function relay(options: RelayOptions): PaymentRouter {
     return parsed.data;
   }
 
+  const quoteVia = (quote: QuoteOptions) => call(QuoteResponse, "/quote/v2", quoteBody(quote));
+
   return {
     id: "relay",
 
     async sources() {
       const page = await call(ChainsResponse, "/chains");
-      const sources: Source[] = [];
-      for (const item of page.chains) {
-        const chain = Chain.safeParse(item);
-        const source = chain.success ? toSource(chain.data) : null;
-        if (source) sources.push(source);
-      }
-      return sources;
+      return page.chains.flatMap((chain) => (chain ? (toSource(chain) ?? []) : []));
     },
 
     // A second quote is a different address. T3 stores the first one.
     // Relay needs a sample amount to issue the address: the route minimum from the
     // manifest, else one whole token. Callers never see it.
     async depositAddress(input) {
-      const quote = await call(
-        QuoteResponse,
-        "/quote/v2",
-        quoteBody({
-          ...input,
-          amount: input.route.minimum ?? 10n ** BigInt(input.route.from.decimals),
-          tradeType: "EXACT_INPUT",
-          useDepositAddress: true,
-        }),
-      );
+      const quote = await quoteVia({
+        ...input,
+        amount: input.route.minimum ?? 10n ** BigInt(input.route.from.decimals),
+        tradeType: "EXACT_INPUT",
+        useDepositAddress: true,
+      });
       return { address: quotedAddress(quote) };
     },
 
     async orderAddress(input): Promise<OrderAddress> {
-      const quote = await call(
-        QuoteResponse,
-        "/quote/v2",
-        quoteBody({
-          ...input,
-          tradeType: "EXACT_OUTPUT",
-          useDepositAddress: true,
-          strict: true,
-        }),
-      );
+      const quote = await quoteVia({
+        ...input,
+        tradeType: "EXACT_OUTPUT",
+        useDepositAddress: true,
+        strict: true,
+      });
       const quoted = quote.details.currencyOut.amount;
       if (quoted !== input.amount) {
         // Amounts as strings: a bigint in `cause` would break JSON.stringify(error).
@@ -230,11 +214,11 @@ export function relay(options: RelayOptions): PaymentRouter {
     },
 
     async quote(input): Promise<Quote> {
-      const quoted = await call(
-        QuoteResponse,
-        "/quote/v2",
-        quoteBody({ route: input.route, amount: input.payAmount, tradeType: "EXACT_INPUT" }),
-      );
+      const quoted = await quoteVia({
+        route: input.route,
+        amount: input.payAmount,
+        tradeType: "EXACT_INPUT",
+      });
       return {
         payAmount: quoted.details.currencyIn.amount,
         receiveAmount: quoted.details.currencyOut.amount,
@@ -248,35 +232,45 @@ export function relay(options: RelayOptions): PaymentRouter {
       const seen = new Set<string>();
       let continuation: string | undefined;
 
-      for (;;) {
+      do {
         const params = new URLSearchParams({ depositAddress: address });
-        if (continuation !== undefined) params.set("continuation", continuation);
+        if (continuation) params.set("continuation", continuation);
         const page = await call(RequestsPage, `/requests/v3?${params}`);
-        for (const item of page.requests) {
-          // A malformed request is skipped; reconciliation re-reads it on the next scan.
-          const request = RelayRequest.safeParse(item);
-          if (request.success) fills.push(toFill(request.data));
-        }
-        const next = page.continuation;
-        if (typeof next !== "string" || next.length === 0) return fills;
-        if (seen.has(next)) {
+        for (const request of page.requests) if (request) fills.push(toFill(request));
+
+        continuation = page.continuation || undefined;
+        if (continuation && seen.has(continuation)) {
           throw new DepositError("router_unavailable", "Relay repeated a continuation token");
         }
-        seen.add(next);
-        continuation = next;
-      }
+        if (continuation) seen.add(continuation);
+      } while (continuation);
+
+      return fills;
     },
 
     async status(fillId) {
       const params = new URLSearchParams({ requestId: fillId });
       const body = await call(StatusResponse, `/intents/status/v3?${params}`);
-      const status = FILL_STATUS[body.status];
-      if (status === undefined) {
-        throw new DepositError("router_unavailable", "Relay returned an unknown status");
-      }
-      return status;
+      return toFillStatus(body.status);
     },
   };
+}
+
+/**
+ * One policy for every Relay status we don't recognise: "unknown", which the workflow
+ * sends to needs_attention. Never an error that would look like an outage and retry forever.
+ */
+function toFillStatus(status: string): FillStatus {
+  return FILL_STATUS[status] ?? "unknown";
+}
+
+/** Relay writes the chain's own coin as the zero address; we write "native". */
+function toRelayToken(token: Address | "native"): Address {
+  return token === "native" ? zeroAddress : token;
+}
+
+function fromRelayToken(token: Address): Address | "native" {
+  return isAddressEqual(token, zeroAddress) ? "native" : token;
 }
 
 // Undefined optional fields are dropped by JSON.stringify.
@@ -286,47 +280,40 @@ function quoteBody({ route, amount, ...rest }: QuoteOptions) {
     user: zeroAddress,
     originChainId: route.from.chainId,
     destinationChainId: route.to.chainId,
-    originCurrency: route.from.token === "native" ? zeroAddress : route.from.token,
-    destinationCurrency: route.to.token === "native" ? zeroAddress : route.to.token,
+    originCurrency: toRelayToken(route.from.token),
+    destinationCurrency: toRelayToken(route.to.token),
     amount: amount.toString(),
   };
 }
 
 function toSource(chain: z.infer<typeof Chain>): Source | null {
-  if (chain.depositAddressEnabled !== true || chain.disabled === true || chain.name.length === 0) {
-    return null;
-  }
-  const tokens: Source["tokens"] = [];
-  for (const currency of chain.solverCurrencies ?? []) {
-    const parsed = Currency.safeParse(currency);
-    if (!parsed.success) continue;
-    const token =
-      parsed.data.address.toLowerCase() === zeroAddress ? "native" : parsed.data.address;
-    tokens.push({ token, symbol: parsed.data.symbol, decimals: parsed.data.decimals });
-  }
+  if (chain.depositAddressEnabled !== true || chain.disabled === true) return null;
+  const tokens = (chain.solverCurrencies ?? []).flatMap((currency) =>
+    currency
+      ? [
+          {
+            token: fromRelayToken(currency.address),
+            symbol: currency.symbol,
+            decimals: currency.decimals,
+          },
+        ]
+      : [],
+  );
   return { chainId: chain.id, name: chain.name, tokens };
 }
 
 function toFill(request: z.infer<typeof RelayRequest>): Fill {
   const outgoing = request.data?.outTxs?.[0];
-  const outgoingHash = outgoing?.txHash;
   return {
     id: request.id,
-    // An unrecognised status becomes "unknown" (→ needs_attention), not an error that
-    // would block every other fill at the address.
-    status: FILL_STATUS[request.status] ?? "unknown",
-    depositTx: firstHex(request.depositAddress?.depositTxHash, request.data?.inTxs?.[0]?.txHash),
+    status: toFillStatus(request.status),
+    depositTx: request.depositAddress?.depositTxHash ?? request.data?.inTxs?.[0]?.txHash ?? null,
     destination:
-      request.status === "success" && typeof outgoing?.chainId === "number" && isHex(outgoingHash)
-        ? { chainId: outgoing.chainId, txHash: outgoingHash }
+      request.status === "success" && outgoing?.chainId !== undefined && outgoing.txHash
+        ? { chainId: outgoing.chainId, txHash: outgoing.txHash }
         : null,
     updatedAt: request.updatedAt,
   };
-}
-
-function firstHex(...candidates: (string | undefined)[]): Hex | null {
-  for (const candidate of candidates) if (isHex(candidate)) return candidate;
-  return null;
 }
 
 function quotedAddress(quote: z.infer<typeof QuoteResponse>): Address {
@@ -337,14 +324,23 @@ function quotedAddress(quote: z.infer<typeof QuoteResponse>): Address {
   return found;
 }
 
+function parseBody(text: string): unknown {
+  if (text.trim() === "") return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+function isOutage(status: number): boolean {
+  return status >= 500 || status === 429;
+}
+
 function errorCodeFor(status: number, body: unknown): DepositErrorCode {
-  if (status >= 500 || status === 429) return "router_unavailable";
+  if (isOutage(status)) return "router_unavailable";
   // A missing, wrong or revoked key is a configuration problem, not an outage.
   if (status === 401 || status === 403) return "invalid_config";
-  if (typeof body !== "object" || body === null || !("errorCode" in body)) {
-    return "router_unavailable";
-  }
-  const code = body.errorCode;
-  if (typeof code !== "string") return "router_unavailable";
-  return ERROR_CODES[code] ?? "router_unavailable";
+  const code = ErrorBody.safeParse(body).data?.errorCode;
+  return (code && ERROR_CODES[code]) || "router_unavailable";
 }

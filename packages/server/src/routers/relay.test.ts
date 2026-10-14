@@ -46,34 +46,7 @@ function address(value: string): Address {
 }
 
 function jsonResponse(body: unknown, status = 200): Response {
-  return new Response(JSON.stringify(body), {
-    status,
-    headers: { "content-type": "application/json" },
-  });
-}
-
-function createFetch(handler: (call: FetchCall) => Response | Promise<Response>): {
-  fetch: RelayFetch;
-  calls: FetchCall[];
-} {
-  const calls: FetchCall[] = [];
-  const fetchImpl: RelayFetch = async (input, init) => {
-    const url = new URL(requestUrl(input));
-    const headers = new Headers(init?.headers);
-    let body: unknown;
-    if (typeof init?.body === "string" && init.body.length > 0)
-      body = JSON.parse(init.body) as unknown;
-    const call: FetchCall = { url, method: init?.method ?? "GET", headers, body };
-    calls.push(call);
-    return handler(call);
-  };
-  return { fetch: fetchImpl, calls };
-}
-
-function requestUrl(input: RequestInfo | URL): string {
-  if (typeof input === "string") return input;
-  if (input instanceof URL) return input.toString();
-  return input.url;
+  return Response.json(body, { status });
 }
 
 async function expectCode(
@@ -86,28 +59,28 @@ async function expectCode(
     expect(error).toBeInstanceOf(DepositError);
     if (!(error instanceof DepositError)) throw error;
     expect(error.code).toBe(code);
-    expect(containsSecret(error, API_KEY)).toBe(false);
-    expect(error.stack ?? "").not.toContain(API_KEY);
+    // Bun.inspect covers message, stack and nested cause.
+    expect(Bun.inspect(error)).not.toContain(API_KEY);
     return error;
   }
   throw new Error(`expected DepositError ${code}`);
 }
 
-function containsSecret(value: unknown, secret: string, seen = new Set<unknown>()): boolean {
-  if (typeof value === "string") return value.includes(secret);
-  if (typeof value !== "object" || value === null) return false;
-  if (seen.has(value)) return false;
-  seen.add(value);
-  if (value instanceof Error) {
-    return containsSecret(value.message, secret, seen) || containsSecret(value.cause, secret, seen);
-  }
-  if (Array.isArray(value)) return value.some((item) => containsSecret(item, secret, seen));
-  return Object.values(value).some((item) => containsSecret(item, secret, seen));
-}
-
 function routerFor(handler: (call: FetchCall) => Response | Promise<Response>) {
-  const client = createFetch(handler);
-  return { ...client, router: relay({ apiKey: API_KEY, fetch: client.fetch }) };
+  const calls: FetchCall[] = [];
+  const fetch: RelayFetch = async (input, init) => {
+    const request = new Request(input, init);
+    const text = await request.text();
+    const call: FetchCall = {
+      url: new URL(request.url),
+      method: request.method,
+      headers: request.headers,
+      body: text ? (JSON.parse(text) as unknown) : undefined,
+    };
+    calls.push(call);
+    return handler(call);
+  };
+  return { calls, fetch, router: relay({ apiKey: API_KEY, fetch }) };
 }
 
 describe("relay()", () => {
@@ -269,7 +242,7 @@ describe("relay()", () => {
     expect(discoveredError.cause).toEqual({ message: "down" });
   });
 
-  it("rejects a missing api key before any request", () => {
+  it("rejects a missing api key before any request", async () => {
     let calls = 0;
     const fetchImpl: RelayFetch = async () => {
       calls += 1;
@@ -279,14 +252,10 @@ describe("relay()", () => {
     expect(() => relay({ apiKey: "   ", fetch: fetchImpl })).toThrow(DepositError);
     expect(calls).toBe(0);
 
-    let caught: unknown;
-    try {
-      relay({ apiKey: "" });
-    } catch (error) {
-      caught = error;
-    }
-    expect(caught).toBeInstanceOf(DepositError);
-    expect((caught as DepositError).code).toBe("invalid_config");
+    await expectCode(
+      Promise.resolve().then(() => relay({ apiKey: "" })),
+      "invalid_config",
+    );
   });
 
   it("maps a rejected API key (401/403) to invalid_config", async () => {
@@ -341,42 +310,20 @@ describe("relay()", () => {
       },
     };
     const notHex = { ...structuredClone(first), depositAddress: { depositTxHash: "not-a-tx" } };
+    const fillsFor = (...requests: unknown[]) =>
+      routerFor(() => jsonResponse({ requests })).router.fills(depositAddress);
 
-    const pendingFills = await relay({
-      apiKey: API_KEY,
-      fetch: async () => jsonResponse({ requests: [pending] }),
-    }).fills(depositAddress);
-    expect(pendingFills[0]?.status).toBe("processing");
-    expect(pendingFills[0]?.destination).toBeNull();
-
-    const refundFills = await relay({
-      apiKey: API_KEY,
-      fetch: async () => jsonResponse({ requests: [refunded] }),
-    }).fills(depositAddress);
-    expect(refundFills[0]?.status).toBe("refunded");
-    expect(refundFills[0]?.destination).toBeNull();
-
-    const preferredFills = await relay({
-      apiKey: API_KEY,
-      fetch: async () => jsonResponse({ requests: [preferred] }),
-    }).fills(depositAddress);
-    expect(preferredFills[0]?.depositTx).toBe(
+    expect((await fillsFor(pending))[0]).toMatchObject({ status: "processing", destination: null });
+    expect((await fillsFor(refunded))[0]).toMatchObject({ status: "refunded", destination: null });
+    expect((await fillsFor(preferred))[0]?.depositTx).toBe(
       "0x1111111111111111111111111111111111111111111111111111111111111111",
     );
-
-    const fallbackFills = await relay({
-      apiKey: API_KEY,
-      fetch: async () => jsonResponse({ requests: [notHex] }),
-    }).fills(depositAddress);
-    expect(fallbackFills[0]?.depositTx).toBe(fills[0]?.depositTx);
+    expect((await fillsFor(notHex))[0]?.depositTx).toBe(fills[0]?.depositTx);
 
     // One unknown status or malformed request must not block the other fills.
     const newStatus = { ...structuredClone(first), status: "expired" };
     const malformed = { id: "broken" };
-    const mixed = await relay({
-      apiKey: API_KEY,
-      fetch: async () => jsonResponse({ requests: [newStatus, malformed, second] }),
-    }).fills(depositAddress);
+    const mixed = await fillsFor(newStatus, malformed, second);
     expect(mixed.map((fill) => [fill.id, fill.status])).toEqual([
       [first.id, "unknown"],
       [second.id, "filled"],
@@ -392,7 +339,7 @@ describe("relay()", () => {
     expect(calls[0]?.body).toMatchObject({ amount: "2000000" });
   });
 
-  it("maps each Relay status and rejects an unknown one", async () => {
+  it("maps each Relay status, and an unrecognised one to unknown", async () => {
     const cases = [
       ["waiting", "waiting"],
       ["depositing", "processing"],
@@ -415,7 +362,7 @@ describe("relay()", () => {
     }
 
     const unknown = routerFor(() => jsonResponse({ status: "weird" }));
-    await expectCode(unknown.router.status("fill-1"), "router_unavailable");
+    expect(await unknown.router.status("fill-1")).toBe("unknown");
 
     const waiting = routerFor(() => jsonResponse(statusWaitingFixture));
     expect(await waiting.router.status("fill-1")).toBe("waiting");

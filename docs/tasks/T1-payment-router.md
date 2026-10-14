@@ -66,7 +66,7 @@ export type DepositAddress = { address: Address };
 export type OrderAddress = { address: Address; amountIn: bigint; amountOut: bigint };
 
 /** The router's view of a fill. Not the deposit state machine (that's T2). */
-export type FillStatus = "waiting" | "processing" | "delayed" | "filled" | "refunded" | "failed";
+export type FillStatus = "waiting" | "processing" | "delayed" | "filled" | "refunded" | "failed" | "unknown";
 
 export type Fill = {
   id: string;                         // Relay requestId of the actual fill
@@ -143,7 +143,9 @@ relay({
 8. **`status(fillId)`** → `GET /intents/status/v3?requestId=…`.
 9. **Status mapping, in one table:** `waiting→waiting`;
    `depositing|pending|submitted→processing`; `delayed→delayed`; `success→filled`;
-   `refund→refunded`; `failure→failed`. Unknown → `DepositError("router_unavailable")`.
+   `refund→refunded`; `failure→failed`. Anything else → `"unknown"` (in both `fills()` and
+   `status()`), which T2 sends to `needs_attention`. Never an error: that would look like
+   an outage, retry forever, and block the other fills at the address.
 10. **Errors.** Non-2xx with an `errorCode` maps: `AMOUNT_TOO_LOW→amount_too_low`;
    `INVALID_INPUT_CURRENCY|INVALID_OUTPUT_CURRENCY|NO_QUOTES|INSUFFICIENT_LIQUIDITY|SWAP_IMPACT_TOO_HIGH|UNSUPPORTED_ROUTE→quote_unavailable`;
    `CHAIN_DISABLED|ROUTE_TEMPORARILY_RESTRICTED|UNSUPPORTED_CHAIN→route_unavailable`;
@@ -204,7 +206,8 @@ Inject a fake `fetch` that serves the fixtures. No network.
 8. `relay({ apiKey: "" })` throws `invalid_config` and makes zero fetch calls.
 9. `fills()` sends `x-api-key`, follows `continuation` across two pages and returns both
    pages' fills.
-10. Status mapping: each of the 8 Relay statuses maps per rule 9; `"weird"` throws.
+10. Status mapping: each of the 8 Relay statuses maps per rule 9; `"weird"` → `"unknown"`;
+    one unknown or malformed request does not hide the other fills on the page.
 11. `status()` on `status-waiting.json` returns `"waiting"`.
 12. No thrown error or `cause` contains the API key string.
 13. `fakeRouter`: three `fills()` calls return the scripted sequence, then repeat the last.
@@ -222,4 +225,4 @@ Retries, caching, rate limiting, webhooks (T7), reindex (T11), other routers. Do
 
 - Why does `depositAddress()` never get called twice for the same account and route?
 - Why does checkout use `EXACT_OUTPUT` with a strict address instead of an open one?
-- Why does an unknown status throw instead of mapping to `"waiting"`?
+- Why does an unknown status become `"unknown"` instead of `"waiting"` or an error?
