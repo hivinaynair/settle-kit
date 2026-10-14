@@ -1,6 +1,17 @@
 # settle-kit
 
-Bun-only Turborepo for **Settle Kit**: deposits from any token, any chain, any exchange → USDC.
+Bun-only Turborepo for **Settle Kit**: a self-hosted SDK for crypto deposits from any
+wallet or exchange, credited as USDC on Base. Users send to a reusable deposit address
+(QR or browser wallet); Relay routes it; the host's account is credited once.
+
+## Read first
+
+- Design: `docs/plans/2026-10-13-deposit-kit-design.md` (source of truth for scope,
+  states, API). Evidence: `docs/spikes.md`. Task specs: `docs/tasks/`.
+- **Vinay writes the implementation code.** Agents write specs, review, research and
+  run spikes unless asked otherwise.
+- Docs are edited by more than one AI tool. Re-read a file right before editing it,
+  make targeted edits, and don't commit others' uncommitted changes without asking.
 
 ## Constraints
 
@@ -13,11 +24,22 @@ Bun-only Turborepo for **Settle Kit**: deposits from any token, any chain, any e
 - **Env vars** are validated per app (`env.ts` / `@t3-oss/env-*`). Prefer those
   helpers over raw `process.env` in app code.
 
+## Money rules
+
+- Amounts are base units: `bigint` in code, `numeric` in Postgres, decimal strings in
+  JSON. Never floats.
+- Credit only the verified on-chain amount at Base's `safe` block. Provider status
+  alone never authorizes credit.
+- Map provider `errorCode`s; never parse error messages. Never put API keys or
+  webhook secrets in errors, `cause` or logs.
+- Treasury, refund and recovery addresses come from server config only.
+
 ## Packages
 
 `@settle-kit/{core,react,server}` export TypeScript source (`./src/index.ts`);
 the demo compiles them via `transpilePackages`, so edits need no rebuild.
-Add a build step before the first npm publish.
+Add a build step before the first npm publish. The published widget must not depend
+on Tailwind or `@repo/ui`; it themes through CSS variables.
 
 ## Apps
 

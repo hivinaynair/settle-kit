@@ -65,5 +65,75 @@ not a raw confirmation count. Unique keys: `fill_id` and `(chain_id, tx_hash, lo
 
 ## Still open
 
-- **S4 · real deposit, ~$5** — needs a funded wallet (you send; we watch statuses).
-- Relay API key — needed for `/requests/v3`.
+- **S4 · real deposit on Base mainnet** — waiting for funds (see S4a and S7). Plan:
+  Base ETH → Base USDC via a deposit address (funds the payer with USDC), then
+  $2 Base USDC → Base USDC to a fresh address, then $2 again to the same address,
+  then Arbitrum → Base if funds arrive on Arbitrum. Record fill ids, tx links,
+  receipt shape, time to credit and `/requests/v3` behaviour under the key's limit.
+
+## S5 · Credit-card onramp feasibility — 2026-10-14
+
+Documentation review and credential-free probes are complete. Transak staging
+metadata returned HTTP 200, including a Base Sepolia USDC-labelled route and USD
+card method. MoonPay requests encountered connection resets before an HTTP response.
+Neither provider checkout, signed webhook nor token delivery has been tested.
+
+Both document test keys before business verification; live use needs approval.
+Transak is the provisional first candidate, conditional on recipient approval and
+webhook access. Its sandbox delivers TRNSK, not Circle USDC. Cards remain outside v1.
+
+See [the full spike](spikes/2026-10-14-card-onramp.md) for account/KYC requirements,
+provider sources, the runnable probe, recorded results and remaining gates.
+
+## S6 · Same-chain deposit address (Base USDC → Base USDC) — 2026-10-14
+
+Mainnet `/quote/v2` with `useDepositAddress: true` returns a deposit address
+(`steps[0].id = "deposit"`, transfer on Base USDC). Fees are roughly flat:
+
+| Route | In | Out | Fee |
+|---|---|---|---|
+| Base USDC → Base USDC | 2.00 | 1.975117 | ~$0.025 (1.25%) |
+| Base USDC → Base USDC | 10.00 | 9.975117 | ~$0.025 (0.25%) |
+| Arbitrum USDC → Base USDC | 2.00 | 1.965696 | ~$0.034 (1.7%) |
+| Base USDT → Base USDC | 2.00 | 1.962734 | ~$0.037 (1.9%) |
+
+Quote only; no funds sent. Script: scratch `relay-same-chain.sh` (plain curl, no key).
+
+## S4a · Testnet deposit attempt — 2026-10-14 (failed; testnet not usable)
+
+Same-chain Base Sepolia ETH → Base Sepolia ETH. Testnet quotes work without a key
+(minimum ~0.0001 ETH same-chain; ~0.0003 ETH Sepolia → Base Sepolia because of a
+~0.00016 ETH fee). Payer and treasury were CDP server wallets created by name
+(`settle-kit-s4-payer` `0xc0ddaFE4d55E5ce58FDa36b85A1125F217130ebE`,
+`settle-kit-s4-treasury` `0xac44275dE5bF4109977892c4a256BbFA16B6C804`), funded by
+the CDP faucet.
+
+| Step | Result |
+|---|---|
+| Deposit address | `0xf6c3f7d15bf99729f2d1c7bac187bc07c57f2f14` (quote requestId `0x1791…8a26`) |
+| Transfer 0.00015 ETH | Mined, tx `0x82e7a6ad8273ab68e58eb776d26067c5973ae194346dfe040c2a926593fc7de0` |
+| After 31 min | Funds still at the deposit address; quote status `waiting` |
+| `POST /transactions/deposit-address/reindex` | 200, "Triggered reindex for 1 currency"; still not swept |
+| `GET /requests/v3` on testnet with our key | **401** (same key → 200 on mainnet) |
+| `GET /requests/v3` on testnet without a key | 400, `x-api-key` required |
+
+**So:** Relay's testnet can't be our development profile: it didn't sweep the
+deposit, and `/requests/v3` has no usable key there. Relay's own testnet guide
+recommends cheap L2 mainnets over testnets. Development uses test mode (simulated
+deposits); the live proof is a small Base mainnet deposit. Reindex is a real
+recovery tool and belongs in operator tooling.
+
+## S7 · Relay account and funding findings — 2026-10-14
+
+- **Rate limit:** the Relay dashboard shows our key at `/requests` **2 req/min**
+  (`/quote` 50, others 200). Relay docs list `/requests/v3` at 200/min by default.
+  Unconfirmed whether 2/min covers `/requests/v3`; asked support. Until answered,
+  reconciliation budget = the key's actual `/requests` limit, and webhooks are the
+  primary discovery path.
+- **No testnet key** can be created in the dashboard; asked support.
+- **Funding from India:** Transak's checkout does not list India as a country of
+  residence; MoonPay's quote defaulted to Ethereum mainnet. Onramp.money (INR via
+  UPI) quoted ₹1,500 → 0.00546683 ETH **on Base**, ~₹34 total fees (2.3%).
+  For payers in markets like India, local exchanges and INR onramps are the funding
+  path, which supports building the address/QR path first.
+

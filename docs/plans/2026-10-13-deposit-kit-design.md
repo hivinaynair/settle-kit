@@ -1,503 +1,749 @@
-# Settle Kit — deposit kit design
+# Settle Kit: v1 deposit SDK
 
-Status: draft for review · 2026-10-13 · Evidence: [spikes](../spikes.md)
+Status: draft. V1 scope agreed; implementation and release checks pending.
+Updated: 2026-10-14.
+Evidence: [integration spikes](../spikes.md).
 
-This doc is written to be *learned from*, not just approved. Each section says what
-we build, **why**, the alternatives we rejected, and what would make it better later.
+## 1. Scope
 
----
+**For:** apps that sell credits or hold balances (games, AI apps, trading apps) and
+want users to top up from wherever their crypto already is. **Why:** each such app
+rebuilds deposit detection, account attribution and duplicate-free crediting.
+Settle Kit is that layer, self-hosted.
 
-## 1. The problem
+Settle Kit adds reusable crypto deposit addresses to an app. Users transfer from
+their existing wallet or exchange; the app receives USDC on Base and credits the
+correct account. The SDK runs inside the host app with the host's database and Relay
+credentials. It is MIT-licensed and adds no fee above the router's charges.
 
-A user wants to put money into an app — a game, a trading app, an AI app with
-credits. Their money is somewhere else: ETH on Arbitrum, USDC on Ethereum, a balance
-on an exchange. The app wants **one** asset on **one** chain (say USDC on Base).
+The first release is intentionally small:
 
-Moving it today means the user bridges, swaps, picks networks, pays gas — and the app
-has to detect the deposit, match it to the user, and credit it exactly once, even when
-things go wrong (wrong amount, slow fill, refund, a crashed server).
-
-**Settle Kit** removes both halves of that work:
-
-- **For the user:** one widget. Pick what you have, scan a QR or click "send from
-  wallet", watch it arrive.
-- **For the developer:** one server package that tracks every deposit durably and tells
-  your app "credit account X with Y" — once.
-
-Managed deposit products exist, but they are closed, sales-led, and sit in the money
-path. Settle Kit is open source and self-hosted: you run it in your own app, with your
-own database, and pay no fee on top of the router's.
-
-### Why it's credible
-
-| Concern | Who solves it |
+| Area | V1 |
 |---|---|
-| Swapping and bridging | **Relay** (solvers front liquidity on the destination chain) |
-| Durable tracking across crashes and deploys | **Workflow SDK** (proven on Vercel in S1) |
-| Exactly-once crediting | **Our database constraints** |
-| The experience | **Our widget** |
+| Deposit method | Address, copy button and QR first; then send from a browser wallet |
+| Amount | Optional input, used for estimates; any amount above the route minimum is accepted |
+| Sources | A tested EVM route manifest |
+| Destination | Native USDC on Base, sent to the host's treasury |
+| Router | Relay |
+| Storage | Postgres 15+ through Drizzle |
+| Execution | Workflow SDK on Vercel |
+| Host notification | One durable `onSettled` callback |
+| Recovery | Reconciliation, callback replay and manual payer repayment |
+| Distribution | Installable packages and a working Next.js reference app |
 
-We do not build a bridge, a wallet, or a blockchain indexer.
+Base USDC → Base USDC and Arbitrum USDC → Base USDC are the initial route candidates.
+Arbitrum USDT → Base USDC can be included if its fill and refund handling are proved
+without delaying release. The published manifest contains only routes that pass
+the release checks.
 
----
+The wallet path supports browser-extension wallets discovered through EIP-6963. It
+builds the transfer itself, an ERC-20 `transfer(storedAddress, amount)`, to the deposit
+address already stored for the account. It never sends a fresh quote's prepared transaction: every quote issues a new
+deposit address, which we would not be tracking. Server processing is identical for
+both paths. WalletConnect and mobile wallet pairing are
+out of v1. V1 accepts variable amounts subject to route minimums; it does not
+implement fixed-price checkout.
 
-## 2. Vocabulary
+## 2. Design decisions
 
-Learn these first; every later section uses them.
+**Use Relay for addresses and routing.** We need deposit detection, swaps, bridging
+and refund paths, but do not need to operate contracts or an indexer to ship this
+SDK. The tradeoff is dependence on Relay while funds are in transit. Our code can
+observe and verify outcomes; it cannot guarantee recovery during a permanent
+provider outage.
 
-| Term | Meaning |
+**Address and QR first, wallet second.** Address transfers cover exchanges and any
+wallet, and reach a working demo fastest. The wallet path follows the demo milestone:
+it adds network switching, balance and gas checks, and browser-side recovery after a
+wallet timeout, but no server changes, because both paths pay the same address.
+
+**The payer bears route fees.** Relay's fee is deducted in transit and the account is
+credited the verified arrival amount. The widget shows the estimate before sending.
+S6 measured a roughly flat ~$0.025 fee on Base USDC → Base USDC.
+
+**Fix the destination to USDC on Base.** One asset and one destination keep receipt
+verification and account crediting specific. Sources are identified by chain ID and
+token contract, rather than token symbol.
+
+**Use Postgres and Drizzle.** The host owns its database. We need unique constraints,
+conditional updates and transactions for deposit ownership and credit protection.
+Drizzle is the one supported storage integration. The internal store interface exists
+for testing, not as a public database plugin contract.
+
+**Use Workflow SDK for execution and the database for payment state.** The Vercel
+spike demonstrated retries, durable waits and continuation across a redeploy. Steps
+can run more than once, so writes and callbacks remain idempotent. Cron starts
+reconciliation; it does not run the deposit lifecycle. No additional queue service
+is part of this design.
+
+**Deliver only settlement to the host.** `onSettled` is the notification needed to
+apply an account credit. Progress, failure and refund states remain queryable in the
+database. This keeps one delivery record per deposit and avoids a general event
+outbox.
+
+**Keep refunds app-controlled.** Address transfers can originate from exchange
+wallets. Refunding the transaction sender may not repay the user. Relay returns funds
+to the configured app wallet; the host handles payer repayment through its support
+process. This adds manual work for the host, but avoids automatic transfers to an
+unverified destination.
+
+## 3. Architecture
+
+The existing package split stays:
+
+| Package | Responsibility |
 |---|---|
-| **Route** | origin chain + token → destination chain + token. e.g. `Arbitrum ETH → Base USDC` |
-| **Deposit address** | An address Relay generates for a route. Anything sent there is swapped/bridged to the recipient. Reusable for the same route |
-| **Fill** | One completed movement through a deposit address. Relay calls it a *request* (`requestId`). One address can produce many fills |
-| **Recipient / treasury** | Where funds land on the destination chain (the app's wallet) |
-| **Refund address** (`refundTo`) | Where Relay returns funds if a fill fails |
-| **Recovery address** | Fallback when a refund can't go back to the sender (e.g. the sender was an exchange) |
-| **Account** | The app's user. The SDK only sees an `accountId` string |
-| **Credit** | The app's record that an account received value. Off-chain, in the host's DB |
-| **Payment router** | Our interface over Relay (and later Across) |
-| **Accepted tokens** (`accept`) | Which tokens the widget offers the payer. `"stablecoins"` (default: USDC + USDT) or `"any"`. The destination is always the app's choice |
-| **Workflow / step** | Durable function / retried unit of work in the Workflow SDK |
-| **`safe` block** | A block the chain considers very unlikely to be reorged (~30 s behind head on Base) |
+| `@settle-kit/core` | Types, state transitions and typed errors; no network or UI dependencies |
+| `@settle-kit/react` | Provider, `useDeposit` and the address/QR widget |
+| `@settle-kit/server` | Handlers, Relay adapter, verification, workflows and Drizzle store |
+| `apps/demo` | Reference credits top-up app and setup instructions |
 
----
+Server credentials and database access stay in the server package.
 
-## 3. What the user sees
+### Host requirements
 
-```mermaid
-flowchart LR
-  A["Choose method"] --> B["Choose network and token"]
-  B --> C{"Method"}
-  C -->|QR| D["Transfer screen: QR and address"]
-  C -->|Wallet| E["Confirm and sign"]
-  D --> F["Progress: detected, processing, credited"]
-  E --> F
-  F --> G["Result: credited, refunded, needs attention, failed"]
-```
+| Requirement | Why |
+|---|---|
+| Next.js app wrapped with `withWorkflow` | Workflows run inside the host |
+| A durable Workflow World (Vercel or Postgres) | The local World loses in-flight runs on a crash |
+| Postgres 15+ | `NULLS NOT DISTINCT` and the partial unique index |
+| A scheduler calling `deposits.reconcile()` | Recovers missed webhooks and unfinished work |
+| A Relay API key with its webhook pointed at the host | Fill discovery and push events |
+| A Base RPC endpoint | Receipt verification at the `safe` block |
+| App-controlled treasury, refund and recovery addresses | Destination and the return path for refunds |
 
-Both paths end at **the same deposit address**. "Send from wallet" just sends the
-transfer the QR asks for — the quote even includes that exact transaction (S2).
-One lifecycle, two entry points.
-
-Screen inventory and error copy: §9.
-
----
-
-## 4. Architecture
+Requiring Workflow SDK limits adoption to hosts that can run it. That is the price of
+durable execution without a separate queue; it is stated up front, not discovered.
 
 ```mermaid
 flowchart TB
-  subgraph browser["Browser"]
-    W["React widget · @settle-kit/react"] --> S["Deposit session · @settle-kit/core"]
-  end
-  subgraph host["Host app · Next.js"]
-    H["Route handlers · @settle-kit/server"] --> WF["Workflows"]
-    H --> DB[("Postgres via DepositStore")]
-    WF --> DB
-    WF --> R["PaymentRouter · relay"]
-    WF --> V["Verifier · viem"]
-    WF --> CB["onEvent: host credits"]
-  end
-  S -->|HTTP| H
-  R -->|HTTPS| RelayAPI[("Relay API")]
-  V -->|RPC| BaseChain[("Base chain")]
+  W["React widget"] -->|Account-scoped HTTP| H["Host route handlers"]
+  H --> DB[("Postgres / Drizzle")]
+  H --> WF["Workflow SDK"]
+  Relay["Relay API"] -->|Signed events| WH["Webhook handler"]
+  WH --> DB
+  WH --> WF
+  Scheduler["Host scheduler"] --> RC["Reconciliation workflow"]
+  RC --> DB
+  RC --> Relay
+  RC --> WF
+  WF --> DB
+  WF --> Relay
+  WF --> V["Receipt verifier"]
+  V --> Base[("Base RPC")]
+  WF --> CB["Host onSettled callback"]
 ```
 
-| Package | Runs in | Responsibility |
-|---|---|---|
-| `@settle-kit/core` | anywhere | Types, the deposit state machine, typed errors. No React, no DOM, no network |
-| `@settle-kit/react` | browser | Provider, `useDeposit`, the widget |
-| `@settle-kit/server` | server | Route handlers, workflows, `PaymentRouter`s, verifier, `DepositStore` |
-| `apps/demo` | Vercel | Reference integration: credits top-up, docs, state gallery |
+A deposit follows this path:
 
-**Why three packages:** the core is shared by browser and server and must stay
-dependency-free; the router API key and database must never reach the browser.
-*Alternative rejected:* one package with subpath exports — simpler, but makes it easy
-to accidentally bundle server code into the widget.
+1. The authenticated host resolves an `accountId` and requests an address for a
+   supported route.
+2. The SDK stores the address's account and routing configuration. Subsequent
+   requests reuse it.
+3. The payer transfers outside the widget (address/QR) or signs a transfer to the
+   stored address in a connected wallet.
+4. A signed Relay event or reconciliation discovers the actual fill.
+5. A workflow verifies destination funds and persists settlement.
+6. A delivery workflow calls `onSettled`. The host applies its credit atomically;
+   acknowledgment moves the SDK deposit to `credited`.
 
----
+Closing the widget does not stop tracking.
 
-## 5. Data model
+## 4. Storage and state
 
-Postgres, prefixed `settle_kit_` so tables never collide with the host's.
+An address can receive multiple deposits. Each Relay fill has its own `requestId`
+and SDK deposit row. The quote-time request ID is not the deposit identity:
+regenerated quotes and repeat deposits can produce different fill IDs.
+
+Tables use the `settle_kit_` prefix. Deposit amounts are stored as integer base units
+in `numeric` columns and represented as `bigint` in application code. Amounts inside
+JSON evidence and callback payloads use decimal base-unit strings.
 
 ```text
 settle_kit_deposit_addresses
-  id            text pk
-  account_id    text
-  route         jsonb      -- origin chain/token, destination chain/token
-  router        text       -- "relay" — which router owns this address
-  network       text       -- "mainnet" | "testnet"
-  address       text
-  created_at    timestamptz
+  id                       text pk
+  account_id               text
+  route                    jsonb
+  router                   text       -- relay
+  network                  text       -- mainnet | test
+  address                  text
+  last_reconciled_at       timestamptz
+  created_at               timestamptz
   UNIQUE (router, network, address)
-  UNIQUE (account_id, router, network, route)   -- reuse, don't re-quote (S2)
+  UNIQUE (account_id, router, network, route)
 
-settle_kit_deposits                              -- one row per fill
-  id            text pk
-  address_id    text → deposit_addresses
-  fill_id       text       -- Relay requestId, from /requests/v3 (never the quote-time id)
-  deposit_tx    text       -- the user's transfer into the deposit address (depositTxHash)
-  status        text       -- waiting | processing | delayed | credited | refunded | failed | needs_attention
-  amount_in     numeric    -- what the user sent (base units)
-  amount_out    numeric    -- what actually arrived, from the receipt
-  source_tx     text
-  dest_chain_id int
-  dest_tx       text
-  dest_log_index int       -- null for native ETH (no log)
-  run_id        text       -- workflow run; null = not started yet (a sweep starts it)
-  error_code    text
-  created_at, updated_at timestamptz
-  UNIQUE (router, fill_id)                       -- a fill is recorded once
-  UNIQUE NULLS NOT DISTINCT (dest_chain_id, dest_tx, dest_log_index)
-                                                 -- a transfer is credited once, ETH included
+settle_kit_deposits
+  id                       text pk
+  address_id               text → deposit_addresses
+  router                   text
+  network                  text
+  fill_id                  text
+  deposit_tx               text       -- payer's transfer to the deposit address
+  status                   text
+  amount_in                numeric
+  amount_out               numeric
+  dest_chain_id            int
+  dest_tx                  text
+  dest_log_index           int
+  refund_evidence          jsonb      -- nullable; verified return to the app
+  run_id                   text       -- latest processing run; for debugging and restarts
+  delivery_run_id          text
+  settlement_event         jsonb      -- immutable onSettled payload
+  delivery_attempts        int
+  delivery_next_attempt_at timestamptz -- null once delivered or exhausted
+  delivery_error           text
+  error_code               text
+  created_at, updated_at   timestamptz
+  UNIQUE (router, network, fill_id)
+  UNIQUE INDEX NULLS NOT DISTINCT (dest_chain_id, dest_tx, dest_log_index)
+    WHERE dest_chain_id IS NOT NULL AND dest_tx IS NOT NULL
 
-settle_kit_send_attempts                         -- wallet path only
-  id            text pk
-  address_id    text → deposit_addresses
-  attempt_key   text       -- created in the browser before the wallet opens
-  tx_hash       text       -- set once the wallet returns one
-  created_at    timestamptz
+settle_kit_send_attempts                  -- wallet path only
+  id                       text pk
+  address_id               text → deposit_addresses
+  attempt_key              text       -- created in the browser before the wallet opens
+  tx_hash                  text       -- hint only; set if the wallet returns one
+  created_at               timestamptz
   UNIQUE (attempt_key)
 ```
 
-**Why two unique keys:** `fill_id` stops the same Relay request from being recorded
-twice; the transfer key stops two different requests (or a bug) from claiming the
-same on-chain transfer. Learned from lesson 24 / S3. **`NULLS NOT DISTINCT`** matters
-for native ETH: its log index is NULL, and plain `UNIQUE` treats two NULLs as different,
-so the same ETH transfer could be claimed twice (lesson 16c).
+A send attempt lets the widget show "Checking for your deposit…" after a wallet
+timeout or page reload instead of offering a second send. It is never evidence of
+payment; fills still come only from Relay and are verified on chain.
 
-**Why a send-attempt row:** if the wallet times out after sending, the browser doesn't
-know whether money left. The attempt key, saved before the wallet opens, lets the widget
-show "checking…" and look for fills at the address instead of offering a second send
-(lesson 31).
+`route` is canonical JSON containing source and destination chain/token IDs, treasury,
+and refund/recovery addresses. EVM addresses are normalized to lowercase. A treasury
+or refund configuration change creates a different address identity; existing
+addresses keep their original settings and remain reconciled.
 
-**Why `numeric`, not float:** USDC has 6 decimals and ETH 18; floats lose cents.
-Store base units as `numeric`, convert with `bigint` in code (lesson 04).
+The fill constraint deduplicates provider requests. The transfer constraint prevents
+different requests from claiming the same destination transfer. Its partial predicate
+allows multiple unfinished deposits. `NULLS NOT DISTINCT` keeps the key safe if a
+destination without a log index (a native asset) is ever added. These semantics
+require Postgres 15+.
 
-**The host's credits table is not ours.** The demo owns `credits(account_id,
-deposit_id UNIQUE, amount)`. The SDK only tells it what to add.
-
----
-
-## 6. Payment routers
+`refund_evidence` groups the fields used together for manual review and display:
 
 ```ts
-type PaymentRouter = {
-  id: "relay" | "across";
-  sources(): Promise<Source[]>;                       // chains + tokens accepted
-  depositAddress(i: {
-    route: Route; recipient: Address; refundTo: Address; recoveryAddress: Address;
-  }): Promise<{ address: Address; sendTx: TxRequest }>;  // sendTx powers "send from wallet"
-  quote(i: { route: Route; amountIn: bigint }): Promise<Quote>;
-  fills(address: Address): Promise<Fill[]>;          // every fill at that address
-  status(fillId: string): Promise<FillStatus>;
-};
-type FillStatus = "waiting" | "processing" | "delayed" | "filled" | "refunded" | "failed";
-```
-
-v1 ships `relay({ apiKey, network })`:
-
-| Method | Relay call (verified in S2) |
-|---|---|
-| `sources` | `GET /chains` → chains with `depositAddressEnabled`, `solverCurrencies` |
-| `depositAddress` | `POST /quote/v2` `useDepositAddress: true` → `steps[0].depositAddress`, `items[0].data` |
-| `quote` | `POST /quote/v2` → `details.currencyOut`, `fees` |
-| `fills` | `GET /requests/v3?depositAddress=` (**needs `x-api-key`**) |
-| `status` | `GET /intents/status/v3?requestId=` |
-
-`network: "testnet"` points at `api.testnets.relay.link` (Sepolia ↔ Base Sepolia,
-**ETH only** — no testnet USDC).
-
-**Accepted tokens.** Routers return every source they support; `createDeposits` filters
-them by `accept`. The router stays a plain adapter and the policy lives in one place.
-
-| `accept` | Offered | Why |
-|---|---|---|
-| `"stablecoins"` (default) | USDC, USDT on every chain the router supports | Pay $10, receive ~$10 minus fees. No price risk between quote and arrival |
-| `"any"` | Everything the router supports (ETH, SOL, …) | Crypto-native apps. Amounts vary with price; credit what arrived |
-
-Stablecoins are matched by symbol (`USDC`, `USDT`) in the router's own token list,
-which is curated, not user input. The testnet routes ETH only, so the testnet demo
-sets `accept: "any"` explicitly.
-
-*Alternative rejected:* USDC-only. On Relay it only turns features off. Without Relay it
-needs our own addresses, indexer and sweeper (§12a), and it drops USDT, the most used
-stablecoin. Card checkouts already cover USDC on one chain; "pay with what you hold" is
-the gap.
-
-**Multiple routers:** config takes `routers: [relay()]` (an array from day one). The
-first router that supports a route issues its address, and **the address remembers
-its router forever** — fills must be tracked by the router that created the address.
-
-**Statuses:** Relay has eight; we map them in one place (lesson 16b §9): `waiting →
-waiting`; `depositing`, `pending`, `submitted → processing`; `delayed → delayed`;
-`success → filled`; `refund → refunded`; `failure → failed`.
-
-**Pagination:** `fills()` follows `/requests/v3`'s `continuation` cursor until it runs
-out. One page of 20 is not the whole history.
-
-**Never track the quote-time `requestId`.** If Relay requotes (different amount, a repeat
-deposit), the fill runs under a new id and the quote's id stays `waiting` forever.
-Fills are discovered only through `fills(address)`.
-
-**Errors:** Relay returns `{ message, errorCode }`. We map `errorCode`
-(`AMOUNT_TOO_LOW`, `INVALID_INPUT_CURRENCY`, …) to our `DepositErrorCode`; never parse
-`message`.
-
-*Alternative rejected:* calling Relay directly from workflows — couples everything to
-one vendor and makes tests need the network. The fake router (`fakeRouter()`) scripts
-any scenario in tests.
-
----
-
-## 7. Durable tracking (Workflow SDK)
-
-### What the Workflow SDK gives us — and doesn't
-
-- **Gives:** a function that survives crashes, deploys, and long waits. Proven on Vercel
-  (S1): a step that killed its process was retried; two 2-minute sleeps resumed; a run
-  survived a redeploy.
-- **Doesn't give:** exactly-once. Steps retry (default 3 times), so any step with side
-  effects must be idempotent. And the *local* dev World loses in-flight runs on a hard
-  crash — durability is a property of the Vercel / Postgres Worlds.
-
-So: **workflows provide durability; the database provides exactly-once.**
-
-### Two workflows
-
-**`watchAddress(addressId)`** — runs while an address is active (widget open, then
-24 h after last activity):
-
-```text
-loop:
-  fills = step router.fills(address)
-  for each new fill:
-    step insert deposit row (UNIQUE router+fill_id) → if inserted: start processDeposit
-  sleep (5 s → 30 s → 5 min backoff)
-until window closes
-```
-
-Late deposits aren't lost: `/requests/v3` returns history, so reopening the widget
-(which restarts the watcher) picks them up.
-
-**`processDeposit(depositId)`** — one per fill:
-
-```text
-loop: status = step router.status(fillId); sleep    until terminal or SLA (30 min → needs_attention)
-if filled:
-  step verify on chain   -- receipt success; block ≤ "safe"; then
-                         --   USDC: exactly one Transfer from the USDC contract to the treasury
-                         --   ETH (testnet): tx.to == treasury, amount = tx.value
-                         --   anything else (e.g. ETH paid via a contract call) → needs_attention
-                         -- returns amount_out
-  step record            -- UPDATE … SET status='credited' WHERE status<>'credited'
-  step notify host       -- onEvent({ type: "deposit.credited", deposit })
-if refunded / failed:  record + notify
-```
-
-### The guarantee, stated honestly
-
-- Each deposit is **recorded once** (unique constraints).
-- The host is **notified at least once** with a stable `deposit.id`.
-- The host **dedupes on `deposit.id`** (`credits.deposit_id UNIQUE`) → the credit happens
-  exactly once.
-
-This is the same contract Stripe, Daimo and Relay give for webhooks.
-
-### Why verify on chain if Relay says "success"?
-
-Never trust an API for money (same rule as Settle Kit v1's userOp verification). We
-credit **what actually arrived** in the receipt, not the quote — so overpay/underpay is
-automatically correct.
-
-### Why `safe`, not N confirmations?
-
-S3: a fill 20 blocks deep was `safe` but not `finalized`. `safe` (~30 s on Base) is the
-chain's own reorg-risk signal; a fixed number means different things on different chains.
-`finalized` (~16 min) is too slow for a deposit UX.
-
-*Alternative rejected:* a Postgres table + cron job. Works, but every wait, retry and
-crash-resume would be hand-written. The Workflow SDK is the project's differentiator and
-S1 shows it holds.
-
----
-
-## 8. Bring your own database
-
-The SDK never imports a database driver. It needs four operations:
-
-```ts
-type DepositStore = {
-  getOrCreateAddress(input): Promise<DepositAddressRow>;
-  insertFillIfNew(input): Promise<{ inserted: boolean; deposit: DepositRow }>;
-  transition(id, from: Status[], to: Status, patch): Promise<boolean>; // compare-and-set
-  listDeposits(query): Promise<DepositRow[]>;
+type RefundEvidence = {
+  chainId: number;
+  token: Address;
+  recipient: Address;
+  txHash: Hex;
+  amountBaseUnits: string;
 };
 ```
 
-Any Postgres (local, Neon, RDS, Supabase) supports what these need: unique constraints
-and atomic conditional updates.
+Validate this shape and the on-chain return before storing it; the field remains null
+until evidence is verified. V1 does not filter or enforce uniqueness on individual
+refund fields. Quote estimates remain in the quote response rather than a separate
+deposit column.
 
-| Adapter | When |
+### Deposit states
+
+| From | Allowed next states |
 |---|---|
-| `memoryStore()` | Tests, quickstart |
-| `drizzleStore(db)` | v1 — demo uses Neon |
-| Kysely / Prisma / `pg` | Later — each a thin file |
+| `waiting` | processing, delayed, settled, refunded, needs_attention |
+| `processing` | delayed, settled, refunded, needs_attention |
+| `delayed` | processing, settled, refunded, needs_attention |
+| `needs_attention` | processing, settled, refunded after re-check; resolved by an operator |
+| `settled` | credited after host acknowledgment |
+| `credited`, `refunded`, `resolved` | None; final |
 
-Schema ships as plain SQL migrations **and** a Drizzle schema to import. Self-hosters
-on the Postgres World can point workflow state at the same database.
+The state machine uses compare-and-set transitions and rejects invalid moves.
+Discovery can first observe a completed fill, so intermediate states are not required.
 
----
+`settled` means destination funds were verified. `credited` means the host acknowledged
+the credit. There is no `failed` state: a deposit row exists only after Relay observes
+a transfer, so money has always moved. A provider failure ends as a verified refund or
+stays `needs_attention`. Failures before any transfer (quote, route, wallet rejection)
+are widget errors, not deposit states. `refunded` means verified return to the app's
+refund wallet, not completed repayment to the payer. `resolved` means an operator
+closed an attention case by hand (repaid outside the SDK, written off) with
+`deposits.resolve(id, { note })`; the note is recorded on the timeline and
+reconciliation stops checking the deposit.
 
-## 9. The widget
+Delivery has no separate state. `settled` means a credit callback is owed; `credited`
+means the host acknowledged it. Settlement and its immutable callback payload are
+committed in one transaction; acknowledgment moves `settled → credited`. A settled
+deposit with `delivery_error` set and no `delivery_next_attempt_at` has exhausted its
+retries. Only settlement schedules delivery.
 
-### Screens
+### Concurrency
 
-| Screen | Contents |
+There are no locks or leases. Two runs for the same deposit can coexist: a webhook and
+reconciliation race, or an enqueue response is lost and the work is started again.
+Every write is a compare-and-set transition or a unique insert, so the slower run's
+writes fail and it exits. A duplicate `onSettled` call is absorbed by the host's unique
+credit on `deposit.id`. Reconciliation restarts work only when the recorded run is no
+longer running, which keeps duplicate API calls rare without a lock.
+
+The host owns its credits table. It must enforce `credits.deposit_id UNIQUE` and
+apply the credit record and balance change in the same transaction.
+
+## 5. Relay integration
+
+The internal adapter covers `sources`, `depositAddress`, `quote`, `fills`, `status` and
+`webhook`. A fake implements the same interface for workflow tests. There is no
+public adapter registry or router selection API.
+
+| Operation | Relay request |
 |---|---|
-| Choose method | Wallet · Transfer crypto (QR) |
-| Choose network + token | `router.sources()` filtered by `accept`; minimum per token |
-| Transfer (QR) | QR, address + copy, "Send only USDT on Arbitrum to this address", minimum, "auto-converts to …" |
-| Confirm (wallet) | You send / you receive ≈, fees, network switch, signature |
-| Progress | Detected → Processing → Credited, tx links, "Your funds are safe. You can close this." |
-| Result | Credited (actual amount) · Refunded (tx) · Needs attention (deposit id + support) · Failed (reason + retry) |
-| Recent deposits | In-flight deposits on reopen |
+| Sources | `GET /chains`, intersected with the tested source manifest |
+| Address | `POST /quote/v2` with `useDepositAddress: true` and open `EXACT_INPUT` mode, quoted once at the route minimum; the address then accepts any amount |
+| Estimate | `POST /quote/v2` without a deposit address, reading output estimate and fees; display only |
+| Fill discovery | `GET /requests/v3?depositAddress=` with `x-api-key` |
+| Fill status | `GET /intents/status/v3?requestId=` |
 
-### Error catalogue
+`fills` follows every continuation page. The stored address, router and network
+determine ownership. Requests for sources outside the release manifest are rejected.
+Relay `errorCode` values map to SDK errors; message text is not parsed.
 
-| Code | Copy |
-|---|---|
-| `amount_too_low` | "$2 minimum deposit" (S2: smaller amounts lose ~2%+ to fees) |
-| `insufficient_balance` | "Insufficient balance. Try another token." |
-| `insufficient_gas` | "Not enough ETH on Arbitrum to pay gas." |
-| `wallet_rejected` | "Signature declined. Please try again." |
-| `wrong_network` | "Switch to Arbitrum to continue." |
-| `quote_unavailable` | "Quote unavailable. Try a smaller amount or another token." |
-| `route_unavailable` | "Network unavailable right now. Try another." |
-| `address_blocked` | "This address can't be used." + support |
-| `router_unavailable` | "Deposits are paused. Try again shortly." |
-| `invalid_config` | Thrown to the developer, never shown |
+`waiting` maps to waiting; `depositing`, `pending` and `submitted` map to processing;
+`delayed` remains delayed; `success` triggers settlement verification. `refund`
+triggers return-to-app verification. `failure` triggers refund verification;
+without verified return evidence the deposit stays `needs_attention`.
 
-**Amount wording.** Stablecoin → USDC: "You'll receive 9.96 USDC". Any other token:
-"You'll receive about 9.9 USDC. The final amount depends on the price when it arrives."
-The credit always uses the amount that actually arrived (§7).
+V1 settles native USDC on Base mainnet only. Relay's testnet is not a supported
+profile: in S4a it did not sweep a deposit after 31 minutes and a reindex, and
+`/requests/v3` there rejects our key. Development uses test mode (§10.1); the live
+proof is a small Base mainnet deposit, as Relay's testnet guide itself recommends.
 
-Principles: reassure once funds moved; no dead ends;
-one noun per concept; refresh quotes silently.
+**Rate limits are per key and constrain polling.** Our key shows `/requests` at
+2 req/min (S7), while Relay documents 200/min for `/requests/v3`. Until Relay confirms
+which applies, webhooks are the primary discovery path and reconciliation spends at
+most the key's actual `/requests` budget. `POST /transactions/deposit-address/reindex`
+asks Relay to re-check an address whose funds were not picked up; it is an operator
+action, not part of the normal flow.
 
-### Two widget rules from the lessons
+S2 and S6 returned deposit-address quotes for the proposed cross-chain and same-chain
+USDC routes. These were quote checks, not real deposits. Fees and estimated arrival
+times come from the current quote rather than fixed values in the SDK.
 
-- **Quote generations (lesson 30).** Every quote request carries a generation number.
-  If the user changes token, chain or account, the generation goes up and a late reply
-  for the old one is ignored. A stale price never overwrites the current one.
-- **No second send (lesson 31).** Before the wallet opens, the widget creates a send
-  attempt (attempt key). If the wallet times out or the page reloads, the widget shows
-  "Checking for your deposit…" and watches the address. It never offers "Send again"
-  while an attempt is unresolved. A clear wallet rejection is safe to retry.
+### Webhook ingestion
 
----
+Relay's `request.status.updated` event carries the actual fill request ID and, for
+deposit-address requests, the deposit address and optional deposit transaction hash.
+The adapter verifies `X-Signature-Timestamp` and `X-Signature-SHA256` using HMAC-SHA256
+over `${timestamp}.${body}` with the configured API key. Verification uses the original
+body, constant-time signature comparison, a freshness check and payload validation.
+Signing bytes and timestamp units still require a real-delivery check.
 
-## 10. Developer API
+```text
+authenticate and normalize event
+resolve stored address under router + network
+insert fill if new
+ensure processing for new or unfinished deposit
+return 2xx after persistence and successful enqueue
+```
+
+Invalid signatures receive non-2xx responses. Valid irrelevant events and unknown
+addresses are acknowledged without crediting. Persistence or enqueue failures return
+non-2xx so Relay can retry. An existing fill must still resume unfinished work.
+
+Events trigger a fetch of current provider state. Their supplied status cannot
+reverse a verified outcome or authorize credit. If saving a row succeeds but starting
+its workflow fails, reconciliation repairs that handoff.
+
+Each Relay API key supports one webhook endpoint. Deployments and networks use
+matching keys and endpoints to prevent one environment overwriting another's setup.
+Vercel preview deployments therefore receive no webhooks and rely on `POST /check` and
+reconciliation. The S4 mainnet run confirms delivery, signing bytes and timestamps.
+Provider details: [Relay webhooks](https://docs.relay.link/references/api/api_guides/webhooks).
+
+## 6. Processing and recovery
+
+### Settlement verification
+
+`processDeposit` polls the fill until an outcome or the attention threshold. Mainnet
+settlement requires:
+
+- A successful destination receipt at or below Base's `safe` block.
+- Exactly one matching USDC `Transfer` from the configured contract to the address's
+  stored treasury.
+- A recorded transaction hash, log index and actual received amount.
+
+S3 verified this receipt shape for a sampled Relay fill. The chosen `safe` threshold
+reduces the wait relative to finalization; it still carries residual reorg risk.
+Wrong recipients, tokens, failed receipts or ambiguous transfers enter
+`needs_attention`. Provider success alone does not authorize credit.
+
+Test mode replaces the receipt verifier with a simulated one (§10.1); there is no
+native-ETH verifier in v1.
+
+On verified settlement, the workflow atomically stores evidence, `status='settled'`
+and the immutable event, then starts delivery. Reported
+refunds require verified return-to-app evidence. Unresolved failures remain attention
+cases; neither failure nor refund schedules a settlement callback.
+
+The proposed attention threshold is 30 minutes. Reaching it flags the deposit and
+ends the run; reconciliation continues checking. Time elapsed never
+authorizes a credit or a declaration that funds are lost.
+
+### Host credit delivery
+
+`deliverSettlement` calls `onSettled` with the persisted event. Its identity is
+`${deposit.id}:settled` and its type is `deposit.settled`. The snapshot contains
+verified `amountOut` for credit. Quote estimates are display data from `POST /quote`,
+not required settlement fields. Replay preserves the payload and deposit ID.
+
+The host's atomic unique credit makes a lost response after commit safe to retry.
+The SDK marks delivery complete and the deposit credited only after acknowledgment.
+
+Each call has a 10-second timeout. After the initial attempt, retry up to 10 times;
+retry n waits `2^(n-1)` minutes, totaling about 17 hours of waits. This is 11 attempts,
+with the policy configured independently of default workflow step retries.
+Exhaustion records the error and clears the next attempt time; the deposit stays
+settled and appears in the operator list.
+
+`deposits.replayDelivery(depositId)` is an authenticated operator action. It restarts
+delivery of the same event and does not send funds.
+
+### Reconciliation
+
+A host scheduler starts a bounded reconciliation workflow, proposed every 15 minutes.
+It scans unscanned addresses first, then the oldest `last_reconciled_at`, including
+inactive addresses. Proposed tiers keep API use proportional to activity: addresses
+with a quote or fill in the last 30 days are due every 15 minutes, older ones daily.
+Each scan loads all fill pages, inserts new fills and resumes unfinished work. The
+timestamp advances only after a successful address scan.
+
+Reconciliation also queries unfinished deposits and due callback deliveries. It
+leaves running work alone, restarts rows whose run ended or never started, and skips
+final states. Duplicate starts are safe (see Concurrency, §4).
+
+Batch size and API limits must permit every issued address to be revisited. Recovery
+does not depend on a user reopening the widget.
+
+### Refund handling
+
+`refundAddress` (sent to Relay as `refundTo`) is the app-controlled origin-chain
+address that receives Relay refunds.
+`recoveryAddress` is an app-controlled origin-chain EOA authorized to withdraw from
+Relay's depository when filling or refunding is unavailable; it does not receive
+automatic refunds. These addresses can be the same EOA for the supported EVM routes,
+subject to the host's choice and control on each origin chain.
+
+The SDK stores verified return evidence in `refund_evidence`: chain, token,
+recipient address, transaction and amount. The widget distinguishes return to the
+app from repayment to the payer. Wrong-token, below-minimum and unsupported transfer
+cases remain visible with the account's address/deposit ID and a recovery next step.
+
+The host's manual procedure is to inspect that evidence, obtain a payer-controlled
+repayment address through authenticated support, return the funds, and record the
+repayment transaction against the deposit to prevent duplicate repayment. The SDK
+does not hold signing keys or execute repayments.
+
+Recovery during a complete Relay/solver outage remains unproved.
+Reference: [Relay refund and recovery behavior](https://docs.relay.link/features/deposit-addresses#refund-behavior).
+
+### Credit contract
+
+The SDK records each fill once and delivers settlement at least once. Preventing a
+duplicate balance change requires the host's atomic credit transaction. Completion
+depends on the host and dependencies recovering, with retries or operator replay
+continuing. Unsupported transfers and permanent outages are not covered by an
+eventual-credit guarantee.
+
+Quotes are estimates. Supported deposits credit actual received amounts, including
+larger deposits that settle successfully. `limits.maxUsd` changes displayed guidance;
+it does not cap external transfers. Below-minimum deposits may be returned or need
+attention instead of settling.
+
+## 7. Public API
 
 ```ts
-// server
 export const deposits = createDeposits({
-  routers: [relay({ apiKey: env.RELAY_API_KEY, network: "testnet" })],
-  accept: "any",                // testnet routes ETH only; mainnet default is "stablecoins"
-  destination: { chainId: 84532, token: NATIVE, recipient: env.TREASURY },
+  mode: "live",                                   // "test" uses simulated deposits (§10.1)
+  relay: { apiKey: env.RELAY_API_KEY },
+  routes: ["base-usdc", "arbitrum-usdc"],         // subset of the tested manifest
+  baseRpcUrl: env.BASE_RPC_URL,
+  treasury: env.TREASURY,
+  refundAddress: env.REFUND_ADDRESS,              // sent to Relay as refundTo
   recoveryAddress: env.RECOVERY_ADDRESS,
   limits: { minUsd: 2, maxUsd: 10 },
   store: drizzleStore(db),
   account: (req) => getAccountId(req),
-  onEvent: async (e) => {
-    if (e.type === "deposit.credited") await credits.add(e.deposit); // dedupe on e.deposit.id
+  onSettled: async (event) => {
+    await credits.add(event.deposit);
   },
 });
-export const { GET, POST } = deposits.handlers;   // app/api/deposits/[...path]/route.ts
 
-// client
-<DepositProvider endpoint="/api/deposits" wallet={injectedWallet()}>
+export const { GET, POST } = deposits.handlers;
+```
+
+`credits.add` must insert the unique credit and update the account balance in one
+transaction. The values shown for `limits` are proposed defaults.
+
+```tsx
+<DepositProvider endpoint="/api/deposits" wallets={injectedWallets()}>  // wallets optional; omit for QR only
   <DepositButton onCredited={() => router.refresh()} />
 </DepositProvider>
 ```
 
-Endpoints: `GET /sources`, `POST /address`, `POST /quote`, `GET /deposits?address=`.
-The widget never talks to Relay directly.
+`onCredited` refreshes the UI. Account credit is applied through the server callback.
 
----
-
-## 11. Testing
-
-| Layer | How |
+| Endpoint | Purpose |
 |---|---|
-| Router mapping | Recorded Relay responses (from S2) as fixtures |
-| Workflows | `fakeRouter()` scenarios: success, overpay split into 2 fills, refund, delayed → needs attention, step re-run → one credit |
-| Store | Contract tests run against `memoryStore` and `drizzleStore` |
-| Widget | `/states` gallery renders every state; screenshot review desktop / mobile / dark |
-| Real | S4 on testnet; mainnet USDC run when funded |
+| `GET /sources` | Available routes from the tested manifest |
+| `POST /address` | Get or create an account's route address; rate-limited per account (each new address costs a Relay quote) |
+| `POST /quote` | Current amount/fee estimate |
+| `GET /deposits?addressId=` | Account-scoped deposit records |
+| `POST /attempts { addressId, attemptKey }` | Record a wallet send attempt before the wallet opens |
+| `POST /check { addressId, txHash? }` | Bounded, rate-limited address scan on reopen or when a wallet returns a hash |
+| `POST /webhooks/relay/:network` | Signed provider events |
 
----
+User endpoints require `account(req)` and enforce stored account ownership. The
+webhook endpoint authenticates the provider signature instead of a user session.
+The client does not submit account ownership or transaction hashes as evidence; a
+wallet-returned hash only makes the scan happen sooner.
 
-## 12. Scope
+Operators find stuck work with `deposits.list({ status: "needs_attention" })` and settled
+deposits with exhausted delivery, close cases with `deposits.resolve(id, { note })`
+and retry delivery with `deposits.replayDelivery(id)`. The demo shows these on an
+authenticated admin page.
 
-**In v1:** everything above, testnet first, mainnet USDC as the final proof.
+The host schedules `deposits.reconcile()`. Any HTTP wrapper must authenticate its
+scheduler credential. Replay tooling likewise requires operator authorization.
+The widget does not call Relay directly.
 
-**Not in v1:** Across / `pickRouter`, card onramp, signed HTTP webhooks,
-reconciliation cron, React Native, npm build step (packages export source until publish).
+The store ships a Drizzle schema and matching SQL migration. Its internal contract
+covers address ownership/reuse, fill insertion, conditional transitions with their
+timeline events, and bounded recovery queries.
+These operations are tested against real Postgres. A minimal fake is used only for
+workflow tests.
 
-**Improvements later:** direct execution (skip the deposit address for connected
-wallets, saves ~70k gas), SSE instead of polling, exchange connect (some exchanges block
-withdrawals to external wallets, e.g. Coinbase India with a linked INR account), multi-router best-quote selection,
-a CCTP router for USDC paid from a connected wallet (near-zero fee; wallet path only,
-since an exchange can't call a burn), Circle Gateway on the treasury side (move the
-app's USDC to any chain after it lands).
+## 8. Widget behavior
 
----
-
-## 12a. Roadmap: our own deposit addresses
-
-v1 borrows Relay's deposit addresses, so Relay does detection, sweeping, routing and
-refunds. Owning the addresses is the next tier — what managed deposit products do.
-
-### What it takes
-
-| Piece | What it means |
+| Screen | Required behavior |
 |---|---|
-| Address generation | A forwarder contract per account, deployed with CREATE2. The address is computable before deployment, so it can be shown immediately and deployed only when funds arrive. Same address on every EVM chain |
-| Detection (indexer) | Watch every supported chain for transfers to our addresses: `getLogs` with a cursor up to the `safe` block, or a provider stream |
-| Sweeping | Deploy the forwarder on first deposit and move funds out. Gas on every chain — funded gas wallets per chain |
-| Routing | Still needed. Call Relay / Across for the swap and bridge, or run our own liquidity |
-| Refunds and stuck funds | Wrong token, dust, failed swap, exchange senders — all ours |
-| Security | Contracts hold money: audits, key management for sweepers, rate limits |
+| Method | Transfer (address/QR) or Wallet; skipped when only one is enabled |
+| Source selection | Tested network/token pairs, route minimum and unavailable reason; skip if only one route exists |
+| Amount | Optional; shows "You'll receive about X" and the fee. Without an amount, shows the route fee |
+| Wallet confirm | Connected account, balance for the chosen token, network switch, gas check, you send / you receive, sign |
+| Transfer | QR, copyable address, exact token/network instructions, estimate after fees and exchange network guidance |
+| Progress | Detected → Processing → Credited, transaction links and tracking after close |
+| Resume | Pending/attention deposits for the selected address |
+| Result | Actual credited amount, return-to-app evidence, or attention ID and support route |
 
-### What it buys
+An address is presented as reusable for the same route. Estimated arrival copy is
+qualified; the actual amount is displayed after verification. Verified funds awaiting
+host acknowledgment remain Processing in the widget.
 
-- **One address per account for every chain and token**, not one per route.
-- **Detection independent of any router**, so routers become interchangeable.
-- **Control over fees and the experience**, and a treasury indexer that also reconciles
-  funds that arrived outside the widget.
+**No second send.** Before the wallet opens, the widget records a send attempt. If the
+wallet times out or the page reloads, it shows "Checking for your deposit…" and scans
+the address; it never offers "Send again" while an attempt is unresolved. A clear
+wallet rejection is safe to retry.
 
-### How it fits the design
+The demo includes a `/states` page rendering every widget state with fixture data, for
+review on desktop, mobile and dark mode.
 
-It is another `PaymentRouter`: `depositAddress()` returns the CREATE2 address,
-`fills()` reads from our indexer, and the swap/bridge step calls Relay underneath.
-Workflows, store and widget do not change.
+Quote requests carry a generation number. Changing token, chain or account invalidates
+older replies. Once a transfer is detected, a delay or error must not prompt another
+transfer to resolve it.
 
-### Plan
+Address/quote failures before money moves can retry loading instructions. After
+money moves, the UI shows the deposit's status and recovery path. A verified app refund
+reads "Returned to the app; contact support to receive your refund," with the deposit
+ID and transaction. It never implies that the payer has already been repaid.
 
-1. **Stretch (post-v1):** testnet-only forwarder contract + cursor-based indexer on
-   Base Sepolia, wrapped as `ownAddresses({ route: relay() })`.
-2. **Later:** multi-chain detection, sweeper gas management, audit before any mainnet funds.
+Wallet errors cover `wallet_rejected`, `wrong_network`, `insufficient_balance` and
+`insufficient_gas`. Typed errors cover `amount_too_low`, `quote_unavailable`,
+`route_unavailable`, `address_blocked`, `router_unavailable` and developer-only
+`invalid_config`. Minimum copy uses the current route minimum and app policy.
 
-**Why not in v1:** weeks of contract and backend work plus an audit, and unaudited
-contracts holding real funds are a liability. The `PaymentRouter` seam keeps the door open.
+## 9. Validation and release
 
----
+The [spike log](../spikes.md) separates existing evidence from pending work:
 
-## 13. Open questions
+| Evidence | Status |
+|---|---|
+| S1: Workflow SDK retries, waits and redeploy on Vercel | Observed |
+| S2/S6: Relay discovery endpoints and deposit-address quotes | Read-only checks; no end-to-end deposit proof |
+| S3: Base USDC receipt verification | Observed for a sampled existing fill |
+| S4a: Testnet deposit | Failed; testnet not usable (not swept, no `/requests/v3` key) |
+| S4: $2 Base mainnet deposits (fresh and reused address) | Pending; waiting for funds |
+| S7: Relay key limits | `/requests` at 2 req/min observed; support asked |
+| Signed Relay events on old/reused addresses and missed-webhook recovery | Pending |
+| Mainnet source routes, refund handling and separate-app package consumption | Release checks pending |
 
-- Treasury + recovery wallet address?
-- Minimum / maximum per deposit: $2 / $10?
-- Watch window after last activity: 24 h?
-- `delayed` SLA before needs-attention: 30 min?
+Required checks:
+
+- Signed valid, invalid and stale events; unknown addresses, regenerated IDs,
+  duplicate and out-of-order delivery.
+- Receipt rejection for the wrong contract, recipient, failed receipt or ambiguous
+  transfer. Test ETH has no balance-change fallback.
+- Success, variable amounts, multiple fills, return to app, below minimum, wrong
+  token, and delayed → attention → later settlement.
+- Missed webhook; deposit with the browser closed; persistence before an enqueue
+  crash; failed run; two concurrent runs for one deposit produce one credit.
+- Callback retries, retry exhaustion and replay; host commit followed by a lost
+  response produces one credit. Non-settlement outcomes never schedule credit delivery.
+- Real Postgres tests for atomic records, state transitions, concurrent transitions,
+  duplicate transfer prevention, multiple unfinished rows and host credit transactions.
+- Operator actions: `resolve` closes only attention cases; `replayDelivery` repeats
+  the same event; both are recorded on the timeline.
+- Refund evidence validation and round-trip storage of exact base-unit amounts;
+  malformed or unverified evidence cannot mark a deposit refunded.
+- Essential widget states and account isolation on mobile and desktop.
+- Security table (§10.3): poisoning-resistant address display, cross-account access
+  denied, test rows never settle on mainnet, no secrets in errors.
+- Test mode: every simulated scenario reaches the same states and callback as a real
+  fill; the timeline records each transition atomically.
+- Wallet path: rejection, wrong network, insufficient balance/gas, timeout after
+  send (no second send offered), and a hash that never becomes a fill.
+- Small mainnet fills for every advertised route, including repeat deposits to an
+  older address. Confirm webhook signing bytes, timestamp units and provider retries.
+  Disable webhooks and prove discovery without reopening the widget. Record refund
+  evidence and the manual recovery procedure for each source.
+- Before the first npm publish (not needed for the demo): Bun build/pack of all
+  public packages, followed by installation of packed artifacts in a separate
+  Next.js app. Verify JavaScript exports, type declarations, dependency
+  resolution and server/client boundaries without workspace aliases or source
+  compilation through `transpilePackages`.
+
+Ship a versioned package only after these checks. Record fill IDs, transaction links
+and verified credited amounts for the live proofs. Local tests, deployment checks
+and live transactions are separate evidence.
+
+Implementation order:
+
+1. Relay adapter, route profiles, schema, Drizzle store and processing workflows,
+   built and tested against simulated deposits. S4 on Base mainnet runs as soon as
+   funds arrive; it does not block this step.
+2. Account-scoped handlers, signed webhook ingestion, settlement delivery, atomic
+   host credit and the deployed QR reference app.
+   Test mode and simulated deposits (§10.1) come with these handlers, so the UI can be
+   built before S4 succeeds. Deposit events and the timeline (§10.2) land with the store.
+   **Demo-ready milestone:** one real $2 Base USDC deposit credited end to end on the
+   deployed app via QR, with fill ID and transaction links recorded.
+3. Wallet path (EIP-6963, send attempts, wallet errors), the `/states` gallery,
+   EIP-681 QR codes, theming, copy catalogue and accessibility pass (§10.4–10.5).
+4. Reconciliation and replay; Postgres concurrency/crash tests; old-address and
+   missed-webhook checks.
+5. Mainnet Base USDC and Arbitrum USDC routes (USDT if proved) and refund handling;
+   installation, deployment and recovery docs; package consumption check; versioned
+   release.
+
+Optional routes that lack evidence are omitted from the release. The reference stack
+is Next.js, Workflow SDK's Vercel World and Postgres/Drizzle. The local workflow World
+is not used as evidence of crash durability.
+
+## 10. Product quality
+
+These make Settle Kit pleasant to build with, safe to pay through and easy to support.
+**V1** items ship with the release; **Later** items are specified now so v1 doesn't
+block them.
+
+### 10.1 Test mode and simulated deposits (V1)
+
+`simulateRouter()` implements the router interface without Relay or a chain. With
+`mode: "test"`, the widget shows a dev toolbar: **Simulate deposit**, **…delayed**,
+**…refunded**, **…below minimum**. Simulated fills run through the same workflows,
+store, state machine and `onSettled` callback; only the router and the receipt
+verifier are replaced. Simulated deposits are stored with `network = "test"` and can
+never reach a mainnet treasury configuration. Test mode never calls Relay, and live
+mode never loads the simulated router. Analogous to Stripe's test cards.
+
+Later: `bunx settle-kit trigger <scenario> --address <id>`, sending the same scenarios
+to a running server from a terminal, like `stripe trigger`.
+
+Why: developers can build the UI and credit logic in minutes, with no testnet funds,
+wallet or Relay key. The workflow fake already exists for tests; this exposes it.
+
+### 10.2 Deposit timeline and status page (V1)
+
+An append-only table records every state change with its evidence:
+
+```text
+settle_kit_deposit_events
+  deposit_id     text → deposits
+  seq            int        -- 1, 2, 3… per deposit
+  status         text       -- the state entered, or delivery_failed / delivery_replayed
+  at             timestamptz
+  actor          text       -- system | operator
+  evidence       jsonb      -- tx hashes, chain IDs, amounts (base-unit strings), router status, operator note
+  PRIMARY KEY (deposit_id, seq)
+```
+
+Each transition writes its event in the same transaction as the state change. `GET
+/deposits/:id` (account-scoped) returns the deposit plus its timeline; the widget and
+an authenticated `/deposits/:id` status page render it: seen at the deposit address →
+moving → verified on Base → credited, each with time and transaction link. Refunds
+show the returned-to-app evidence and the support next step. Operators see the same
+timeline on the admin page.
+
+Why: most payment support is "where's my money?". One timeline serves payers,
+operators and audits.
+
+### 10.3 Security (V1)
+
+| Threat | Mitigation |
+|---|---|
+| Address poisoning: a lookalike address planted in the payer's history | Address rendered in 4-character groups with the first and last groups emphasised; "Check the first and last 4 characters" hint; copy only from our UI |
+| Clipboard-hijacking malware | After copy, show "Copied: 0x1a2b…9f8e" to compare with what gets pasted; QR offered as the primary path |
+| Account takeover redirecting funds | Treasury, refund and recovery addresses come only from server config, never user input or the request |
+| Cross-account access | Every user endpoint checks the stored address's `account_id` against `account(req)` |
+| Webhook forgery or replay | HMAC signature, 300 s timestamp freshness, constant-time compare; the event only triggers a re-check of provider state |
+| Address-creation spam | Per-account rate limit on `POST /address` |
+| Test deposits in production | `network = "test"` rows are only created by the simulated router; live mode never loads it, and test mode never calls Relay or the live store's mainnet rows |
+| Secrets in errors and logs | The Relay API key, which also signs webhooks, is never included in thrown errors, `cause` or logs |
+
+### 10.4 Pay-request QR codes (V1)
+
+The QR code encodes an EIP-681 payment request, not a bare address:
+`ethereum:<token>@<chainId>/transfer?address=<depositAddress>&uint256=<amount>`
+(amount omitted when the payer didn't enter one). Wallets that read it pre-fill
+token, network and amount, which prevents the most common deposit mistake: the wrong
+network or token. Exchanges don't read EIP-681, so the plain address and network stay
+visible beside the QR.
+
+### 10.5 Widget polish (V1)
+
+- **Theming:** CSS variables plus `appearance={{ variables, rules }}`, in the style of
+  Stripe Elements. No Tailwind or design-system dependency in the published widget.
+- **Copy:** every string lives in one catalogue, so hosts can translate or reword it.
+- **Accessibility:** focus moves to each new screen's heading; status changes are
+  announced through a polite live region; the whole flow works by keyboard; QR has a
+  text alternative.
+- **Headless:** `useDeposit()` returns a discriminated union per state, so teams can
+  build their own UI on the same logic.
+
+### 10.6 Treasury reconciliation (Later)
+
+Read USDC `Transfer` logs into the treasury on Base (one address, one token, cursor
+up to `safe`) and match them against settled deposits. Report money that arrived with
+no matching deposit, and settled deposits with no matching inflow. This catches router
+bugs, our bugs and direct payments to the treasury, and is the first piece of the
+indexer that owning deposit addresses would need.
+
+### 10.7 Public speed numbers (Later)
+
+Record time from deposit detection to credit for every live deposit, and publish the
+median and 95th percentile per route on a demo stats page. Measured numbers replace
+claims and show what payers actually wait through.
+
+### Not added, on purpose
+
+More routers, our own deposit-address contracts and card onramps widen the product
+without deepening it. A Transak card onramp is the most likely later addition; its
+feasibility work is in [S5](../spikes/2026-10-14-card-onramp.md) and it would need its
+own spec.
+
+## 11. Open decisions
+
+- Treasury, refund and recovery wallets for the reference app; same or separate
+  refund/recovery EOAs, and who handles manual payer repayment.
+- Final source manifest after real fill and refund/recovery checks; whether USDT
+  meets the release bar without delaying launch.
+- Suggested deposit limits: $2 minimum and $10 displayed maximum, checked against
+  each route's actual minimum. The displayed maximum is not an enforced transfer cap.
+- Reconciliation batch size and API budget; proposed tiers are 15 minutes for
+  addresses active in 30 days and daily otherwise, not a guaranteed recovery bound.
+- Attention threshold and subsequent check frequency; initial proposal is 30 minutes.
+- Recovery actions available during a complete Relay/solver outage.
+- Relay support: does the 2 req/min `/requests` limit cover `/requests/v3`; can the
+  key get the documented 200/min; is there a key for the testnet API (S7).
+
+The single settlement callback, its retry policy and payer-borne fees are decided
+above.
