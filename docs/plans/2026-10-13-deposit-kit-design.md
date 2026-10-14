@@ -142,6 +142,7 @@ Server credentials and database access stay in the server package.
 | Requirement | Why |
 |---|---|
 | Next.js app wrapped with `withWorkflow` | Workflows run inside the host |
+| `instrumentation.ts` importing the Settle Kit config | A workflow step on a cold instance needs the config (T5, spike S8) |
 | A durable Workflow World (Vercel or Postgres) | The local World loses in-flight runs on a crash |
 | Postgres 15+ | `NULLS NOT DISTINCT` and the partial unique index |
 | A scheduler calling `deposits.reconcile()` | Recovers missed webhooks and unfinished work |
@@ -599,6 +600,15 @@ export const settle = createSettle({
 ```ts
 // app/api/settle/[...path]/route.ts
 export const { GET, POST } = settle.handlers;
+```
+
+Plus two lines so background workflow steps can find the config:
+
+```ts
+// instrumentation.ts
+export async function register() {
+  if (process.env.NEXT_RUNTIME === "nodejs") await import("./lib/settle");
+}
 ```
 
 **3. Create an order with the merchant's price (server only)**
