@@ -20,8 +20,9 @@ The first release is intentionally small:
 
 | Area | V1 |
 |---|---|
-| Deposit method | Address, copy button and QR first; then send from a browser wallet |
-| Amount | Optional input, used for estimates; any amount above the route minimum is accepted |
+| Modes | **Checkout** (fixed price per order, §6a) and **Deposit** (top up any amount) on one engine |
+| Payment method | Address, copy button and QR first; then send from a browser wallet |
+| Amount | Checkout: exact, set by the order. Deposit: optional input for estimates; any amount above the route minimum |
 | Sources | A tested EVM route manifest |
 | Destination | Native USDC on Base, sent to the host's treasury |
 | Router | Relay |
@@ -41,9 +42,14 @@ The wallet path supports browser-extension wallets discovered through EIP-6963. 
 builds the transfer itself, an ERC-20 `transfer(storedAddress, amount)`, to the deposit
 address already stored for the account. It never sends a fresh quote's prepared transaction: every quote issues a new
 deposit address, which we would not be tracking. Server processing is identical for
-both paths. WalletConnect and mobile wallet pairing are
-out of v1. V1 accepts variable amounts subject to route minimums; it does not
-implement fixed-price checkout.
+both paths. WalletConnect and mobile wallet pairing are out of v1.
+
+**Two modes, one engine.** *Checkout* sells one thing at one price ("Buy report:
+₹100"): each order gets its own single-use Relay *strict* address that delivers exactly
+the order amount (§6a). *Deposit* tops up a balance: each account gets a reusable open
+address per route and is credited whatever arrives. Workflows, store, verification,
+timeline and widget are shared; the difference is the address type and the settlement
+rule.
 
 ## 2. Design decisions
 
@@ -452,6 +458,67 @@ larger deposits that settle successfully. `limits.maxUsd` changes displayed guid
 it does not cap external transfers. Below-minimum deposits may be returned or need
 attention instead of settling.
 
+## 6a. Checkout mode
+
+### How the exact amount is enforced
+
+A crypto transfer cannot be stopped from carrying the wrong amount, unlike a UPI QR
+where the bank enforces it. Checkout makes the **outcome** exact instead, using a Relay
+strict deposit address (`strict: true`, `tradeType: "EXACT_OUTPUT"`, `amount` = the
+order's USDC amount). Relay's documented rules for strict addresses:
+
+| Payer sends | Outcome |
+|---|---|
+| The quoted amount | Filled; treasury receives exactly the order amount |
+| Less | Not filled; refunded to `refundTo` |
+| More | Filled with exactly the order amount; excess refunded to `refundTo` |
+| Wrong token | Not filled; recoverable |
+
+Checked 2026-10-14: a strict `EXACT_OUTPUT` quote for 1.15 USDC on Base asked for
+1.184261 USDC on Arbitrum (fee included). Expiry behaviour of strict quotes is
+unconfirmed until S4.
+
+The wallet path locks the amount completely: the widget builds the transfer and the
+user only confirms. The QR encodes the exact amount (EIP-681). Only manual exchange
+withdrawals can carry a wrong amount, and the rules above cover them.
+
+### Orders
+
+```text
+settle_kit_orders
+  id                       text pk
+  account_id               text
+  external_id              text       -- host's order/cart id
+  amount_out               numeric    -- exact USDC base units the treasury must receive
+  price                    jsonb      -- what the host priced: { currency: "INR", amount: "100", rate, rateAt }
+  route                    jsonb      -- source chosen by the payer
+  address                  text       -- strict deposit address, single use
+  amount_in                numeric    -- what the payer must send (from the quote)
+  status                   text       -- pending | paid | expired | refunded | needs_attention
+  expires_at               timestamptz
+  created_at, updated_at   timestamptz
+  UNIQUE (account_id, external_id)    -- creating the same order twice returns it
+  UNIQUE (address)
+```
+
+An order's fill becomes an ordinary row in `settle_kit_deposits` (linked by
+`order_id`), so processing, verification, delivery and the timeline are unchanged.
+Settlement additionally requires `amount_out` to **equal** the order amount; anything
+else is `needs_attention`. `onPaid` replaces `onSettled` for orders and carries the
+host's `external_id`.
+
+Choosing a different source chain or token re-quotes and replaces the pending order's
+address (the old one is abandoned before any payment). Expired orders with no fill end
+as `expired`; a payment arriving after expiry is still processed and reported.
+
+**Pricing in other currencies.** Prices are USD in the first release. INR (and other
+fiat) needs a rate source locked at order creation for the countdown; the order stores
+the rate it used.
+
+**Refunds.** Under- and over-payments are refunded to the app-controlled `refundTo`
+(the sender may be an exchange). On the wallet path the sender is known, so
+`refundTo` can be the payer's own address.
+
 ## 7. Public API
 
 ```ts
@@ -466,7 +533,10 @@ export const deposits = createDeposits({
   limits: { minUsd: 2, maxUsd: 10 },
   store: drizzleStore(db),
   account: (req) => getAccountId(req),
-  onSettled: async (event) => {
+  onPaid: async (event) => {                      // checkout mode (§6a)
+    await orders.fulfil(event.order.externalId);  // e.g. unlock the report
+  },
+  onSettled: async (event) => {                   // deposit mode
     await credits.add(event.deposit);
   },
 });
@@ -488,7 +558,9 @@ transaction. The values shown for `limits` are proposed defaults.
 | Endpoint | Purpose |
 |---|---|
 | `GET /sources` | Available routes from the tested manifest |
-| `POST /address` | Get or create an account's route address; rate-limited per account (each new address costs a Relay quote) |
+| `POST /orders { externalId, amountUsd, route }` | Checkout: create (or return) an order with its strict address, exact amount and expiry |
+| `GET /orders/:id` | Checkout: order status for the widget |
+| `POST /address` | Deposit: get or create an account's route address; rate-limited per account (each new address costs a Relay quote) |
 | `POST /quote` | Current amount/fee estimate |
 | `GET /deposits?addressId=` | Account-scoped deposit records |
 | `POST /attempts { addressId, attemptKey }` | Record a wallet send attempt before the wallet opens |
@@ -637,13 +709,14 @@ designed and ships after it.
 | 1 | T1 router, T2 state machine | Foundation |
 | 2 | T3 store, receipt verifier | Duplicate-proof crediting |
 | 3 | All workflows: `processDeposit`, `deliverSettlement` with the full retry schedule, `reconcileDeposits` on Vercel Cron, `replayDelivery`; handlers; signed Relay webhook; test mode | Simulated deposits end to end, surviving restarts |
-| 4 | QR widget, demo credits app, real $2 Base USDC deposit, deployed | **Demo-ready** |
-| 5 | Wallet path, timeline page, `/states` gallery, chunked address, EIP-681 QR | Product depth |
+| 4 | Checkout mode (§6a): orders, strict addresses, exact-amount QR with countdown; demo "Buy report" page; real Base USDC payment, deployed | **Demo-ready** |
+| 5 | Wallet path (exact amount locked), deposit mode top-up page, timeline page, `/states` gallery, chunked address | Product depth |
 | 6 | Live proofs for Arbitrum → Base and Ethereum → Base; README, 2-minute video, "built vs designed" table | Ready to share |
 
 **In the cut:** every Workflow SDK workflow above, webhook verification, account
 scoping, secrets kept out of errors, server-config payout addresses, test mode,
-timeline, wallet path, three live USDC routes: Base, Arbitrum and Ethereum → Base.
+timeline, wallet path, checkout and deposit modes, three live USDC routes: Base,
+Arbitrum and Ethereum → Base. The demo leads with checkout: "Buy report".
 
 **After the cut:**
 
