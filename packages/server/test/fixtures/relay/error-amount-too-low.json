@@ -1,5 +1,0 @@
-{
-  "message": "Amount must be greater than 50000 for deposit address quotes",
-  "errorCode": "AMOUNT_TOO_LOW",
-  "requestId": "0x1791884130dd34cf45d86922b4fa037301c2550d8d1a1914dc73c3a6570a505e"
-}

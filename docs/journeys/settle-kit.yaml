@@ -1,0 +1,411 @@
+# Settle Kit journey spine. Slice 1 (D7): own-rails deposits of USDC on Base and Arbitrum.
+# Each journey is one straight path; what can go wrong at a step is a rule on that step.
+product: settle-kit
+
+actors:
+  - id: developer
+    name: Developer integrating Settle Kit
+    type: person
+  - id: user
+    name: User depositing USDC
+    type: person
+  - id: engine
+    name: Settle Kit engine (indexer, workflows, scheduled jobs)
+    type: system
+  - id: host
+    name: The business's server
+    type: system
+  - id: circle
+    name: Circle CCTP (attestation and Forwarding Service)
+    type: external
+
+surfaces:
+  - id: deposit_widget
+    kind: component
+    states: [show_address, received, credited]
+  - id: settle_api
+    kind: endpoint
+  - id: credited_webhook
+    kind: webhook
+
+invariants:
+  - id: I1
+    title: One credit per transfer
+    rule: THE SYSTEM SHALL NOT credit the same on-chain transfer (chain ID, tx hash, log index) more than once
+    decisions: [D23]
+  - id: I2
+    title: Never credit more than arrived
+    rule: THE SYSTEM SHALL NOT let the total credited for a recipient exceed the total USDC verified arriving at that recipient on Base at the safe block
+    decisions: [D21]
+  - id: I3
+    title: Contracts pay only fixed destinations
+    rule: THE SYSTEM SHALL NOT let a deposit contract send USDC anywhere but its stored recipient and capped gas refund, or other tokens anywhere but its refund address
+    decisions: [D132, D39]
+  - id: I4
+    title: A credit is final
+    rule: THE SYSTEM SHALL NOT change a credited deposit's amount or move it out of the credited state
+    decisions: [D32]
+  - id: I5
+    title: Secrets stay secret
+    rule: THE SYSTEM SHALL NOT put the gas wallet key or the webhook secret in logs, errors or API responses
+    decisions: [D27]
+  - id: I6
+    title: Nothing is missed
+    rule: THE SYSTEM SHALL NOT end a scheduled check while a USDC transfer to one of our deposit addresses at or below the safe block has no deposit record
+    decisions: [D34, D131]
+
+journeys:
+  - id: J1
+    title: Developer sets up Settle Kit and shows the deposit widget
+    actor: developer
+    goal: Go from an empty Next.js app to a page showing a user's deposit address in test mode
+    proves: A stranger can install and run it (D5)
+    exits:
+      - id: ready
+        title: The deposit widget shows an address for a user
+    steps:
+      - id: J1.S1
+        title: Installs the packages
+        bucket: human
+        does: Adds @settle-kit/server and @settle-kit/react to a Next.js app
+        decisions: [D37, D44]
+        next: J1.S2
+        criteria:
+          c1: WHEN createSettle() starts without SETTLE_MODE THE SYSTEM SHALL refuse to start and name the missing variable
+          c2: WHEN SETTLE_MODE is test THE SYSTEM SHALL simulate deposits and SHALL NOT send any transaction on a real chain
+      - id: J1.S2
+        title: Sets the configuration
+        bucket: human
+        does: Sets the treasury and refund addresses, gas wallet key, Base and Arbitrum RPC URLs, and webhook URL and secret
+        decisions: [D26, D39]
+        invariants: [I5]
+        next: J1.S3
+        criteria:
+          c1: WHEN createSettle() starts THE SYSTEM SHALL validate every address and URL and name each invalid or missing value
+          c2: IF the treasury or refund address is missing or not a valid address THE SYSTEM SHALL NOT start
+          c3: IF configuration validation fails THE SYSTEM SHALL NOT include the gas wallet key or webhook secret in the error
+      - id: J1.S3
+        title: Runs the database migrations
+        bucket: human
+        does: Applies the numbered SQL migrations shipped with the package to the app's Postgres
+        decisions: [D30, D31]
+        next: J1.S4
+        criteria:
+          c1: WHEN the migrations run THE SYSTEM SHALL apply each numbered migration exactly once, in order
+          c2: WHEN the migrations run a second time THE SYSTEM SHALL change nothing
+      - id: J1.S4
+        title: Gets the deposit contracts on Base and Arbitrum
+        bucket: human
+        does: Uses the deposit-address factory on each chain
+        decisions: [Q14]
+        next: J1.S5
+        criteria:
+          c1: WHEN createSettle() starts in live mode THE SYSTEM SHALL check that the factory exists at the configured address on Base and on Arbitrum and name any chain where it is missing
+      - id: J1.S5
+        title: Mounts the handlers and renders the widget
+        bucket: human
+        surface: settle_api
+        does: Exports settle.handlers from a route and renders <Deposit accountId="user_42" /> on a page
+        decisions: [D40, D44]
+        exit: ready
+        criteria:
+          c1: WHEN the widget requests an account's deposit address through the mounted route THE SYSTEM SHALL answer with that account's address for each supported chain
+          c2: WHEN SETTLE_MODE is test THE SYSTEM SHALL mark the widget and QR code as TEST
+
+  - id: J2
+    title: User deposits USDC on Base
+    actor: user
+    goal: Send USDC on Base to their deposit address and see it credited
+    proves: The simplest own-rails path is verified and credited once
+    exits:
+      - id: credited
+        title: Deposit credited; the business is told once
+    steps:
+      - id: J2.S1
+        title: Sees their Base deposit address
+        bucket: script
+        surface: deposit_widget
+        state: show_address
+        sees: QR code, the address in groups, "USDC on Base only", minimum 2 USDC, "you'll receive about X"
+        does: Returns the account's stored address, computing and storing it on first use
+        decisions: [D13, D16, D20, D28, D38, D132]
+        next: J2.S2
+        criteria:
+          c1: WHEN an account first asks for a Base deposit address THE SYSTEM SHALL compute its CREATE2 address from the stored recipient, minimum and gas-refund cap, and store it with its lane and destination
+          c2: WHEN the account asks again THE SYSTEM SHALL return the same stored address and SHALL NOT issue a new one
+          c3: IF the browser sends a recipient, minimum or lane THE SYSTEM SHALL NOT use it
+          c4: WHEN the address is shown THE SYSTEM SHALL show the minimum (2 USDC) and the estimated fee before the user sends
+      - id: J2.S2
+        title: Sends USDC on Base
+        bucket: human
+        surface: deposit_widget
+        state: show_address
+        does: Scans the QR code with a wallet or withdraws from an exchange to the address
+        decisions: [D131]
+        next: J2.S3
+        criteria:
+          c1: WHILE the widget is open and no transfer is recorded THE SYSTEM SHALL check that one address every 5 s
+      - id: J2.S3
+        title: The transfer is recorded
+        bucket: script
+        surface: deposit_widget
+        state: received
+        sees: '"Received 10.00 USDC. Moving it to your account"'
+        does: Reads the USDC transfer at or below Base's safe block and records the deposit
+        decisions: [D21, D23, D28, D34]
+        invariants: [I1, I6]
+        next: J2.S4
+        criteria:
+          c1: WHEN a USDC transfer to the address is at or below the safe block THE SYSTEM SHALL record one deposit keyed by chain ID, tx hash and log index
+          c2: IF the same transfer is read again THE SYSTEM SHALL NOT record a second deposit
+          c3: IF the address's balance is below its 2 USDC minimum THE SYSTEM SHALL NOT start a sweep and SHALL show "Received X. Send Y more to reach the 2 USDC minimum"
+      - id: J2.S4
+        title: Sweeps to the recipient on Base
+        bucket: script
+        does: The gas wallet deploys the address's contract if needed and calls sweep()
+        decisions: [D36, D39, D132]
+        invariants: [I3]
+        next: J2.S5
+        criteria:
+          c1: WHEN a recorded deposit brings the balance to the minimum or more THE SYSTEM SHALL start one sweep workflow keyed by the deposit ID
+          c2: WHEN the address has no contract yet THE SYSTEM SHALL deploy it in the sweep workflow before calling sweep()
+          c3: IF a sweep workflow for the deposit is already running THE SYSTEM SHALL NOT start a second one
+          c4: IF a sweep transaction fails THE SYSTEM SHALL NOT mark the deposit credited, and SHALL retry the sweep
+      - id: J2.S5
+        title: Verifies the arrival and credits
+        bucket: script
+        does: Reads the USDC arrival at the stored recipient at the safe block and credits the deposit
+        decisions: [D21, D22, D23, D32]
+        invariants: [I1, I2, I4]
+        next: J2.S6
+        criteria:
+          c1: WHEN the sweep's USDC arrival at the stored recipient is at or below the safe block THE SYSTEM SHALL credit the deposit with that verified amount, in base units
+          c2: IF no matching arrival is verified THE SYSTEM SHALL NOT credit the deposit
+          c3: IF two workers try to credit the same deposit THE SYSTEM SHALL NOT credit it twice
+          c4: IF a deposit has no verified outcome 15 minutes after it was recorded THE SYSTEM SHALL move it to needs_attention as delayed and SHALL NOT credit it
+          c5: WHEN the deposit is credited THE SYSTEM SHALL start delivery of deposit.credited (J5)
+      - id: J2.S6
+        title: Sees it credited
+        bucket: script
+        surface: deposit_widget
+        state: credited
+        sees: '"9.98 USDC credited" with a Base explorer link to the arrival'
+        does: Shows the credited amount
+        exit: credited
+        criteria:
+          c1: WHEN the deposit is credited THE SYSTEM SHALL show the credited amount and a Base explorer link to the arrival transaction
+
+  - id: J3
+    title: User deposits USDC on Arbitrum
+    actor: user
+    goal: Send USDC on Arbitrum to their deposit address and see it credited on Base
+    proves: The own-rails cross-chain path through CCTP is verified and credited once
+    exits:
+      - id: credited
+        title: Deposit credited; the business is told once
+    steps:
+      - id: J3.S1
+        title: Sees their Arbitrum deposit address
+        bucket: script
+        surface: deposit_widget
+        state: show_address
+        sees: QR code, the address in groups, "USDC on Arbitrum only", minimum 2 USDC, "you'll receive about X"
+        does: Returns the account's stored Arbitrum address, computing and storing it on first use
+        decisions: [D13, D16, D20, D28, D38, D132]
+        next: J3.S2
+        criteria:
+          c1: WHEN an account first asks for an Arbitrum deposit address THE SYSTEM SHALL compute its CREATE2 address from the stored recipient on Base, minimum and gas-refund cap, and store it with its lane and destination
+          c2: WHEN the account asks again THE SYSTEM SHALL return the same stored address and SHALL NOT issue a new one
+          c3: IF the browser sends a recipient, minimum or lane THE SYSTEM SHALL NOT use it
+          c4: WHEN the address is shown THE SYSTEM SHALL show the minimum (2 USDC) and the estimated fees, including the CCTP fee and sweep gas
+      - id: J3.S2
+        title: Sends USDC on Arbitrum
+        bucket: human
+        surface: deposit_widget
+        state: show_address
+        does: Scans the QR code with a wallet or withdraws from an exchange on Arbitrum
+        decisions: [D131]
+        next: J3.S3
+        criteria:
+          c1: WHILE the widget is open and no transfer is recorded THE SYSTEM SHALL check that one address every 5 s
+      - id: J3.S3
+        title: The transfer is recorded
+        bucket: script
+        surface: deposit_widget
+        state: received
+        sees: '"Received 10.00 USDC on Arbitrum. Moving it to Base"'
+        does: Reads the USDC transfer at or below Arbitrum's safe block and records the deposit
+        decisions: [D21, D23, D28, D34]
+        invariants: [I1, I6]
+        next: J3.S4
+        criteria:
+          c1: WHEN a USDC transfer to the address is at or below Arbitrum's safe block THE SYSTEM SHALL record one deposit keyed by chain ID, tx hash and log index
+          c2: IF the same transfer is read again THE SYSTEM SHALL NOT record a second deposit
+          c3: IF the address's balance is below its 2 USDC minimum THE SYSTEM SHALL NOT start a sweep and SHALL show "Received X. Send Y more to reach the 2 USDC minimum"
+      - id: J3.S4
+        title: Sweeps through CCTP
+        bucket: script
+        uses: J4
+        next: J3.S5
+      - id: J3.S5
+        title: Verifies the mint on Base and credits
+        bucket: script
+        does: Reads the USDC minted to the stored recipient on Base at the safe block and credits the deposit
+        decisions: [D21, D22, D23, D32]
+        invariants: [I1, I2, I4]
+        next: J3.S6
+        criteria:
+          c1: WHEN the CCTP mint to the stored recipient on Base is at or below the safe block THE SYSTEM SHALL credit the deposit with the verified minted amount, in base units
+          c2: IF no matching mint is verified on Base THE SYSTEM SHALL NOT credit the deposit, whatever the burn or attestation shows
+          c3: IF two workers try to credit the same deposit THE SYSTEM SHALL NOT credit it twice
+          c4: WHEN the deposit is credited THE SYSTEM SHALL start delivery of deposit.credited (J5)
+      - id: J3.S6
+        title: Sees it credited
+        bucket: script
+        surface: deposit_widget
+        state: credited
+        sees: '"9.97 USDC credited" with explorer links to the Arbitrum burn and the Base mint'
+        does: Shows the credited amount
+        exit: credited
+        criteria:
+          c1: WHEN the deposit is credited THE SYSTEM SHALL show the credited amount with explorer links to the Arbitrum burn and the Base mint
+
+  - id: J4
+    title: Engine sweeps an Arbitrum deposit to Base through CCTP
+    actor: engine
+    goal: Move a recorded Arbitrum deposit to its recipient on Base
+    proves: The cross-chain sweep survives slow steps and restarts (D36)
+    reusable: true
+    exits:
+      - id: minted
+        title: USDC minted to the recipient on Base
+    steps:
+      - id: J4.S1
+        title: Starts the sweep workflow
+        bucket: script
+        does: Starts one durable workflow keyed by the deposit ID
+        decisions: [D36]
+        next: J4.S2
+        criteria:
+          c1: WHEN a recorded deposit brings the balance to the minimum or more THE SYSTEM SHALL start one sweep workflow keyed by the deposit ID
+          c2: IF a sweep workflow for the deposit is already running THE SYSTEM SHALL NOT start a second one
+      - id: J4.S2
+        title: Burns the USDC through CCTP
+        bucket: script
+        does: The gas wallet deploys the contract if needed and calls sweep(), which burns the USDC with CCTP V2 Fast and the Forwarding Service
+        decisions: [D39, D132]
+        invariants: [I3]
+        next: J4.S3
+        criteria:
+          c1: WHEN the address has no contract yet THE SYSTEM SHALL deploy it before calling sweep()
+          c2: WHEN sweep() runs THE SYSTEM SHALL burn the balance minus the capped gas refund, with the stored recipient on Base as the mint recipient
+          c3: IF the sweep transaction fails THE SYSTEM SHALL NOT record the burn, and SHALL retry the sweep
+      - id: J4.S3
+        title: Circle attests the burn
+        bucket: external
+        does: Circle signs the burn message
+        decisions: [D17]
+        next: J4.S4
+        criteria:
+          c1: WHILE the attestation is pending THE SYSTEM SHALL ask Circle's attestation API every 5 s
+          c2: IF no attestation arrives within 15 minutes of the burn THE SYSTEM SHALL move the deposit to needs_attention as delayed and keep checking every 15 minutes
+      - id: J4.S4
+        title: Circle mints on Base
+        bucket: external
+        does: The Forwarding Service mints the USDC to the recipient on Base and takes its fee from the minted amount
+        decisions: [D21]
+        exit: minted
+        criteria:
+          c1: WHEN Circle reports the mint THE SYSTEM SHALL wait for the mint to be at or below Base's safe block before reporting the exit
+          c2: IF Circle reports a mint that is not found on Base THE SYSTEM SHALL NOT report the exit
+
+  - id: J5
+    title: The business's server receives deposit.credited
+    actor: host
+    goal: Learn about each credited deposit exactly once and credit its own user
+    proves: Delivery is signed, retried and safe to receive twice (D14, D45)
+    exits:
+      - id: delivered
+        title: The business acknowledged the event
+    steps:
+      - id: J5.S1
+        title: Settle Kit sends the signed event
+        bucket: script
+        surface: credited_webhook
+        does: POSTs deposit.credited, signed with Standard Webhooks
+        decisions: [D14, D22, D45]
+        invariants: [I5]
+        next: J5.S2
+        criteria:
+          c1: WHEN a deposit is credited THE SYSTEM SHALL POST deposit.credited with a stable event ID, the account ID and the verified amount as a decimal string
+          c2: IF the business does not answer with a 2xx status within 10 s THE SYSTEM SHALL retry up to 10 times, waiting 2^(n-1) minutes before retry n, and SHALL NOT change the event ID or payload
+          c3: IF a delivery attempt fails THE SYSTEM SHALL NOT log the webhook secret or the signature
+      - id: J5.S2
+        title: The business verifies and credits its user
+        bucket: external
+        does: Calls settle.webhook(handler), which checks the signature, then credits user_42 in its own database
+        decisions: [D44]
+        next: J5.S3
+        criteria:
+          c1: WHEN settle.webhook receives a request with a valid signature THE SYSTEM SHALL call the handler once with the parsed event
+          c2: IF the signature is missing, invalid or older than 5 minutes THE SYSTEM SHALL answer 401 and SHALL NOT call the handler
+      - id: J5.S3
+        title: Delivery is marked done
+        bucket: script
+        does: Records the acknowledgment
+        decisions: [D45]
+        exit: delivered
+        criteria:
+          c1: WHEN the business answers with a 2xx status THE SYSTEM SHALL mark the delivery done
+          c2: IF the delivery is already done THE SYSTEM SHALL NOT send the event again unless an operator calls resendWebhook
+
+  - id: J6
+    title: The minute check
+    actor: engine
+    goal: Every minute, find every deposit, restart stuck work and check the books
+    proves: Nothing is missed and nothing is credited without an arrival (D131, D133)
+    exits:
+      - id: checked
+        title: Check finished; problems flagged
+    steps:
+      - id: J6.S1
+        title: Reads the chains
+        bucket: script
+        does: Reads USDC transfers to our deposit addresses on Base and Arbitrum from the saved position up to the safe block
+        decisions: [D34, D131]
+        invariants: [I1, I6]
+        next: J6.S2
+        criteria:
+          c1: WHEN the scheduled job runs THE SYSTEM SHALL read each chain from its saved position up to the safe block and save the new position in the same transaction as the deposits it records
+          c2: IF two runs overlap THE SYSTEM SHALL NOT record a transfer twice
+          c3: IF an RPC call fails THE SYSTEM SHALL NOT advance that chain's saved position
+      - id: J6.S2
+        title: Restarts stuck work
+        bucket: script
+        does: Starts the sweep or credit workflow for any deposit that has none running
+        decisions: [D36]
+        next: J6.S3
+        criteria:
+          c1: WHEN a recorded deposit at or above its minimum is neither credited nor has a running workflow THE SYSTEM SHALL start its workflow keyed by the deposit ID
+          c2: IF the deposit's workflow is already running THE SYSTEM SHALL NOT start a second one
+      - id: J6.S3
+        title: Checks the books
+        bucket: script
+        does: Matches each credited deposit to a verified arrival at its recipient, and each treasury arrival to a credited deposit
+        decisions: [D133]
+        invariants: [I2]
+        next: J6.S4
+        criteria:
+          c1: WHEN the check runs THE SYSTEM SHALL match every credited deposit to a verified USDC arrival at its stored recipient on Base
+          c2: IF a credited deposit has no matching arrival THE SYSTEM SHALL NOT mark the check clean, and SHALL record a critical alert naming the deposit
+          c3: IF a treasury arrival matches no credited deposit THE SYSTEM SHALL record it for investigation
+      - id: J6.S4
+        title: Re-checks attention cases
+        bucket: script
+        does: Re-checks deposits in needs_attention on D17's schedule
+        decisions: [D17, D21]
+        exit: checked
+        criteria:
+          c1: WHEN a deposit has been in needs_attention for under 7 days THE SYSTEM SHALL re-check it every 15 minutes, and daily after that
+          c2: WHEN a re-check finds a verified arrival on Base THE SYSTEM SHALL let the credit workflow credit it
+          c3: IF a re-check finds no verified arrival THE SYSTEM SHALL NOT credit the deposit or mark its funds lost
