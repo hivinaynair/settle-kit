@@ -65,7 +65,7 @@ not a raw confirmation count. Unique keys: `fill_id` and `(chain_id, tx_hash, lo
 
 ## Still open
 
-- **S11 · Arbitrum `safe` lag** — for Q15, docs half done (see S11 below). Still to do: run
+- **S11 · Arbitrum `safe` lag** — timing follow-up for D34 (former Q15 closed), docs half done (see S11 below). Still to do: run
   `scripts/spikes/s11-safe-lag.ts` from a machine that can reach Arbitrum and Base RPCs (this
   cloud environment blocks them) and record min, median, p90 and max lag.
 
@@ -258,3 +258,21 @@ Node 22 and Bun. A standalone script outside the repo, shaped like S1's spike wo
   `PENDING` by a process that is gone, using `DBOS.resumeWorkflow`.
 - Steps are at-least-once: a step can run twice (crash, recovery overlap), so every step with
   a side effect (a sweep transaction, a webhook) must be safe to repeat.
+
+## S13 · CCTP forwarding, limits and recovery boundaries — 2026-10-15 (source inspection only)
+
+Read official documentation and Circle's published client code. No transfer, expiry fault,
+rate-limit load test or post-safe reorganization was executed in this check.
+
+| Question | Evidence | Limit of the evidence |
+|---|---|---|
+| Who manages forwarding attestation recovery? | Circle's [published CCTP provider 1.14.1](https://unpkg.com/@circle-fin/provider-cctp-v2@1.14.1/index.mjs), `handleStepExecutionError`, skips client re-attestation when `useForwarder` is true and assigns attestation handling to the relayer. The [Forwarding Service docs](https://developers.circle.com/cctp/concepts/forwarding-service) say Circle obtains the attestation and broadcasts the destination mint | D138 relies on that responsibility. This is not proof that every expiry or outage recovers automatically; no custom re-attestation loop is added |
+| Can forwarding stop after a successful burn? | In the same published client, `isRelayerMintConfirmed` maps `forwardState: FAILED` to `RELAYER_FORWARD_FAILED` with resumable message and attestation data. It also allows for another party having submitted the mint | Retain the original burn message, verify its Base receipt independently, and expose failure for host action. Do not reburn or credit a reported forwarding status |
+| Does an expired attestation destroy the burn? | The [CCTP technical guide](https://developers.circle.com/cctp/references/technical-guide) defines `expirationBlock` approximately 24 hours ahead and describes re-signing through `POST /v2/reattest` for expired Fast messages | The original burn remains the recovery identity. This describes protocol recovery, not an observed forwarding-service expiry recovery |
+| What is the API rate limit? | The technical guide says 40 requests/second; [Resolve attestation issues](https://developers.circle.com/cctp/howtos/resolve-stuck-attestation) says 35/second. Both describe a five-minute block on 429; the latter treats 404 and an empty message list as pending | The discrepancy is unresolved. D56's deployment-wide 20-request rolling-second budget is our conservative policy, not a claimed provider limit |
+| Can a single burn exceed Circle's limit? | [TokenController.sol at 7d70310](https://github.com/circlefin/evm-cctp-contracts/blob/7d70310/src/roles/TokenController.sol), `onlyWithinBurnLimit`, requires a positive configured `burnLimitsPerMessage[token]` and an amount no greater than that value | No live numerical limit was queried. D28 checks the current deployed limit as well as the separate 1,000-USDC gross cap; it does not assume a hardcoded Circle limit |
+| Can safe evidence later change? | Base's [derivation specification](https://docs.base.org/specifications/base-protocol/consensus/derivation), “Resetting the Pipeline”, describes rewinding derived L2 state to recover from an L1 reorganization | D125 assigns the residual liability and requires an incident; no reorganization was induced here |
+
+The Arbitrum source policy remains `safe` in slice 1 (D34). S11's timing measurement
+is still open; none of these sources proves a completion-time guarantee. D36 now selects DBOS based on S12; its version, executor and side-effect constraints
+remain part of the setup and recovery rules.
