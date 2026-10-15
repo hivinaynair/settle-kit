@@ -6,12 +6,9 @@ Settle Kit is an open-source TypeScript SDK being built to accept native USDC on
 Base and Arbitrum and settle it to a business's treasury on Base. A React deposit
 widget and two hooks sit on top of a self-hosted payment engine.
 
-**Status:** the scope and user journeys are defined, and a zero-ETH browser payment
-has been verified on Base Sepolia. The SDK is not implemented end to end or
+**Status:** the scope and user journeys are defined. The SDK is not implemented end to end or
 published to npm. Contracts are experimental and unaudited.
 
-[Live test transaction](https://sepolia.basescan.org/tx/0x9b2a8e601638aa2031324dab2e25216b2028d61d1f63f0b1342dc015adac0cf3)
-· [Test report](scripts/spikes/s16-browser-wallet/README.md)
 · [Decisions](docs/decisions.md)
 · [User journeys](docs/journeys/settle-kit.md)
 
@@ -66,19 +63,6 @@ The money rules matter as much as the happy path:
 
 The SDK will not require payer or treasury private keys. The business controls
 its gas wallet, treasury and resulting customer-credit liability.
-
-## What is proven today
-
-In the [recorded MetaMask test](scripts/spikes/s16-browser-wallet/README.md), the
-payer authorized **1.00 test USDC** while holding **zero ETH**. The operator paid
-gas; the treasury received **0.99 USDC** and the operator received a **0.01 USDC**
-fee. Independent checks verified the canonical transaction at Base safe, and
-USDC rejected reuse of the authorization in a read-only simulation.
-
-That proves one browser payment using ERC-3009 authorization and a host relayer,
-without a paymaster. It does not establish the full SDK, a combined CCTP route,
-crash recovery or compatibility with every wallet. The amounts are experiment
-inputs, not a production fee recommendation.
 
 [All experiment results and evidence limits](docs/spikes.md) are recorded separately
 from the specification. Exploratory spikes are complete; the next step is a short
