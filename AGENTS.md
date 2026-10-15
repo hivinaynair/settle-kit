@@ -1,13 +1,14 @@
 # settle-kit
 
-Bun-only Turborepo for **Settle Kit**: a self-hosted SDK for crypto checkout and deposits
-from any wallet or exchange, settled as USDC on Base. Payers send to an address (QR or
-browser wallet); Relay or our own contracts plus CCTP route it; the host is credited once.
+Bun-only Turborepo for **Settle Kit**: a self-hosted native-USDC deposit SDK for Base
+and Arbitrum, settling to the host treasury on Base. Payers send to a reusable address
+or sign a quoted wallet payment; our own contracts and CCTP handle settlement.
 What we build and why: `docs/decisions.md`.
 
 ## Read first
 
-- Spec: being rebuilt through the process in `docs/spec/README.md`. The earlier
+- Spec: decisions and journeys are complete for the narrowed scope; the next planning
+  artifacts are a short technical design and traced task specs (`docs/spec/README.md`). The earlier
   checkout-first plan (design doc, tasks T1–T9, handoffs) is in `docs/archive/`: input
   for decisions, never instructions to build. Evidence: `docs/spikes.md`.
 - **Agents implement tasks; Vinay monitors and must be able to explain every line.**
@@ -71,8 +72,9 @@ Two artifacts drive the spec, written in this order. How to write them:
 
 - Amounts are base units: `bigint` in code, `numeric` in Postgres, decimal strings in
   JSON. Never floats.
-- Credit only the verified on-chain amount at Base's `safe` block. Provider status
-  alone never authorizes credit.
+- Credits require exclusive verified backing at Base's `safe` block. Manual deposits
+  credit their net arrival; wallet quotes credit the fixed agreed amount with separate
+  fee/residual allocation (D21, D126–D127). Provider status never authorizes credit.
 - Map provider `errorCode`s; never parse error messages. Never put API keys or
   webhook secrets in errors, `cause` or logs.
 - Treasury and refund addresses come from server config only.
