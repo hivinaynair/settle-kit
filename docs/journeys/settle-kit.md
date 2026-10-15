@@ -40,7 +40,7 @@ flowchart LR
   J1_S1["Installs the packages<br/><small>human</small>"]
   J1_S2["Sets the configuration<br/><small>human</small>"]
   J1_S3["Runs the database migrations<br/><small>human</small>"]
-  J1_S4["Gets the deposit contracts on Base and Arbitrum<br/><small>human</small>"]
+  J1_S4["Uses the shared deposit-address factory<br/><small>script</small>"]
   J1_S5["Mounts the handlers and renders the widget<br/><small>human · settle_api</small>"]
   J1_S1 --> J1_S2
   J1_S2 --> J1_S3
@@ -51,10 +51,10 @@ flowchart LR
 | Step | Bucket | Surface · state | Sees | Does | Next | Criteria |
 |---|---|---|---|---|---|---|
 | `J1.S1` Installs the packages | human | — | — | Adds @settle-kit/server and @settle-kit/react to a Next.js app | `J1.S2` | 2 |
-| `J1.S2` Sets the configuration | human | — | — | Sets the treasury and refund addresses, gas wallet key, Base and Arbitrum RPC URLs, and webhook URL and secret | `J1.S3` | 3 |
+| `J1.S2` Sets the configuration | human | — | — | Sets the database URL, treasury and refund addresses, gas wallet key, Base and Arbitrum RPC URLs, and webhook URL and secret | `J1.S3` | 3 |
 | `J1.S3` Runs the database migrations | human | — | — | Applies the numbered SQL migrations shipped with the package to the app's Postgres | `J1.S4` | 2 |
-| `J1.S4` Gets the deposit contracts on Base and Arbitrum | human | — | — | Uses the deposit-address factory on each chain | `J1.S5` | 1 |
-| `J1.S5` Mounts the handlers and renders the widget | human | `settle_api` | — | Exports settle.handlers from a route and renders <Deposit accountId='user_42' /> on a page | exit `ready` | 2 |
+| `J1.S4` Uses the shared deposit-address factory | script | — | — | Points at the factory Settle Kit deployed once on Base and Arbitrum; nothing to deploy unless the developer sets their own factory address | `J1.S5` | 2 |
+| `J1.S5` Mounts the handlers and renders the widget | human | `settle_api` | — | Exports settle.handlers from a route and renders <Deposit accountId='user_42' /> on a page | exit `ready` | 3 |
 
 ### J1 acceptance criteria
 
@@ -65,7 +65,7 @@ flowchart LR
 
 **`J1.S2`** Sets the configuration · decisions D26, D39 · invariants I5
 
-- `J1.S2.c1` WHEN createSettle() starts THE SYSTEM SHALL validate every address and URL and name each invalid or missing value
+- `J1.S2.c1` WHEN createSettle() starts THE SYSTEM SHALL validate the database URL and every address and URL, and name each invalid or missing value
 - `J1.S2.c2` IF the treasury or refund address is missing or not a valid address THE SYSTEM SHALL NOT start
 - `J1.S2.c3` IF configuration validation fails THE SYSTEM SHALL NOT include the gas wallet key or webhook secret in the error
 
@@ -74,14 +74,16 @@ flowchart LR
 - `J1.S3.c1` WHEN the migrations run THE SYSTEM SHALL apply each numbered migration exactly once, in order
 - `J1.S3.c2` WHEN the migrations run a second time THE SYSTEM SHALL change nothing
 
-**`J1.S4`** Gets the deposit contracts on Base and Arbitrum · decisions Q14
+**`J1.S4`** Uses the shared deposit-address factory · decisions D134
 
 - `J1.S4.c1` WHEN createSettle() starts in live mode THE SYSTEM SHALL check that the factory exists at the configured address on Base and on Arbitrum and name any chain where it is missing
+- `J1.S4.c2` WHERE the developer sets their own factory address THE SYSTEM SHALL use it instead of the shared one
 
 **`J1.S5`** Mounts the handlers and renders the widget · decisions D40, D44
 
 - `J1.S5.c1` WHEN the widget requests an account's deposit address through the mounted route THE SYSTEM SHALL answer with that account's address for each supported chain
 - `J1.S5.c2` WHEN SETTLE_MODE is test THE SYSTEM SHALL mark the widget and QR code as TEST
+- `J1.S5.c3` WHEN SETTLE_MODE is test THE SYSTEM SHALL show a "Simulate a deposit" button that runs the deposit journey (J2) with simulated transfers
 
 ## J2 · User deposits USDC on Base
 
