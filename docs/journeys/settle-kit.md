@@ -112,9 +112,9 @@ flowchart LR
 |---|---|---|---|---|---|---|
 | `J2.S1` Sees their Base deposit address | script | `deposit_widget` · show_address | QR code, the address in groups, 'USDC on Base only', minimum 2 USDC, 'you'll receive about X' | Returns the account's stored address, computing and storing it on first use | `J2.S2` | 4 |
 | `J2.S2` Sends USDC on Base | human | `deposit_widget` · show_address | — | Scans the QR code with a wallet or withdraws from an exchange to the address | `J2.S3` | 1 |
-| `J2.S3` The transfer is recorded | script | `deposit_widget` · received | 'Received 10.00 USDC. Moving it to your account' | Reads the USDC transfer at or below Base's safe block and records the deposit | `J2.S4` | 3 |
-| `J2.S4` Sweeps to the recipient on Base | script | — | — | The gas wallet deploys the address's contract if needed and calls sweep() | `J2.S5` | 4 |
-| `J2.S5` Verifies the arrival and credits | script | — | — | Reads the USDC arrival at the stored recipient at the safe block and credits the deposit | `J2.S6` | 5 |
+| `J2.S3` The transfer is recorded | script | `deposit_widget` · received | 'Received 10.00 USDC. Moving it to your account' | Reads the USDC transfer at or below Base's safe block and records the deposit | `J2.S4` | 4 |
+| `J2.S4` Sweeps to the recipient on Base | script | — | — | The gas wallet deploys the address's contract if needed and calls sweep() | `J2.S5` | 5 |
+| `J2.S5` Verifies the arrival and credits | script | — | — | Reads the USDC arrival at the stored recipient at the safe block and credits the deposit | `J2.S6` | 6 |
 | `J2.S6` Sees it credited | script | `deposit_widget` · credited | '9.98 USDC credited' with a Base explorer link to the arrival | Shows the credited amount | exit `credited` | 1 |
 
 ### J2 acceptance criteria
@@ -130,22 +130,25 @@ flowchart LR
 
 - `J2.S2.c1` WHILE the widget is open and no transfer is recorded THE SYSTEM SHALL check that one address every 5 s
 
-**`J2.S3`** The transfer is recorded · decisions D21, D23, D28, D34 · invariants I1, I6
+**`J2.S3`** The transfer is recorded · decisions D18, D21, D23, D28, D34 · invariants I1, I6
 
 - `J2.S3.c1` WHEN a USDC transfer to the address is at or below the safe block THE SYSTEM SHALL record one deposit keyed by chain ID, tx hash and log index
 - `J2.S3.c2` IF the same transfer is read again THE SYSTEM SHALL NOT record a second deposit
 - `J2.S3.c3` IF the address's balance is below its 2 USDC minimum THE SYSTEM SHALL NOT start a sweep and SHALL show "Received X. Send Y more to reach the 2 USDC minimum"
+- `J2.S3.c4` WHEN our own read finds the transfer at the latest block THE SYSTEM SHALL show "Received" with the amount, and SHALL NOT record or credit it before it is at or below the safe block
 
-**`J2.S4`** Sweeps to the recipient on Base · decisions D36, D39, D132 · invariants I3
+**`J2.S4`** Sweeps to the recipient on Base · decisions D36, D39, D121, D132 · invariants I3
 
 - `J2.S4.c1` WHEN a recorded deposit brings the balance to the minimum or more THE SYSTEM SHALL start one sweep workflow keyed by the deposit ID
+- `J2.S4.c5` WHEN the sweep is sent THE SYSTEM SHALL link every recorded, uncredited deposit at the address to that sweep
 - `J2.S4.c2` WHEN the address has no contract yet THE SYSTEM SHALL deploy it in the sweep workflow before calling sweep()
 - `J2.S4.c3` IF a sweep workflow for the deposit is already running THE SYSTEM SHALL NOT start a second one
 - `J2.S4.c4` IF a sweep transaction fails THE SYSTEM SHALL NOT mark the deposit credited, and SHALL retry the sweep
 
-**`J2.S5`** Verifies the arrival and credits · decisions D21, D22, D23, D32 · invariants I1, I2, I4
+**`J2.S5`** Verifies the arrival and credits · decisions D21, D22, D23, D32, D121 · invariants I1, I2, I4
 
-- `J2.S5.c1` WHEN the sweep's USDC arrival at the stored recipient is at or below the safe block THE SYSTEM SHALL credit the deposit with that verified amount, in base units
+- `J2.S5.c1` WHEN the sweep's USDC arrival at the stored recipient is at or below the safe block THE SYSTEM SHALL record one credit for that sweep with the verified amount, in base units, covering every deposit linked to it
+- `J2.S5.c6` IF a deposit is already covered by a credit THE SYSTEM SHALL NOT include it in another
 - `J2.S5.c2` IF no matching arrival is verified THE SYSTEM SHALL NOT credit the deposit
 - `J2.S5.c3` IF two workers try to credit the same deposit THE SYSTEM SHALL NOT credit it twice
 - `J2.S5.c4` IF a deposit has no verified outcome 15 minutes after it was recorded THE SYSTEM SHALL move it to needs_attention as delayed and SHALL NOT credit it
@@ -184,9 +187,9 @@ flowchart LR
 |---|---|---|---|---|---|---|
 | `J3.S1` Sees their Arbitrum deposit address | script | `deposit_widget` · show_address | QR code, the address in groups, 'USDC on Arbitrum only', minimum 2 USDC, 'you'll receive about X' | Returns the account's stored Arbitrum address, computing and storing it on first use | `J3.S2` | 4 |
 | `J3.S2` Sends USDC on Arbitrum | human | `deposit_widget` · show_address | — | Scans the QR code with a wallet or withdraws from an exchange on Arbitrum | `J3.S3` | 1 |
-| `J3.S3` The transfer is recorded | script | `deposit_widget` · received | 'Received 10.00 USDC on Arbitrum. Moving it to Base' | Reads the USDC transfer at or below Arbitrum's safe block and records the deposit | `J3.S4` | 3 |
+| `J3.S3` The transfer is recorded | script | `deposit_widget` · received | 'Received 10.00 USDC on Arbitrum. Moving it to Base' | Reads the USDC transfer at or below Arbitrum's safe block and records the deposit | `J3.S4` | 4 |
 | `J3.S4` Sweeps through CCTP | script | — | — | — | uses `J4`; `J3.S5` | 0 |
-| `J3.S5` Verifies the mint on Base and credits | script | — | — | Reads the USDC minted to the stored recipient on Base at the safe block and credits the deposit | `J3.S6` | 4 |
+| `J3.S5` Verifies the mint on Base and credits | script | — | — | Reads the USDC minted to the stored recipient on Base at the safe block and credits the deposit | `J3.S6` | 5 |
 | `J3.S6` Sees it credited | script | `deposit_widget` · credited | '9.97 USDC credited' with explorer links to the Arbitrum burn and the Base mint | Shows the credited amount | exit `credited` | 1 |
 
 ### J3 acceptance criteria
@@ -202,15 +205,17 @@ flowchart LR
 
 - `J3.S2.c1` WHILE the widget is open and no transfer is recorded THE SYSTEM SHALL check that one address every 5 s
 
-**`J3.S3`** The transfer is recorded · decisions D21, D23, D28, D34 · invariants I1, I6
+**`J3.S3`** The transfer is recorded · decisions D18, D21, D23, D28, D34 · invariants I1, I6
 
 - `J3.S3.c1` WHEN a USDC transfer to the address is at or below Arbitrum's safe block THE SYSTEM SHALL record one deposit keyed by chain ID, tx hash and log index
 - `J3.S3.c2` IF the same transfer is read again THE SYSTEM SHALL NOT record a second deposit
 - `J3.S3.c3` IF the address's balance is below its 2 USDC minimum THE SYSTEM SHALL NOT start a sweep and SHALL show "Received X. Send Y more to reach the 2 USDC minimum"
+- `J3.S3.c4` WHEN our own read finds the transfer at the latest block THE SYSTEM SHALL show "Received" with the amount, and SHALL NOT record or credit it before it is at or below the safe block
 
-**`J3.S5`** Verifies the mint on Base and credits · decisions D21, D22, D23, D32 · invariants I1, I2, I4
+**`J3.S5`** Verifies the mint on Base and credits · decisions D21, D22, D23, D32, D121 · invariants I1, I2, I4
 
-- `J3.S5.c1` WHEN the CCTP mint to the stored recipient on Base is at or below the safe block THE SYSTEM SHALL credit the deposit with the verified minted amount, in base units
+- `J3.S5.c1` WHEN the CCTP mint to the stored recipient on Base is at or below the safe block THE SYSTEM SHALL record one credit for that sweep with the verified minted amount, in base units, covering every deposit linked to it
+- `J3.S5.c5` IF a deposit is already covered by a credit THE SYSTEM SHALL NOT include it in another
 - `J3.S5.c2` IF no matching mint is verified on Base THE SYSTEM SHALL NOT credit the deposit, whatever the burn or attestation shows
 - `J3.S5.c3` IF two workers try to credit the same deposit THE SYSTEM SHALL NOT credit it twice
 - `J3.S5.c4` WHEN the deposit is credited THE SYSTEM SHALL start delivery of deposit.credited (J5)
@@ -244,7 +249,7 @@ flowchart LR
 | Step | Bucket | Surface · state | Sees | Does | Next | Criteria |
 |---|---|---|---|---|---|---|
 | `J4.S1` Starts the sweep workflow | script | — | — | Starts one durable workflow keyed by the deposit ID | `J4.S2` | 2 |
-| `J4.S2` Burns the USDC through CCTP | script | — | — | The gas wallet deploys the contract if needed and calls sweep(), which burns the USDC with CCTP V2 Fast and the Forwarding Service | `J4.S3` | 3 |
+| `J4.S2` Burns the USDC through CCTP | script | — | — | The gas wallet deploys the contract if needed and calls sweep(), which burns the USDC with CCTP V2 Fast and the Forwarding Service | `J4.S3` | 4 |
 | `J4.S3` Circle attests the burn | external | — | — | Circle signs the burn message | `J4.S4` | 2 |
 | `J4.S4` Circle mints on Base | external | — | — | The Forwarding Service mints the USDC to the recipient on Base and takes its fee from the minted amount | exit `minted` | 2 |
 
@@ -255,11 +260,12 @@ flowchart LR
 - `J4.S1.c1` WHEN a recorded deposit brings the balance to the minimum or more THE SYSTEM SHALL start one sweep workflow keyed by the deposit ID
 - `J4.S1.c2` IF a sweep workflow for the deposit is already running THE SYSTEM SHALL NOT start a second one
 
-**`J4.S2`** Burns the USDC through CCTP · decisions D39, D132 · invariants I3
+**`J4.S2`** Burns the USDC through CCTP · decisions D39, D121, D132 · invariants I3
 
 - `J4.S2.c1` WHEN the address has no contract yet THE SYSTEM SHALL deploy it before calling sweep()
 - `J4.S2.c2` WHEN sweep() runs THE SYSTEM SHALL burn the balance minus the capped gas refund, with the stored recipient on Base as the mint recipient
 - `J4.S2.c3` IF the sweep transaction fails THE SYSTEM SHALL NOT record the burn, and SHALL retry the sweep
+- `J4.S2.c4` WHEN the sweep is sent THE SYSTEM SHALL link every recorded, uncredited deposit at the address to that sweep
 
 **`J4.S3`** Circle attests the burn · decisions D17
 
@@ -298,9 +304,9 @@ flowchart LR
 
 ### J5 acceptance criteria
 
-**`J5.S1`** Settle Kit sends the signed event · decisions D14, D22, D45 · invariants I5
+**`J5.S1`** Settle Kit sends the signed event · decisions D14, D22, D45, D121 · invariants I5
 
-- `J5.S1.c1` WHEN a deposit is credited THE SYSTEM SHALL POST deposit.credited with a stable event ID, the account ID and the verified amount as a decimal string
+- `J5.S1.c1` WHEN a credit is recorded THE SYSTEM SHALL POST one deposit.credited with a stable event ID, the account ID, the verified amount as a decimal string and the incoming transfers it covers
 - `J5.S1.c2` IF the business does not answer with a 2xx status within 10 s THE SYSTEM SHALL retry up to 10 times, waiting 2^(n-1) minutes before retry n, and SHALL NOT change the event ID or payload
 - `J5.S1.c3` IF a delivery attempt fails THE SYSTEM SHALL NOT log the webhook secret or the signature
 
