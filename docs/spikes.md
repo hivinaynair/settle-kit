@@ -65,11 +65,9 @@ not a raw confirmation count. Unique keys: `fill_id` and `(chain_id, tx_hash, lo
 
 ## Still open
 
-- **S10 · Workflow SDK Postgres World** — the self-hosted durability D37 relies on. Plan:
-  run the S1 checks (poll loop, `sleep`, retries, `FatalError`) on `@workflow/world-postgres`,
-  then `kill -9` the process mid-run and restart it. Pass: the run resumes from its last
-  step. If it doesn't, self-hosted payments recover through reconciliation restarts (D36),
-  which is correct but slower; record the delay.
+- **S11 · Arbitrum `safe` lag** — for Q15, docs half done (see S11 below). Still to do: run
+  `scripts/spikes/s11-safe-lag.ts` from a machine that can reach Arbitrum and Base RPCs (this
+  cloud environment blocks them) and record min, median, p90 and max lag.
 
 - **S4 · real deposit on Base mainnet** — waiting for funds (see S4a and S7). Plan:
   Base ETH → Base USDC via a deposit address (funds the payer with USDC), then
@@ -190,3 +188,43 @@ Strict `EXACT_OUTPUT` deposit-address quotes to Base USDC, mainnet, with our key
 ~0.05 the fee is larger than the price. Quotes only: whether Relay fills a tiny strict
 order is proven in T8. Demo prices: 0.50 / 1.00 / 2.00 USDC, so the fee reads as
 2–7% rather than more than the price.
+
+## S10 · Workflow SDK Postgres World — 2026-10-15
+
+`@workflow/world-postgres` 5.0.4 with `workflow` 5.2.1, Next.js 16 dev server under Node 22,
+local Postgres 16. The demo's existing spike workflow (`apps/demo/workflows/spike.ts`) ran
+unchanged; the World was selected with `WORKFLOW_TARGET_WORLD`. Nothing from the run is
+committed: the package and `instrumentation.ts` were removed afterwards.
+
+| Check | Result |
+|---|---|
+| `bootstrap` CLI | Creates its tables in their own schemas (`workflow`, `graphile_worker`), beside the app's |
+| Poll loop, `sleep`, a step that fails once | Completed; the step retried as attempt 2 |
+| `FatalError` | Run `failed`, no retry |
+| `kill -9` during a 20 s sleep, restart **without** calling `world.start()` | Wake-up job stayed in Postgres (due, unlocked) but nothing ran it: stuck at `running` |
+| Same, restart **with** `world.start()` in `instrumentation.ts` | Resumed within ~30 s of the restart (mostly compile time) and completed on the new process; `stepId` unchanged across the crash |
+| Process killed **inside** a step, restart with `world.start()` | Completed, the step re-ran as attempt 2, but only **~14 min** after the restart: the dead worker's job stays locked, and `start()` re-queues the run with a delay |
+
+**So:**
+- Durability works: state survives a hard crash, and runs resume on another process.
+- The app must call `world.start()` at boot. On Next.js that means `instrumentation.ts`; the
+  setup docs (J1) must say so.
+- A crash *inside* a step can delay the run by about 14 minutes. D36's reconciliation restart
+  and D17's 15-minute `delayed` rule cover that window; steps must stay idempotent because
+  they can run twice.
+- The README calls it a **reference implementation**. Its `/.well-known/workflow/v1/flow`
+  route has no authentication (block it at the proxy), and run data is stored unencrypted.
+- It does not run on Vercel; on Vercel the Vercel World is used automatically (D37 already
+  says Vercel World there).
+
+## S11 · Arbitrum `safe` and CCTP Fast finality — 2026-10-15 (docs only)
+
+- **Arbitrum `safe`:** the newest Arbitrum block whose batch has been posted to Ethereum and
+  has two-thirds of Ethereum's validators attesting to it ([Arbitrum docs](https://docs.arbitrum.io/for-devs/troubleshooting-building)).
+  No published duration; it depends on batch posting, so it must be measured.
+- **CCTP Fast:** burns with `minFinalityThreshold` 1000 ("confirmed"); Standard uses 2000
+  ("finalized"). Fast attestations come after soft finality, about 8–20 s by third-party
+  measurements. Fast capacity is limited by an allowance (`GET /v2/fastBurn/USDC/allowance`)
+  ([Circle migration guide](https://developers.circle.com/cctp/migration-from-v1-to-v2)).
+- **Not yet confirmed:** what happens to a Fast burn when the allowance is used up, and that
+  Circle, not the recipient, bears an Arbitrum rollback after a Fast mint.
