@@ -139,9 +139,9 @@ flowchart LR
 
 **`J2.S4`** Sweeps to the recipient on Base · decisions D36, D39, D121, D132 · invariants I3
 
-- `J2.S4.c1` WHEN a recorded deposit brings the balance to the minimum or more THE SYSTEM SHALL start one sweep workflow keyed by the deposit ID
+- `J2.S4.c1` WHEN a recorded deposit brings the address's balance to the minimum or more and no sweep is running for the address THE SYSTEM SHALL start one sweep workflow keyed by the address and a sweep number
 - `J2.S4.c2` WHEN the address has no contract yet THE SYSTEM SHALL deploy it in the sweep workflow before calling sweep()
-- `J2.S4.c3` IF a sweep workflow for the deposit is already running THE SYSTEM SHALL NOT start a second one
+- `J2.S4.c3` IF a sweep is already running for the address THE SYSTEM SHALL NOT start a second one, and a deposit recorded meanwhile SHALL wait for the next sweep
 - `J2.S4.c4` IF a sweep transaction fails THE SYSTEM SHALL NOT mark the deposit credited, and SHALL retry the sweep
 - `J2.S4.c5` WHEN the sweep is sent THE SYSTEM SHALL link every recorded, uncredited deposit at the address to that sweep
 
@@ -248,7 +248,7 @@ flowchart LR
 
 | Step | Bucket | Surface · state | Sees | Does | Next | Criteria |
 |---|---|---|---|---|---|---|
-| `J4.S1` Starts the sweep workflow | script | — | — | Starts one durable workflow keyed by the deposit ID | `J4.S2` | 2 |
+| `J4.S1` Starts the sweep workflow | script | — | — | Starts one durable workflow per sweep, one sweep at a time per address | `J4.S2` | 2 |
 | `J4.S2` Burns the USDC through CCTP | script | — | — | The gas wallet deploys the contract if needed and calls sweep(), which burns the USDC with CCTP V2 Fast and the Forwarding Service | `J4.S3` | 4 |
 | `J4.S3` Circle attests the burn | external | — | — | Circle signs the burn message | `J4.S4` | 2 |
 | `J4.S4` Circle mints on Base | external | — | — | The Forwarding Service mints the USDC to the recipient on Base and takes its fee from the minted amount | exit `minted` | 2 |
@@ -257,8 +257,8 @@ flowchart LR
 
 **`J4.S1`** Starts the sweep workflow · decisions D36
 
-- `J4.S1.c1` WHEN a recorded deposit brings the balance to the minimum or more THE SYSTEM SHALL start one sweep workflow keyed by the deposit ID
-- `J4.S1.c2` IF a sweep workflow for the deposit is already running THE SYSTEM SHALL NOT start a second one
+- `J4.S1.c1` WHEN a recorded deposit brings the address's balance to the minimum or more and no sweep is running for the address THE SYSTEM SHALL start one sweep workflow keyed by the address and a sweep number
+- `J4.S1.c2` IF a sweep is already running for the address THE SYSTEM SHALL NOT start a second one, and a deposit recorded meanwhile SHALL wait for the next sweep
 
 **`J4.S2`** Burns the USDC through CCTP · decisions D39, D121, D132 · invariants I3
 
@@ -344,7 +344,7 @@ flowchart LR
 | Step | Bucket | Surface · state | Sees | Does | Next | Criteria |
 |---|---|---|---|---|---|---|
 | `J6.S1` Reads the chains | script | — | — | Reads USDC transfers to our deposit addresses on Base and Arbitrum from the saved position up to the safe block | `J6.S2` | 3 |
-| `J6.S2` Restarts stuck work | script | — | — | Starts the sweep or credit workflow for any deposit that has none running | `J6.S3` | 2 |
+| `J6.S2` Restarts stuck work | script | — | — | Starts the sweep or credit workflow for any address whose deposits have none running | `J6.S3` | 2 |
 | `J6.S3` Checks the books | script | — | — | Matches each credited deposit to a verified arrival at its recipient, and each treasury arrival to a credited deposit | `J6.S4` | 3 |
 | `J6.S4` Re-checks attention cases | script | — | — | Re-checks deposits in needs_attention on D17's schedule | exit `checked` | 3 |
 
@@ -358,8 +358,8 @@ flowchart LR
 
 **`J6.S2`** Restarts stuck work · decisions D36
 
-- `J6.S2.c1` WHEN a recorded deposit at or above its minimum is neither credited nor has a running workflow THE SYSTEM SHALL start its workflow keyed by the deposit ID
-- `J6.S2.c2` IF the deposit's workflow is already running THE SYSTEM SHALL NOT start a second one
+- `J6.S2.c1` WHEN an address holds recorded, uncredited deposits at or above its minimum and has no running sweep or credit workflow THE SYSTEM SHALL start its sweep workflow
+- `J6.S2.c2` IF the address already has a running sweep or credit workflow THE SYSTEM SHALL NOT start a second one
 
 **`J6.S3`** Checks the books · decisions D133 · invariants I2
 
