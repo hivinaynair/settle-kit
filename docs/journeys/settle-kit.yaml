@@ -39,8 +39,8 @@ invariants:
     decisions: [D21]
   - id: I3
     title: Contracts pay only fixed destinations
-    rule: THE SYSTEM SHALL NOT let a deposit contract send USDC anywhere but its stored recipient and capped gas refund, or other tokens anywhere but its refund address
-    decisions: [D132, D39]
+    rule: THE SYSTEM SHALL NOT let a deposit contract send USDC anywhere but its stored recipient and its stored sweep fee to the gas wallet, or other tokens anywhere but its refund address
+    decisions: [D132, D136]
   - id: I4
     title: A credit is final
     rule: THE SYSTEM SHALL NOT change a credited deposit's amount or move it out of the credited state
@@ -77,7 +77,7 @@ journeys:
         title: Sets the configuration
         bucket: human
         does: Sets the database URL, treasury and refund addresses, gas wallet key, Base and Arbitrum RPC URLs, webhook URL and secret, and the address namespace (32 random bytes, generated once)
-        decisions: [D26, D39, D135]
+        decisions: [D26, D135, D136]
         invariants: [I5]
         next: J1.S3
         criteria:
@@ -131,13 +131,13 @@ journeys:
         state: show_address
         sees: QR code, the address in groups, "USDC on Base only", minimum 2 USDC, "you'll receive about X"
         does: Returns the account's stored address, computing and storing it on first use
-        decisions: [D13, D16, D20, D28, D38, D132, D135]
+        decisions: [D13, D20, D110, D123, D132, D135, D136, D137]
         next: J2.S2
         criteria:
-          c1: WHEN an account first asks for a Base deposit address THE SYSTEM SHALL compute its CREATE2 address from a salt of the business's address namespace and the account ID, plus the stored recipient, minimum and gas-refund cap, and store it with its lane and destination
+          c1: WHEN an account first asks for a Base deposit address THE SYSTEM SHALL compute its CREATE2 address from a salt of the business's address namespace and the account ID, plus the stored recipient, minimum and sweep fee, and store it with its lane and destination
           c2: WHEN the account asks again THE SYSTEM SHALL return the same stored address and SHALL NOT issue a new one
           c3: IF the browser sends a recipient, minimum or lane THE SYSTEM SHALL NOT use it
-          c4: WHEN the address is shown THE SYSTEM SHALL show the minimum (2 USDC) and the estimated fee before the user sends
+          c4: WHEN the address is shown THE SYSTEM SHALL show the minimum (2 USDC) and the sweep fee (0.01 USDC by default) before the user sends
       - id: J2.S2
         title: Sends USDC on Base
         bucket: human
@@ -155,7 +155,7 @@ journeys:
         state: received
         sees: '"Received 10.00 USDC. Moving it to your account"'
         does: Reads the USDC transfer at or below Base's safe block and records the deposit
-        decisions: [D18, D21, D23, D28, D34]
+        decisions: [D18, D21, D23, D34, D123]
         invariants: [I1, I6]
         next: J2.S4
         criteria:
@@ -166,8 +166,8 @@ journeys:
       - id: J2.S4
         title: Sweeps to the recipient on Base
         bucket: script
-        does: The gas wallet deploys the address's contract if needed and calls sweep()
-        decisions: [D36, D39, D122, D132]
+        does: The gas wallet deploys the address's contract if needed and calls sweep(), which pays the sweep fee and forwards the rest
+        decisions: [D36, D122, D132, D136]
         invariants: [I3]
         next: J2.S5
         criteria:
@@ -196,7 +196,7 @@ journeys:
         bucket: script
         surface: deposit_widget
         state: credited
-        sees: '"9.98 USDC credited" with a Base explorer link to the arrival'
+        sees: '"9.99 USDC credited" with a Base explorer link to the arrival'
         does: Shows the credited amount
         exit: credited
         criteria:
@@ -218,13 +218,13 @@ journeys:
         state: show_address
         sees: QR code, the address in groups, "USDC on Arbitrum only", minimum 2 USDC, "you'll receive about X"
         does: Returns the account's stored Arbitrum address, computing and storing it on first use
-        decisions: [D13, D16, D20, D28, D38, D132, D135]
+        decisions: [D13, D20, D110, D123, D132, D135, D136, D137]
         next: J3.S2
         criteria:
-          c1: WHEN an account first asks for an Arbitrum deposit address THE SYSTEM SHALL compute its CREATE2 address from a salt of the business's address namespace and the account ID, plus the stored recipient on Base, minimum and gas-refund cap, and store it with its lane and destination
+          c1: WHEN an account first asks for an Arbitrum deposit address THE SYSTEM SHALL compute its CREATE2 address from a salt of the business's address namespace and the account ID, plus the stored recipient on Base, minimum and sweep fee, and store it with its lane and destination
           c2: WHEN the account asks again THE SYSTEM SHALL return the same stored address and SHALL NOT issue a new one
           c3: IF the browser sends a recipient, minimum or lane THE SYSTEM SHALL NOT use it
-          c4: WHEN the address is shown THE SYSTEM SHALL show the minimum (2 USDC) and the estimated fees, including the CCTP fee and sweep gas
+          c4: WHEN the address is shown THE SYSTEM SHALL show the minimum (2 USDC), the sweep fee (0.05 USDC by default) and the estimated CCTP fee before the user sends
       - id: J3.S2
         title: Sends USDC on Arbitrum
         bucket: human
@@ -242,7 +242,7 @@ journeys:
         state: received
         sees: '"Received 10.00 USDC on Arbitrum. Moving it to Base"'
         does: Reads the USDC transfer at or below Arbitrum's safe block and records the deposit
-        decisions: [D18, D21, D23, D28, D34, Q15]
+        decisions: [D18, D21, D23, D34, D123, Q15]
         invariants: [I1, I6]
         next: J3.S4
         criteria:
@@ -268,14 +268,14 @@ journeys:
           c3: IF two workers try to credit the same deposit THE SYSTEM SHALL NOT credit it twice
           c4: WHEN the deposit is credited THE SYSTEM SHALL start delivery of deposit.credited (J5)
           c5: IF a deposit is already covered by a credit THE SYSTEM SHALL NOT include it in another
-          c6: IF any transfer linked to the sweep is not yet at or below Arbitrum's safe block, or the linked transfers do not add up to what the sweep burned plus its gas refund, THE SYSTEM SHALL NOT record the credit
+          c6: IF any transfer linked to the sweep is not yet at or below Arbitrum's safe block, or the linked transfers do not add up to what the sweep burned plus its sweep fee, THE SYSTEM SHALL NOT record the credit
           c7: IF a deposit has no verified outcome on Base 15 minutes after it was first seen, whichever CCTP stage is pending, THE SYSTEM SHALL move it to needs_attention as delayed and SHALL NOT credit it
       - id: J3.S6
         title: Sees it credited
         bucket: script
         surface: deposit_widget
         state: credited
-        sees: '"9.97 USDC credited" with explorer links to the Arbitrum burn and the Base mint'
+        sees: '"9.94 USDC credited" with explorer links to the Arbitrum burn and the Base mint'
         does: Shows the credited amount
         exit: credited
         criteria:
@@ -303,13 +303,13 @@ journeys:
       - id: J4.S2
         title: Burns the USDC through CCTP
         bucket: script
-        does: The gas wallet deploys the contract if needed and calls sweep(), which burns the USDC with CCTP V2 Fast and the Forwarding Service
-        decisions: [D39, D122, D132]
+        does: The gas wallet deploys the contract if needed and calls sweep(), which pays the sweep fee and burns the rest with CCTP V2 Fast and the Forwarding Service
+        decisions: [D122, D132, D136]
         invariants: [I3]
         next: J4.S3
         criteria:
           c1: WHEN the address has no contract yet THE SYSTEM SHALL deploy it before calling sweep()
-          c2: WHEN sweep() runs THE SYSTEM SHALL burn the balance minus the capped gas refund, with the stored recipient on Base as the mint recipient
+          c2: WHEN sweep() runs THE SYSTEM SHALL pay the stored sweep fee to the gas wallet and burn the rest of the balance, with the stored recipient on Base as the mint recipient
           c3: IF the sweep transaction fails THE SYSTEM SHALL NOT record the burn, and SHALL retry the sweep
           c4: WHEN the sweep transaction is confirmed THE SYSTEM SHALL link to it every USDC transfer into the address that came before it on that chain, recording any not yet recorded
       - id: J4.S3
