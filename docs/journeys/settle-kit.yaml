@@ -1,7 +1,49 @@
-# Settle Kit journey spine. Slice 1 (D2): own-rails deposits of USDC on Base and Arbitrum.
-# Each journey is one straight path; what can go wrong at a step is a rule on that step.
+# Settle Kit deposit-only release. Decisions are in docs/decisions.md.
+# IDs remain permanent; retired criteria are listed here so they cannot be reused.
+# Retired invariants: I2, I3, I6 (earlier reviews), I7 -> I10, I9 -> I11 (quote allocations).
+# Earlier retirement: I2 -> I7, I3 -> I9, I6 -> I8. Do not reuse retired IDs.
+# J1.S4: Retired criteria: c1. Do not reuse.
+# J1.S5a: Retired criteria: c1, c2, c3, c4 (Workflow SDK setup). Do not reuse.
+# J2.S1: Retired criteria: c1. Do not reuse.
+# J2.S2: Retired criteria: c1. Do not reuse.
+# J2.S3: Retired criteria: c3. Do not reuse.
+# J2.S4: Retired criteria: c6, c1, c3, c4, c5. Do not reuse.
+# J2.S5: Retired criteria: c1, c4, c5, c7. Do not reuse.
+# J2.S6: Retired criteria: c1. Do not reuse.
+# J3.S1: Retired criteria: c1. Do not reuse.
+# J3.S2: Retired criteria: c1. Do not reuse.
+# J3.S3: Retired criteria: c3. Do not reuse.
+# J3.S5: Retired criteria: c1, c4, c7. Do not reuse.
+# J3.S6: Retired criteria: c1. Do not reuse.
+# J4.S1: Retired criteria: c1, c2. Do not reuse.
+# J4.S2: Retired criteria: c5, c2, c3, c4. Do not reuse.
+# J4.S3: Retired criteria: c1, c2. Do not reuse.
+# J5.S2: Retired criteria: c1, c3. Do not reuse.
+# J6.S1: Retired criteria: c1, c3. Do not reuse.
+# J6.S2: Retired criteria: c1, c2, c4 (process heartbeat alone cannot keep an expired worker claim). Do not reuse.
+# J6.S3: Retired criteria: c5. Do not reuse.
+# J6.S4: Retired criteria: c2. Do not reuse.
+# J7.S2: c4 (SDK-submitted recovery) retired: in the earlier scope the operator submits recovery (X6). Do not reuse.
+# J1.S5.c5: replaced by J1.S5.c6 in the narrowed release
+# J1.S5a.c6: retired in the narrowed release
+# J1.S5a.c7: retired in the narrowed release
+# J5.S1.c1: replaced by J5.S1.c10 in the narrowed release
+# J6.S3.c1: replaced by J6.S3.c15 in the narrowed release
+# J6.S3.c3: replaced by J6.S3.c16 in the narrowed release
+# J6.S4.c4: replaced by J6.S4.c7 in the narrowed release
+# J1.S2.c1: replaced by J1.S2.c9 after review; do not reuse.
+# J1.S2.c2: replaced by J1.S2.c10 after review; do not reuse.
+# J1.S2.c4: replaced by J1.S2.c11 after review; do not reuse.
+# J1.S5.c4: replaced by J1.S5.c7 after review; do not reuse.
+# J1.S5a.c9: replaced by J1.S5a.c10 after review; do not reuse.
+# J8.S3.c1: replaced by J8.S3.c5 after review; do not reuse.
+# J8.S4.c1: replaced by J8.S4.c7 after review; do not reuse.
+# J8.S5.c1: replaced by J8.S5.c10 after review; do not reuse.
+# J8.S5.c4: replaced by J8.S5.c11 after review; do not reuse.
+# J8.S5.c9: replaced by J8.S5.c12 after review; do not reuse.
+# J8.S8.c3: replaced by J8.S8.c5 after review; do not reuse.
+# J9.S1.c1: replaced by J9.S1.c3 after review; do not reuse.
 product: settle-kit
-
 actors:
   - id: developer
     name: Developer integrating Settle Kit
@@ -10,56 +52,62 @@ actors:
     name: User depositing USDC
     type: person
   - id: engine
-    name: Settle Kit engine (indexer, workflows, scheduled jobs)
+    name: "Settle Kit engine (indexer, workflows, scheduled jobs)"
     type: system
   - id: host
-    name: The business's server
+    name: "The business's server"
     type: system
   - id: circle
     name: Circle CCTP (attestation and Forwarding Service)
     type: external
-
 surfaces:
   - id: deposit_widget
     kind: component
-    states: [show_address, received, awaiting_minimum, processing, needs_attention, account_update_pending, credited]
+    states: [show_address, received, awaiting_minimum, processing, needs_attention, account_update_pending, credited, connect_wallet, quote, signing, submitting, not_submitted, failed_no_debit]
   - id: settle_api
     kind: endpoint
   - id: credited_webhook
     kind: webhook
-
+  - id: deposit_hook
+    kind: hook
+  - id: wallet_payment_hook
+    kind: hook
+  - id: demo
+    kind: page
 invariants:
-# Retired: I2 -> I7, I3 -> I9, I6 -> I8. Do not reuse retired IDs.
   - id: I1
     title: One credit per transfer
-    rule: THE SYSTEM SHALL NOT credit the same on-chain transfer (chain ID, tx hash, log index) more than once
+    rule: "THE SYSTEM SHALL NOT credit the same on-chain transfer (chain ID, tx hash, log index) more than once"
     decisions: [D23]
   - id: I4
     title: A credit is final
-    rule: THE SYSTEM SHALL NOT change a credited deposit's amount or move it out of the credited state
+    rule: "THE SYSTEM SHALL NOT change a credited deposit's amount or move it out of the credited state"
     decisions: [D32]
   - id: I5
     title: Secrets stay secret
-    rule: THE SYSTEM SHALL NOT put the gas wallet key or the webhook secret in logs, errors or API responses
+    rule: "THE SYSTEM SHALL NOT put the gas wallet key or the webhook secret in logs, errors or API responses"
     decisions: [D27]
-  - id: I7
-    title: Every credit has unique verified backing when created
-    rule: THE SYSTEM SHALL NOT create a credit without a uniquely claimed canonical USDC arrival at the stored Base recipient at safe and matching source attribution, or for an amount other than that verified net arrival
-    decisions: [D21, D23, D121, D125]
+  - id: I10
+    title: Every credit has exclusive verified backing
+    rule: "THE SYSTEM SHALL NOT create a credit without exclusively claimed canonical USDC backing at the stored Base recipient at safe and verified source attribution; manual credit equals its full net arrival, and quoted credit equals the locked quote with sufficient backing and separately recorded host residual"
+    decisions: [D21, D23, D121, D126, D127]
   - id: I8
     title: Complete discovery means a complete captured range
-    rule: THE SYSTEM SHALL NOT advance a discovery cursor beyond a fully read and committed range, or mark a captured scan complete before every required page and event through its captured safe boundary is read and committed
+    rule: "THE SYSTEM SHALL NOT advance a discovery cursor beyond a fully read and committed range, or mark a captured scan complete before every required page and event through its captured safe boundary is read and committed"
     decisions: [D34, D131]
-  - id: I9
-    title: All callers are bound to fixed money destinations
-    rule: THE SYSTEM SHALL NOT let any caller send deposit-contract USDC except to its stored treasury or CCTP destination and fixed sweep-fee recipient during an eligible sweep, or its entire over-limit Arbitrum balance to its stored refund address with zero sweep fee; non-USDC rescue pays only the stored refund address
-    decisions: [D28, D33, D39]
-
+  - id: I11
+    title: Fixed destinations and isolated payment amounts
+    rule: "THE SYSTEM SHALL NOT let a caller redirect funds from stored treasury, route, fee and refund destinations or consume unrelated manual balances in a quoted payment; manual sweep and over-limit recovery obey stored limits and non-USDC rescue uses only the stored refund address"
+    decisions: [D26, D28, D33, D39, D231]
+  - id: I12
+    title: Accepted quote matches payer consent
+    rule: "THE SYSTEM SHALL NOT increase the authorized debit, reduce the locked credit, change the accepted destination or fee, or execute an authorization more than once for an accepted quoted payment"
+    decisions: [D110, D126, D140, D141, D231]
 journeys:
   - id: J1
     title: Developer sets up Settle Kit and shows the deposit widget
     actor: developer
-    goal: Show a user's test address from any Node or Bun server with React, and configure live background processing
+    goal: Integrate the deposit SDK on one long-running server with Postgres and React
     proves: A stranger can install and run it (D5)
     exits:
       - id: ready
@@ -68,7 +116,7 @@ journeys:
       - id: J1.S1
         title: Installs the packages
         bucket: human
-        does: Adds @settle-kit/server to the server (Express, Fastify, Hono, Next.js or plain Node/Bun) and @settle-kit/react to the frontend
+        does: "Installs the core, server and React packages for the documented long-running reference setup"
         decisions: [D37, D44]
         next: J1.S2
         criteria:
@@ -77,25 +125,29 @@ journeys:
       - id: J1.S2
         title: Sets the configuration
         bucket: human
-        does: Sets the database URL, treasury and refund addresses, gas wallet key, Base and Arbitrum RPC URLs, webhook URL and secret, and the address namespace (32 random bytes, generated once)
-        decisions: [D26, D39, D135, D44]
+        does: "Sets local database and webhook configuration for simulated mode; live mode also requires fixed destinations, gas operator, chain RPCs, namespace, quote deadlines and finite D128 spending limits"
+        decisions: [D26, D39, D135, D44, D141, D128, D142]
         invariants: [I5]
         next: J1.S3
         criteria:
-          c1: WHEN createSettle() starts THE SYSTEM SHALL validate the database URL and every address and URL, and name each invalid or missing value
-          c2: IF the treasury or refund address is missing or not a valid address THE SYSTEM SHALL NOT start
           c3: IF configuration validation fails THE SYSTEM SHALL NOT include the gas wallet key or webhook secret in the error
-          c4: IF the address namespace is missing or not 32 bytes THE SYSTEM SHALL NOT start, and SHALL print a command that generates one
           c5: IF a configured sweep fee is negative or is greater than or equal to its minimum THE SYSTEM SHALL NOT start or create a deposit contract
           c6: IF a caller is not authorized for the requested account or administrative operation THE SYSTEM SHALL NOT return account data or execute that operation
+          c7: IF the quote fee policy or positive finite quote lifetime is missing THE SYSTEM SHALL NOT prepare live wallet quotes
+          c8: IF SETTLE_MODE is test THE SYSTEM SHALL NOT use a live signing key or expose a live destination as a simulated address
+          c9: "WHEN live createSettle starts THE SYSTEM SHALL validate its database, destinations, RPCs, webhook configuration and D128 spend controls and name invalid or missing settings without their secret values"
+          c10: IF live treasury or refund configuration is missing or invalid THE SYSTEM SHALL NOT enable live processing
+          c11: IF live address namespace is missing or not 32 bytes THE SYSTEM SHALL NOT issue live addresses and SHALL print a command that generates one
+          c12: "WHEN simulated mode starts with a local database and local webhook configuration THE SYSTEM SHALL use isolated fixture destinations and local signing material without requiring live RPC credentials, real keys or wallet funding"
+          c13: "IF simulated mode is selected THE SYSTEM SHALL NOT load live signing material, submit chain transactions or request real payment signatures"
       - id: J1.S3
         title: Runs the database migrations
         bucket: human
-        does: Applies the numbered SQL migrations shipped with the package to the app's Postgres
+        does: "Applies the numbered SQL migrations shipped with the package to the app's Postgres"
         decisions: [D30, D31]
         next: J1.S4
         criteria:
-          c1: WHEN the migrations run THE SYSTEM SHALL apply each numbered migration exactly once, in order
+          c1: "WHEN the migrations run THE SYSTEM SHALL apply each numbered migration exactly once, in order"
           c2: WHEN the migrations run a second time THE SYSTEM SHALL change nothing
       - id: J1.S4
         title: Uses the shared deposit-address factory
@@ -103,7 +155,6 @@ journeys:
         does: Points at the factory Settle Kit deployed once on Base and Arbitrum; nothing to deploy unless the developer sets their own factory address
         decisions: [D134]
         next: J1.S5
-        # Retired criteria: c1. Do not reuse.
         criteria:
           c2: WHERE the developer sets their own factory address THE SYSTEM SHALL use it instead of the shared one
           c3: WHEN live startup or address issuance runs THE SYSTEM SHALL verify the RPC chain ID and factory runtime-code hash against the supported version manifest
@@ -112,55 +163,56 @@ journeys:
         title: Mounts the handlers and renders the widget
         bucket: human
         surface: settle_api
-        does: Mounts settle.handlers on a route, runs scheduled work (settle.start() on a long-running server, or a cron hitting the protected cron route on serverless), and renders <Deposit accountId="user_42" /> on a page
+        does: "Mounts authenticated settle.handlers, starts settle.start() and renders <Deposit accountId=\"user_42\" />"
         decisions: [D36, D40, D44, D131]
         criteria:
-          c1: WHEN the widget requests an account's deposit address through the mounted route THE SYSTEM SHALL answer with that account's address for each supported chain
+          c1: "WHEN the widget requests an account's deposit address through the mounted route THE SYSTEM SHALL answer with that account's address for each supported chain"
           c2: WHEN SETTLE_MODE is test THE SYSTEM SHALL mark the widget and QR code as TEST
-          c3: WHEN SETTLE_MODE is test THE SYSTEM SHALL show a "Simulate a deposit" button that runs the deposit journey (J2) with simulated transfers
-          c4: WHEN settle.start() runs THE SYSTEM SHALL launch the durable engine with Settle Kit's pinned release as the application version and a fresh executor ID for this process
-          c5: WHEN the cron route receives a request without the configured cron secret THE SYSTEM SHALL answer 401 and SHALL NOT run any scheduled work
+          c3: "WHEN SETTLE_MODE is test THE SYSTEM SHALL show a \"Simulate a deposit\" button that runs the deposit journey (J2) with simulated transfers"
+          c6: "IF the browser supplies an account ID without host-authorized ownership THE SYSTEM SHALL NOT return its addresses, quotes, payments or deposits"
+          c7: WHEN settle.start runs THE SYSTEM SHALL launch DBOS with the explicit workflow compatibility version and a fresh executor ID independent of package semver
         next: J1.S5a
       - id: J1.S5a
         title: Enables background processing for live mode
         bucket: human
-        does: Starts DBOS with the release-pinned version and a unique executor, and verifies scheduled work
+        does: "Starts DBOS with the release-pinned version and a unique executor, and verifies scheduled work"
         decisions: [D36, D37, D131]
         exit: ready
-        # Retired criteria: c1, c2, c3, c4 (Workflow SDK setup). Do not reuse.
         criteria:
           c5: WHEN a long-running host calls settle.start() THE SYSTEM SHALL register DBOS chain scans every 10 seconds and the remaining scheduled check every 60 seconds
-          c6: WHEN serverless live setup is configured THE SYSTEM SHALL require an authenticated POST cron invocation every 60 seconds
-          c7: IF the cron secret is absent or invalid THE SYSTEM SHALL NOT execute scheduled work
           c8: WHEN live setup is verified THE SYSTEM SHALL show a completed scheduled scan and a persisted DBOS workflow resuming after a process restart
-          c9: WHEN a compatible release starts THE SYSTEM SHALL preserve its pinned application version and workflow step ordering, and use a new workflow name for an incompatible sequence
-
+          c10: WHEN a compatible package upgrade starts THE SYSTEM SHALL retain the workflow compatibility version and step ordering and resume unfinished operations with their original identities
+          c11: WHEN an incompatible workflow sequence is introduced THE SYSTEM SHALL keep its old implementation registered under the old name until its pending work drains and route new work to the new name
+          c12: IF pending work requires an unsupported application version or removed workflow implementation THE SYSTEM SHALL NOT report recovery ready or replay that history with an incompatible sequence
+          c13: WHEN an applicationVersion change is required THE SYSTEM SHALL keep an old-version worker available until its pending workflows finish
   - id: J2
-    title: User deposits USDC on Base
+    title: User manually deposits USDC on Base
     actor: user
     goal: Send USDC on Base to their deposit address and see it credited
     proves: The simplest own-rails path is verified and credited once
     exits:
       - id: credited
-        title: Deposit credited; the business is told once
+        title: Verified deposit credited; host acknowledgment recorded
     steps:
       - id: J2.S1
         title: Sees their Base deposit address
         bucket: script
         surface: deposit_widget
         state: show_address
-        sees: QR code, the address in groups, "USDC on Base only", minimum 2 USDC, "you'll receive about X"
-        does: Returns the account's stored address, computing and storing it on first use
-        decisions: [D13, D20, D28, D33, D38, D39, D135, D134]
+        sees: "QR code, the address in groups, \"USDC on Base only\", minimum 2 USDC, \"you'll receive about X\""
+        does: "Returns the account's stored address, computing and storing it on first use"
+        decisions: [D13, D20, D28, D33, D38, D39, D135, D134, D140]
         next: J2.S2
-        # Retired criteria: c1. Do not reuse.
         criteria:
           c2: WHEN the account asks again THE SYSTEM SHALL return the same stored address and SHALL NOT issue a new one
-          c3: IF the browser sends a recipient, minimum or lane THE SYSTEM SHALL NOT use it
+          c3: "IF the browser sends a recipient, minimum or lane THE SYSTEM SHALL NOT use it"
           c4: WHEN the address is shown THE SYSTEM SHALL show the minimum (2 USDC) and the sweep fee (0.01 USDC by default) before the user sends
-          c5: WHEN an account first requests an address THE SYSTEM SHALL atomically store the address and its complete versioned CREATE2 inputs under a unique business, account and route key, and return the stored winner of concurrent requests
+          c5: "WHEN an account first requests an address THE SYSTEM SHALL atomically store the address and its complete versioned CREATE2 inputs under a unique business, account and route key, and return the stored winner of concurrent requests"
           c6: WHEN an address is predicted THE SYSTEM SHALL bind the namespace and account ID with unambiguous encoding and bind every immutable D33 money setting and supported creation-code version
-          c7: IF a predicted contract already exists with different code, version or immutable settings THE SYSTEM SHALL NOT use it or sweep it
+          c7: "IF a predicted contract already exists with different code, version or immutable settings THE SYSTEM SHALL NOT use it or sweep it"
+          c8: "WHEN depositAddress(accountId, chain) is called by an authorized host THE SYSTEM SHALL return the stored address for that supported native-USDC chain"
+          c9: IF the selected token or source chain is unsupported THE SYSTEM SHALL NOT present it as an accepted deposit route
+          c10: WHEN manual payment instructions are shown THE SYSTEM SHALL label net credit as an estimate and disclose that exchange withdrawal fees and the actual arrival determine final credit
       - id: J2.S2
         title: Sends USDC on Base
         bucket: human
@@ -169,69 +221,70 @@ journeys:
         does: Scans the QR code with a wallet or withdraws from an exchange to the address
         decisions: [D131]
         next: J2.S3
-        # Retired criteria: c1. Do not reuse.
         criteria:
-          c2: WHILE the widget or useDeposits is mounted THE SYSTEM SHALL scan the account's issued addresses every 5 seconds, including after earlier deposits and during pending work
+          c2: "WHILE the widget or useDeposits is mounted THE SYSTEM SHALL scan the account's issued addresses every 5 seconds, including after earlier deposits and during pending work"
+          c3: IF a sender transfers an unsupported token or uses an unsupported chain THE SYSTEM SHALL NOT create a USDC credit from that transfer
+          c4: WHEN a sender pays a different amount or makes a later second transfer THE SYSTEM SHALL apply the actual-arrival and minimum rules to each discovered transfer without reusing an earlier quote
+          c5: IF the browser closes or reloads THE SYSTEM SHALL NOT stop server-side discovery or require another transfer to recover progress
       - id: J2.S3
         title: The transfer is recorded
         bucket: script
         surface: deposit_widget
         state: received
         sees: "\"Received 10.00 USDC. Moving it to your account\""
-        does: Reads the USDC transfer at or below Base's safe block and records the deposit
+        does: "Reads the USDC transfer at or below Base's safe block and records the deposit"
         decisions: [D18, D21, D23, D28, D34, D17, D131]
         invariants: [I1, I8]
         next: J2.S4
-        # Retired criteria: c3. Do not reuse.
         criteria:
-          c1: WHEN a USDC transfer to the address is at or below the safe block THE SYSTEM SHALL record one deposit keyed by chain ID, tx hash and log index
+          c1: "WHEN a USDC transfer to the address is at or below the safe block THE SYSTEM SHALL record one deposit keyed by chain ID, tx hash and log index"
           c2: IF the same transfer is read again THE SYSTEM SHALL NOT record a second deposit
-          c4: WHEN our own read finds the transfer at the latest block THE SYSTEM SHALL show "Received" with the amount, and SHALL NOT record or credit it before it is at or below the safe block
+          c4: "WHEN our own read finds the transfer at the latest block THE SYSTEM SHALL show \"Received\" with the amount, and SHALL NOT record or credit it before it is at or below the safe block"
           c5: WHEN a transfer is observed at latest THE SYSTEM SHALL store its provisional observation separately from safe deposit records
-          c6: IF a canonical replacement excludes a provisional transfer THE SYSTEM SHALL NOT retain its provisional amount and SHALL show "Confirmation changed; checking"
+          c6: "IF a canonical replacement excludes a provisional transfer THE SYSTEM SHALL NOT retain its provisional amount and SHALL show \"Confirmation changed; checking\""
           c7: WHEN the safe unassigned balance is below the stored minimum with no pending sweep THE SYSTEM SHALL keep it awaiting_minimum without starting the processing-delay timer
-          c8: WHEN safe unassigned funds first reach the stored minimum THE SYSTEM SHALL persist the processing-eligibility time for that batch and retain it through top-ups, retries and restarts
-          c9: IF safe unassigned funds are below the stored minimum and no sweep is pending THE SYSTEM SHALL NOT start a sweep and SHALL show "Received X. Send Y more to reach the minimum"
+          c8: "WHEN safe unassigned funds first reach the stored minimum THE SYSTEM SHALL persist the processing-eligibility time for that batch and retain it through top-ups, retries and restarts"
+          c9: "IF safe unassigned funds are below the stored minimum and no sweep is pending THE SYSTEM SHALL NOT start a sweep and SHALL show \"Received X. Send Y more to reach the minimum\""
       - id: J2.S4
         title: Sweeps to the recipient on Base
         bucket: script
-        does: The gas wallet deploys the address's contract if needed and calls sweep(), which pays the sweep fee and forwards the rest
-        decisions: [D33, D36, D39, D121, D28, D134, D139]
-        invariants: [I9, I1, I8]
+        does: "The gas wallet deploys the address's contract if needed and calls sweep(), which pays the sweep fee and forwards the rest"
+        decisions: [D33, D36, D39, D121, D28, D134, D139, D231, D128]
+        invariants: [I11, I1, I8]
         next: J2.S5
-        # Retired criteria: c6, c1, c3, c4, c5. Do not reuse.
         criteria:
           c2: WHEN the address has no contract yet THE SYSTEM SHALL deploy it in the sweep workflow before calling sweep()
-          c16: IF an address has an open sweep operation THE SYSTEM SHALL NOT start a second operation, including while the first is sleeping or awaiting verification
-          c7: WHEN a successful sweep is discovered THE SYSTEM SHALL assign only incoming transfers after the preceding successful full-balance drain and before this sweep in chain execution order, including mid-workflow top-ups
+          c16: "IF an address has an open sweep operation THE SYSTEM SHALL NOT start a second operation, including while the first is sleeping or awaiting verification"
+          c7: "WHEN a successful sweep is discovered THE SYSTEM SHALL assign only incoming transfers after the preceding successful full-balance drain and before this sweep in chain execution order, including mid-workflow top-ups"
           c8: IF a transfer is already assigned to a sweep or recovery THE SYSTEM SHALL NOT reassign it
           c9: IF any caller invokes sweep() with zero or less than the stored minimum THE SYSTEM SHALL NOT move USDC or charge a USDC sweep fee
-          c10: WHEN a sweep succeeds THE SYSTEM SHALL emit the gross balance, fixed fee and forwarded amount and pay only the stored recipients
-          c11: WHEN a sweep or deployment is submitted THE SYSTEM SHALL first persist its operation, chain, signer, globally reserved signer nonce, signed bytes and hash
+          c10: "WHEN a sweep succeeds THE SYSTEM SHALL emit the gross balance, fixed fee and forwarded amount and pay only the stored recipients"
+          c11: "WHEN a sweep or deployment is submitted THE SYSTEM SHALL first persist its operation, chain, signer, globally reserved signer nonce, signed bytes and hash"
           c12: IF broadcast times out or its receipt is missing THE SYSTEM SHALL NOT submit a fresh-nonce retry and SHALL reconcile events or rebroadcast the saved transaction
-          c13: WHEN a transaction is fee-replaced THE SYSTEM SHALL keep its nonce, destination and call data and retain both hashes
+          c13: "WHEN a transaction is fee-replaced THE SYSTEM SHALL keep its nonce, destination and call data and retain both hashes"
           c14: WHEN an attempt is proven reverted or its nonce is proven consumed by another canonical transaction at source safe THE SYSTEM SHALL recheck all sweep guards before any fresh-nonce retry of the same operation
           c15: WHEN safe unassigned funds meet the minimum and the address has no open operation THE SYSTEM SHALL atomically start one sweep operation keyed by address and sweep number
           c17: IF a sweep step replays after a crash with an unknown transaction outcome THE SYSTEM SHALL NOT create an independently executable fresh-nonce transaction and SHALL reconcile or rebroadcast the saved attempt
+          c18: IF an incoming transfer belongs to a verified exact-amount authorization event THE SYSTEM SHALL NOT assign it to a manual full-balance sweep or recovery
+          c19: "IF the deployment gas reserve, shared spend budget or bounded retry allowance cannot cover submission THE SYSTEM SHALL NOT broadcast and SHALL retain the original operation with a gas_unavailable or spend_limit reason"
       - id: J2.S5
         title: Verifies the arrival and credits
         bucket: script
         does: Reads the USDC arrival at the stored recipient at the safe block and credits the deposit
         decisions: [D17, D21, D22, D23, D32, D121, D125, D230]
-        invariants: [I1, I7, I4]
+        invariants: [I1, I10, I4]
         next: J2.S6
-        # Retired criteria: c1, c4, c5, c7. Do not reuse.
         criteria:
           c2: IF no matching arrival is verified THE SYSTEM SHALL NOT credit the deposit
           c3: IF two workers try to credit the same deposit THE SYSTEM SHALL NOT credit it twice
           c6: IF a deposit is already covered by a credit THE SYSTEM SHALL NOT include it in another
-          c8: WHEN all source attribution and Base verification checks pass THE SYSTEM SHALL atomically claim the source memberships and unique Base arrival, insert one final credit for the verified net Base amount in integer base units and its immutable deposit.credited event, and create pending delivery in one Postgres transaction
-          c9: IF source or drain evidence is not canonical at source safe, gross source units differ from the emitted gross balance, gross differs from the emitted fee plus forwarded or burned amount, or the Base arrival is claimed by a different sweep THE SYSTEM SHALL NOT credit and SHALL enter needs_attention with the failed check
+          c8: "WHEN all source attribution and Base verification checks pass THE SYSTEM SHALL atomically claim the source memberships and unique Base arrival, insert one final credit for the verified net Base amount in integer base units and its immutable deposit.credited event, and create pending delivery in one Postgres transaction"
+          c9: "IF source or drain evidence is not canonical at source safe, gross source units differ from the emitted gross balance, gross differs from the emitted fee plus forwarded or burned amount, or the Base arrival is claimed by a different sweep THE SYSTEM SHALL NOT credit and SHALL enter needs_attention with the failed check"
           c10: IF the corresponding Base arrival is not the canonical USDC net transfer to the stored recipient at the captured safe boundary or credit creation is paused for an affected chain THE SYSTEM SHALL NOT create a credit
-          c11: IF settlement is pending for at least 2 minutes after processing eligibility and the batch has not entered attention THE SYSTEM SHALL show "Taking longer than usual; checking your deposit"
+          c11: "IF settlement is pending for at least 2 minutes after processing eligibility and the batch has not entered attention THE SYSTEM SHALL show \"Taking longer than usual; checking your deposit\""
           c12: IF settlement is pending for at least 15 minutes after processing eligibility and the batch has no other attention reason THE SYSTEM SHALL NOT create a credit from elapsed time and SHALL enter needs_attention as delayed
-          c13: WHEN internal settlement commits before host acknowledgment THE SYSTEM SHALL show "Received by the business; account update pending" and expose settlement and delivery states through useDeposits
-          c14: WHEN a retry finds this sweep's committed credit and event THE SYSTEM SHALL return the existing result without another credit or attention transition
+          c13: "WHEN internal settlement commits before host acknowledgment THE SYSTEM SHALL show \"Received by the business; account update pending\" and expose settlement and delivery states through useDeposits"
+          c14: "WHEN a retry finds this sweep's committed credit and event THE SYSTEM SHALL return the existing result without another credit or attention transition"
       - id: J2.S6
         title: Sees it credited
         bucket: script
@@ -240,39 +293,39 @@ journeys:
         sees: "\"9.99 USDC credited\" with a Base explorer link to the arrival"
         does: Shows the credited amount
         exit: credited
-        # Retired criteria: c1. Do not reuse.
         criteria:
           c2: WHEN the host acknowledges committed processing of deposit.credited THE SYSTEM SHALL show the account as credited with the verified amount and explorer links to the relevant source and Base arrival transactions
           c3: IF the host has not acknowledged committed processing THE SYSTEM SHALL NOT show the account as credited
         decisions: [D18, D124]
-
   - id: J3
-    title: User deposits USDC on Arbitrum
+    title: User manually deposits USDC on Arbitrum
     actor: user
     goal: Send USDC on Arbitrum to their deposit address and see it credited on Base
     proves: The own-rails cross-chain path through CCTP is verified and credited once
     exits:
       - id: credited
-        title: Deposit credited; the business is told once
+        title: Verified deposit credited; host acknowledgment recorded
     steps:
       - id: J3.S1
         title: Sees their Arbitrum deposit address
         bucket: script
         surface: deposit_widget
         state: show_address
-        sees: QR code, address, "USDC on Arbitrum only", minimum 2 USDC, maximum automatic balance (1,000 USDC by default), estimated fees
-        does: Returns the account's stored Arbitrum address, computing and storing it on first use
-        decisions: [D13, D20, D28, D33, D38, D39, D135, D134]
+        sees: "QR code, address, \"USDC on Arbitrum only\", minimum 2 USDC, maximum automatic balance (1,000 USDC by default), estimated fees"
+        does: "Returns the account's stored Arbitrum address, computing and storing it on first use"
+        decisions: [D13, D20, D28, D33, D38, D39, D135, D134, D140]
         next: J3.S2
-        # Retired criteria: c1. Do not reuse.
         criteria:
           c2: WHEN the account asks again THE SYSTEM SHALL return the same stored address and SHALL NOT issue a new one
-          c3: IF the browser sends a recipient, minimum or lane THE SYSTEM SHALL NOT use it
-          c4: WHEN the address is shown THE SYSTEM SHALL show the minimum (2 USDC), the sweep fee (0.05 USDC by default) and the estimated CCTP fee before the user sends
-          c5: WHEN an account first requests an address THE SYSTEM SHALL atomically store the address and its complete versioned CREATE2 inputs under a unique business, account and route key, and return the stored winner of concurrent requests
+          c3: "IF the browser sends a recipient, minimum or lane THE SYSTEM SHALL NOT use it"
+          c4: "WHEN the address is shown THE SYSTEM SHALL show the minimum (2 USDC), the sweep fee (0.05 USDC by default) and the estimated CCTP fee before the user sends"
+          c5: "WHEN an account first requests an address THE SYSTEM SHALL atomically store the address and its complete versioned CREATE2 inputs under a unique business, account and route key, and return the stored winner of concurrent requests"
           c6: WHEN an address is predicted THE SYSTEM SHALL bind the namespace and account ID with unambiguous encoding and bind every immutable D33 money setting and supported creation-code version
-          c7: IF a predicted contract already exists with different code, version or immutable settings THE SYSTEM SHALL NOT use it or sweep it
-          c8: WHEN the Arbitrum address is shown THE SYSTEM SHALL show the address's stored gross automatic-processing maximum (1,000 USDC by default) and explain that larger balances require host recovery
+          c7: "IF a predicted contract already exists with different code, version or immutable settings THE SYSTEM SHALL NOT use it or sweep it"
+          c8: "WHEN the Arbitrum address is shown THE SYSTEM SHALL show the address's stored gross automatic-processing maximum (1,000 USDC by default) and explain that larger balances require host recovery"
+          c9: "WHEN depositAddress(accountId, chain) is called by an authorized host THE SYSTEM SHALL return the stored address for that supported native-USDC chain"
+          c10: IF the selected token or source chain is unsupported THE SYSTEM SHALL NOT present it as an accepted deposit route
+          c11: WHEN manual payment instructions are shown THE SYSTEM SHALL label net credit as an estimate and disclose that exchange withdrawal fees and the actual arrival determine final credit
       - id: J3.S2
         title: Sends USDC on Arbitrum
         bucket: human
@@ -281,29 +334,30 @@ journeys:
         does: Scans the QR code with a wallet or withdraws from an exchange on Arbitrum
         decisions: [D131]
         next: J3.S3
-        # Retired criteria: c1. Do not reuse.
         criteria:
-          c2: WHILE the widget or useDeposits is mounted THE SYSTEM SHALL scan the account's issued addresses every 5 seconds, including after earlier deposits and during pending work
+          c2: "WHILE the widget or useDeposits is mounted THE SYSTEM SHALL scan the account's issued addresses every 5 seconds, including after earlier deposits and during pending work"
+          c3: IF a sender transfers an unsupported token or uses an unsupported chain THE SYSTEM SHALL NOT create a USDC credit from that transfer
+          c4: WHEN a sender pays a different amount or makes a later second transfer THE SYSTEM SHALL apply the actual-arrival and minimum rules to each discovered transfer without reusing an earlier quote
+          c5: IF the browser closes or reloads THE SYSTEM SHALL NOT stop server-side discovery or require another transfer to recover progress
       - id: J3.S3
         title: The transfer is recorded
         bucket: script
         surface: deposit_widget
         state: received
         sees: "\"Received 10.00 USDC on Arbitrum. Moving it to Base\""
-        does: Reads the USDC transfer at or below Arbitrum's safe block and records the deposit
+        does: "Reads the USDC transfer at or below Arbitrum's safe block and records the deposit"
         decisions: [D18, D21, D23, D28, D34, D17, D131]
         invariants: [I1, I8]
         next: J3.S4
-        # Retired criteria: c3. Do not reuse.
         criteria:
-          c1: WHEN a USDC transfer to the address is at or below Arbitrum's safe block THE SYSTEM SHALL record one deposit keyed by chain ID, tx hash and log index
+          c1: "WHEN a USDC transfer to the address is at or below Arbitrum's safe block THE SYSTEM SHALL record one deposit keyed by chain ID, tx hash and log index"
           c2: IF the same transfer is read again THE SYSTEM SHALL NOT record a second deposit
-          c4: WHEN our own read finds the transfer at the latest block THE SYSTEM SHALL show "Received" with the amount, and SHALL NOT record or credit it before it is at or below the safe block
+          c4: "WHEN our own read finds the transfer at the latest block THE SYSTEM SHALL show \"Received\" with the amount, and SHALL NOT record or credit it before it is at or below the safe block"
           c5: WHEN a transfer is observed at latest THE SYSTEM SHALL store its provisional observation separately from safe deposit records
-          c6: IF a canonical replacement excludes a provisional transfer THE SYSTEM SHALL NOT retain its provisional amount and SHALL show "Confirmation changed; checking"
+          c6: "IF a canonical replacement excludes a provisional transfer THE SYSTEM SHALL NOT retain its provisional amount and SHALL show \"Confirmation changed; checking\""
           c7: WHEN the safe unassigned balance is below the stored minimum with no pending sweep THE SYSTEM SHALL keep it awaiting_minimum without starting the processing-delay timer
-          c8: WHEN safe unassigned funds first reach the stored minimum THE SYSTEM SHALL persist the processing-eligibility time for that batch and retain it through top-ups, retries and restarts
-          c9: IF safe unassigned funds are below the stored minimum and no sweep is pending THE SYSTEM SHALL NOT start a sweep and SHALL show "Received X. Send Y more to reach the minimum"
+          c8: "WHEN safe unassigned funds first reach the stored minimum THE SYSTEM SHALL persist the processing-eligibility time for that batch and retain it through top-ups, retries and restarts"
+          c9: "IF safe unassigned funds are below the stored minimum and no sweep is pending THE SYSTEM SHALL NOT start a sweep and SHALL show \"Received X. Send Y more to reach the minimum\""
       - id: J3.S4
         title: Sweeps through CCTP
         bucket: script
@@ -314,22 +368,21 @@ journeys:
         bucket: script
         does: Reads the USDC minted to the stored recipient on Base at the safe block and credits the deposit
         decisions: [D17, D21, D22, D23, D32, D121, D125, D230, D138]
-        invariants: [I1, I7, I4]
+        invariants: [I1, I10, I4]
         next: J3.S6
-        # Retired criteria: c1, c4, c7. Do not reuse.
         criteria:
-          c2: IF no matching mint is verified on Base THE SYSTEM SHALL NOT credit the deposit, whatever the burn or attestation shows
+          c2: "IF no matching mint is verified on Base THE SYSTEM SHALL NOT credit the deposit, whatever the burn or attestation shows"
           c3: IF two workers try to credit the same deposit THE SYSTEM SHALL NOT credit it twice
           c5: IF a deposit is already covered by a credit THE SYSTEM SHALL NOT include it in another
-          c6: IF any transfer linked to the sweep is not yet at or below Arbitrum's safe block, or the linked transfers do not add up to what the sweep burned plus its sweep fee, THE SYSTEM SHALL NOT record the credit
-          c8: WHEN all source attribution and Base verification checks pass THE SYSTEM SHALL atomically claim the source memberships and unique Base arrival, insert one final credit for the verified net Base amount in integer base units and its immutable deposit.credited event, and create pending delivery in one Postgres transaction
-          c9: IF source or drain evidence is not canonical at source safe, gross source units differ from the emitted gross balance, gross differs from the emitted fee plus forwarded or burned amount, or the Base arrival is claimed by a different sweep THE SYSTEM SHALL NOT credit and SHALL enter needs_attention with the failed check
+          c6: "IF any transfer linked to the sweep is not yet at or below Arbitrum's safe block, or the linked transfers do not add up to what the sweep burned plus its sweep fee, THE SYSTEM SHALL NOT record the credit"
+          c8: "WHEN all source attribution and Base verification checks pass THE SYSTEM SHALL atomically claim the source memberships and unique Base arrival, insert one final credit for the verified net Base amount in integer base units and its immutable deposit.credited event, and create pending delivery in one Postgres transaction"
+          c9: "IF source or drain evidence is not canonical at source safe, gross source units differ from the emitted gross balance, gross differs from the emitted fee plus forwarded or burned amount, or the Base arrival is claimed by a different sweep THE SYSTEM SHALL NOT credit and SHALL enter needs_attention with the failed check"
           c10: IF the corresponding Base arrival is not the canonical USDC net transfer to the stored recipient at the captured safe boundary or credit creation is paused for an affected chain THE SYSTEM SHALL NOT create a credit
-          c11: IF settlement is pending for at least 2 minutes after processing eligibility and the batch has not entered attention THE SYSTEM SHALL show "Taking longer than usual; checking your deposit"
+          c11: "IF settlement is pending for at least 2 minutes after processing eligibility and the batch has not entered attention THE SYSTEM SHALL show \"Taking longer than usual; checking your deposit\""
           c12: IF settlement is pending for at least 15 minutes after processing eligibility and the batch has no other attention reason THE SYSTEM SHALL NOT create a credit from elapsed time and SHALL enter needs_attention as delayed
-          c13: WHEN internal settlement commits before host acknowledgment THE SYSTEM SHALL show "Received by the business; account update pending" and expose settlement and delivery states through useDeposits
+          c13: "WHEN internal settlement commits before host acknowledgment THE SYSTEM SHALL show \"Received by the business; account update pending\" and expose settlement and delivery states through useDeposits"
           c14: IF the verified mint is not linked to the recorded CCTP burn message or its net amount does not match the message amount less executed CCTP fees THE SYSTEM SHALL NOT credit
-          c15: WHEN a retry finds this sweep's committed credit and event THE SYSTEM SHALL return the existing result without another credit or attention transition
+          c15: "WHEN a retry finds this sweep's committed credit and event THE SYSTEM SHALL return the existing result without another credit or attention transition"
       - id: J3.S6
         title: Sees it credited
         bucket: script
@@ -338,12 +391,10 @@ journeys:
         sees: "\"9.94 USDC credited\" with explorer links to the Arbitrum burn and the Base mint"
         does: Shows the credited amount
         exit: credited
-        # Retired criteria: c1. Do not reuse.
         criteria:
           c2: WHEN the host acknowledges committed processing of deposit.credited THE SYSTEM SHALL show the account as credited with the verified amount and explorer links to the relevant source and Base arrival transactions
           c3: IF the host has not acknowledged committed processing THE SYSTEM SHALL NOT show the account as credited
         decisions: [D18, D124]
-
   - id: J4
     title: Engine sweeps an Arbitrum deposit to Base through CCTP
     actor: engine
@@ -357,44 +408,43 @@ journeys:
       - id: J4.S1
         title: Starts the sweep workflow
         bucket: script
-        does: Starts one durable workflow per sweep, one sweep at a time per address
+        does: "Starts one durable workflow per sweep, one sweep at a time per address"
         decisions: [D36, D28, D17]
         next: J4.S2
-        # Retired criteria: c1, c2. Do not reuse.
         criteria:
-          c3: IF an address has an open sweep operation THE SYSTEM SHALL NOT start another operation, including while it is sleeping or awaiting mint verification
-          c4: IF the gross address balance exceeds the address's stored maximum (1,000,000,000 USDC base units by default) or its net burn exceeds Circle's current on-chain per-message limit THE SYSTEM SHALL NOT start an automatic burn and SHALL enter needs_attention as over_limit
-          c5: WHEN safe unassigned funds meet the minimum, satisfy both Arbitrum limits and the address has no open operation THE SYSTEM SHALL atomically start one sweep operation keyed by address and sweep number
+          c3: "IF an address has an open sweep operation THE SYSTEM SHALL NOT start another operation, including while it is sleeping or awaiting mint verification"
+          c4: "IF the gross address balance exceeds the address's stored maximum (1,000,000,000 USDC base units by default) or its net burn exceeds Circle's current on-chain per-message limit THE SYSTEM SHALL NOT start an automatic burn and SHALL enter needs_attention as over_limit"
+          c5: "WHEN safe unassigned funds meet the minimum, satisfy both Arbitrum limits and the address has no open operation THE SYSTEM SHALL atomically start one sweep operation keyed by address and sweep number"
       - id: J4.S2
         title: Burns the USDC through CCTP
         bucket: script
-        does: The gas wallet deploys the contract if needed and calls sweep(), which pays the sweep fee and burns the rest with CCTP V2 Fast and the Forwarding Service
-        decisions: [D33, D39, D121, D28, D134, D139]
-        invariants: [I9, I1, I8]
+        does: "The gas wallet deploys the contract if needed and calls sweep(), which pays the sweep fee and burns the rest with CCTP V2 Fast and the Forwarding Service"
+        decisions: [D33, D39, D121, D28, D134, D139, D231, D128]
+        invariants: [I11, I1, I8]
         next: J4.S3
-        # Retired criteria: c5, c2, c3, c4. Do not reuse.
         criteria:
           c1: WHEN the address has no contract yet THE SYSTEM SHALL deploy it before calling sweep()
           c14: WHEN an eligible sweep executes THE SYSTEM SHALL pay exactly the stored fee and burn the remainder to the stored Base domain and recipient using CCTP V2 Fast and Forwarding Service
-          c6: IF any caller invokes sweep() below the minimum, above the address's stored gross maximum or above Circle's current net-burn limit THE SYSTEM SHALL NOT burn any USDC or charge any USDC sweep fee
+          c6: "IF any caller invokes sweep() below the minimum, above the address's stored gross maximum or above Circle's current net-burn limit THE SYSTEM SHALL NOT burn any USDC or charge any USDC sweep fee"
           c7: IF the burn amount minus its maximum CCTP protocol and forwarding fee budget is not positive THE SYSTEM SHALL NOT burn or charge a sweep fee and SHALL enter needs_attention as route_fee_unaffordable
-          c8: WHEN a successful burn is discovered THE SYSTEM SHALL assign only incoming transfers after the preceding successful full-balance drain and before this sweep in chain execution order, record the gross, fee and burned amounts, and retain the burn-message identity
+          c8: "WHEN a successful burn is discovered THE SYSTEM SHALL assign only incoming transfers after the preceding successful full-balance drain and before this sweep in chain execution order, record the gross, fee and burned amounts, and retain the burn-message identity"
           c9: IF a transfer is already assigned to a sweep or recovery THE SYSTEM SHALL NOT reassign it
-          c10: WHEN a deployment or sweep is submitted THE SYSTEM SHALL persist its operation, chain, signer, globally reserved signer nonce, signed bytes and hash before broadcast
+          c10: "WHEN a deployment or sweep is submitted THE SYSTEM SHALL persist its operation, chain, signer, globally reserved signer nonce, signed bytes and hash before broadcast"
           c11: IF a broadcast times out or lacks a receipt THE SYSTEM SHALL NOT submit a fresh-nonce retry and SHALL reconcile events or rebroadcast the saved transaction
-          c12: WHEN a transaction is fee-replaced THE SYSTEM SHALL keep its nonce, destination and call data and retain both hashes
+          c12: "WHEN a transaction is fee-replaced THE SYSTEM SHALL keep its nonce, destination and call data and retain both hashes"
           c13: WHEN an attempt is proven reverted or its nonce is proven consumed by another canonical transaction at source safe THE SYSTEM SHALL recheck all sweep guards before any fresh-nonce retry of the same operation
           c15: IF a sweep step replays after a crash with an unknown transaction outcome THE SYSTEM SHALL NOT create an independently executable fresh-nonce transaction and SHALL reconcile or rebroadcast the saved attempt
+          c16: IF an incoming transfer belongs to a verified exact-amount authorization event THE SYSTEM SHALL NOT assign it to a manual full-balance sweep or recovery
+          c17: "IF the deployment gas reserve, shared spend budget or bounded retry allowance cannot cover submission THE SYSTEM SHALL NOT broadcast and SHALL retain the original operation with a gas_unavailable or spend_limit reason"
       - id: J4.S3
         title: Circle attests the burn
         bucket: external
         does: Circle signs the burn message
         decisions: [D17, D56, D138]
         next: J4.S4
-        # Retired criteria: c1, c2. Do not reuse.
         criteria:
           c3: WHILE a known burn is pending before attention THE SYSTEM SHALL schedule Iris polls no less than 5 seconds apart through one persisted poller per burn and a shared rolling budget of at most 20 requests per second across all workers and stages
-          c4: WHEN a pending burn enters attention THE SYSTEM SHALL replace the five-second poll schedule with a poll every 15 minutes for 7 days from attention entry and daily after that, subject to the shared budget
+          c4: "WHEN a pending burn enters attention THE SYSTEM SHALL replace the five-second poll schedule with a poll every 15 minutes for 7 days from attention entry and daily after that, subject to the shared budget"
           c5: WHEN Iris returns 404 or an empty message list THE SYSTEM SHALL retain the known burn as pending
           c6: IF Iris returns 429 THE SYSTEM SHALL NOT call Iris from any worker in the shared budget for at least 300 seconds or a longer valid Retry-After
           c7: IF a burn awaits attestation or forwarding recovery THE SYSTEM SHALL NOT burn again or start a custom re-attestation loop and SHALL retain the original message for Circle forwarding
@@ -402,20 +452,20 @@ journeys:
         title: Circle mints on Base
         bucket: external
         does: The Forwarding Service mints the USDC to the recipient on Base and takes its fee from the minted amount
-        decisions: [D21, D17, D138, D56]
+        decisions: [D21, D17, D138, D56, D38]
         exit: minted
         criteria:
-          c1: WHEN Circle reports the mint THE SYSTEM SHALL wait for the mint to be at or below Base's safe block before reporting the exit
+          c1: "WHEN Circle reports the mint THE SYSTEM SHALL wait for the mint to be at or below Base's safe block before reporting the exit"
           c2: IF Circle reports a mint that is not found on Base THE SYSTEM SHALL NOT report the exit
           c3: WHEN Circle forwarding is pending THE SYSTEM SHALL retain the original burn message and continue its due verification under D17 and D56
           c4: IF Circle reports forwarding failure or an unknown forwarding status THE SYSTEM SHALL NOT treat it as a mint or a lost-funds verdict and SHALL enter needs_attention with the reported status and known message and transaction identities
-          c5: IF another party submitted the original mint THE SYSTEM SHALL NOT mint or credit it again and SHALL locate and verify that same message's Base arrival
-
+          c5: "IF another party submitted the original mint THE SYSTEM SHALL NOT mint or credit it again and SHALL locate and verify that same message's Base arrival"
+          c6: WHEN Circle executes the original message at Standard rather than Fast finality THE SYSTEM SHALL record its executed threshold and continue verification of that same burn without promising a fixed completion time
   - id: J5
     title: The business receives a deposit event
     actor: host
     goal: Process signed deposit events safely across retries and commit each account credit once
-    proves: Delivery is signed, retried and safe to receive twice (D14, D45)
+    proves: "Delivery is signed, retried and safe to receive twice (D14, D45)"
     exits:
       - id: delivered
         title: The business acknowledged the event
@@ -425,27 +475,27 @@ journeys:
         bucket: script
         surface: credited_webhook
         does: POSTs an immutable deposit.credited or deposit.needs_attention event with Standard Webhooks signing
-        decisions: [D14, D22, D45, D121, D230, D54]
+        decisions: [D14, D22, D45, D121, D230, D54, D126, D127]
         invariants: [I5]
         next: J5.S2
         criteria:
-          c1: WHEN a credit is recorded THE SYSTEM SHALL POST one deposit.credited with a stable event ID, the account ID, the verified amount as a decimal string and the incoming transfers it covers
-          c2: IF the business does not answer with a 2xx status within 10 s THE SYSTEM SHALL retry up to 10 times, waiting 2^(n-1) minutes before retry n, and SHALL NOT change the event ID or payload
+          c2: "IF the business does not answer with a 2xx status within 10 s THE SYSTEM SHALL retry up to 10 times, waiting 2^(n-1) minutes before retry n, and SHALL NOT change the event ID or payload"
           c3: IF a delivery attempt fails THE SYSTEM SHALL NOT log the webhook secret or the signature
-          c4: IF all 11 attempts fail THE SYSTEM SHALL NOT retry again, and SHALL mark the delivery failed so an operator can resend it, leaving the credit unchanged
-          c5: WHEN an attention episode is entered THE SYSTEM SHALL atomically store its state and one immutable deposit.needs_attention event containing account, reason, stage and known transaction identities with pending delivery
+          c4: "IF all 11 attempts fail THE SYSTEM SHALL NOT retry again, and SHALL mark the delivery failed so an operator can resend it, leaving the credit unchanged"
+          c5: "WHEN an attention episode is entered THE SYSTEM SHALL atomically store its state and one immutable deposit.needs_attention event containing account, reason, stage and known transaction identities with pending delivery"
           c6: WHEN any pending event delivery is resumed THE SYSTEM SHALL use its saved event ID and body with a fresh delivery-attempt signature timestamp
           c7: WHEN a delivery exhausts its 11 attempts THE SYSTEM SHALL create an alert exposed by listAlerts and the demo without requiring webhook delivery
           c8: IF a pending delivery is recovered after a crash THE SYSTEM SHALL NOT reset its saved retry budget or resend an exhausted delivery without an operator request
+          c9: "WHEN the credit belongs to a wallet quote THE SYSTEM SHALL include paymentId, quoted debit, disclosed processing fee, exact credit and recorded backing allocation in the immutable event"
+          c10: "WHEN a credit is recorded THE SYSTEM SHALL POST one deposit.credited with stable event ID, account ID, credited USDC as a decimal string and its source and backing identities"
       - id: J5.S2
         title: The business verifies and credits its user
         bucket: external
-        does: Calls settle.webhook(handler), which checks the signature, then credits user_42 in its own database
+        does: "Calls settle.webhook(handler), which checks the signature, then credits user_42 in its own database"
         decisions: [D44, D124]
         next: J5.S3
-        # Retired criteria: c1, c3. Do not reuse.
         criteria:
-          c2: IF the signature is missing, invalid or older than 5 minutes THE SYSTEM SHALL answer 401 and SHALL NOT call the handler
+          c2: "IF the signature is missing, invalid or older than 5 minutes THE SYSTEM SHALL answer 401 and SHALL NOT call the handler"
           c4: WHEN settle.webhook receives a valid request THE SYSTEM SHALL await the host handler before returning its acknowledgment
           c5: WHEN the host receives a new deposit.credited event THE SYSTEM SHALL insert its unique event ID and update the account balance in one host-database transaction before returning 2xx
           c6: IF the event ID is already committed THE SYSTEM SHALL NOT update the balance again and SHALL return 2xx
@@ -462,12 +512,11 @@ journeys:
           c1: WHEN the business answers with a 2xx status THE SYSTEM SHALL mark the delivery done
           c2: IF the delivery is already done THE SYSTEM SHALL NOT send the event again unless an operator calls resendWebhook
           c3: WHEN an operator resends an event THE SYSTEM SHALL restart its delivery budget with the same event ID and immutable body
-
   - id: J6
     title: The minute check
     actor: engine
-    goal: Every minute, find every deposit, restart stuck work and check the books
-    proves: Nothing is missed and nothing is credited without an arrival (D131, D35)
+    goal: "Every minute, find every deposit, restart stuck work and check the books"
+    proves: "Nothing is missed and nothing is credited without an arrival (D131, D35)"
     exits:
       - id: checked
         title: Check finished; problems flagged
@@ -475,32 +524,32 @@ journeys:
       - id: J6.S1
         title: Reads the chains
         bucket: script
-        does: Reads incoming USDC, sweeps and recoveries through each captured safe boundary
-        decisions: [D34, D131, D121, D135]
+        does: "Reads incoming USDC, manual drains, quoted-payment execution and recovery events through captured safe boundaries"
+        decisions: [D34, D131, D121, D135, D231, D127]
         invariants: [I1, I8]
         next: J6.S2
-        # Retired criteria: c1, c3. Do not reuse.
         criteria:
           c2: IF two runs overlap THE SYSTEM SHALL NOT record a transfer twice
-          c4: WHEN a scan starts THE SYSTEM SHALL capture each chain's safe block number and hash and read every page of each range from its committed cursor through that boundary
-          c5: WHEN a range completes THE SYSTEM SHALL atomically commit its incoming transfers, successful sweep and recovery events, drain memberships and block-hash cursor
+          c4: "WHEN a scan starts THE SYSTEM SHALL capture each chain's safe block number and hash and read every page of each range from its committed cursor through that boundary"
+          c5: "WHEN a range completes THE SYSTEM SHALL atomically commit its incoming transfers, successful sweep and recovery events, drain memberships and block-hash cursor"
           c6: IF any page or required RPC read fails THE SYSTEM SHALL NOT advance the incomplete range or report the scan complete
           c7: IF concurrent or targeted scans run THE SYSTEM SHALL NOT move a global cursor backwards or advance it from an address-only scan
           c8: WHEN an address is first issued THE SYSTEM SHALL persist its scan start before returning it
-          c9: WHEN any successful sweep or recovery event is read THE SYSTEM SHALL record its unique chain, transaction and event-log identity regardless of caller, existing workflow or current address balance
+          c9: "WHEN any successful sweep or recovery event is read THE SYSTEM SHALL record its unique chain, transaction and event-log identity regardless of caller, existing workflow or current address balance"
           c10: WHEN a newly issued address joins discovery THE SYSTEM SHALL scan it from its stored start through the captured boundary even if the global cursor has advanced past that start
           c11: IF a newly issued address has not completed that catch-up THE SYSTEM SHALL NOT report its discovery complete
+          c12: "WHEN quoted-payment execution is discovered THE SYSTEM SHALL bind its authorization nonce, payer debit, emitted fee and forwarded or burned amount to one stored payment ID before attribution"
+          c13: IF a transfer is assigned to a quoted operation THE SYSTEM SHALL NOT assign it to a manual sweep or another quoted operation
       - id: J6.S2
         title: Restarts stuck work
         bucket: script
-        does: Resumes persisted operation stages and pending deliveries, and starts eligible work without an open operation
-        decisions: [D36, D139, D230, D45]
+        does: "Resumes persisted operation stages and pending deliveries, and starts eligible work without an open operation"
+        decisions: [D36, D139, D230, D45, D140, D231, D111, D128]
         next: J6.S3
-        # Retired criteria: c1, c2, c4 (process heartbeat alone cannot keep an expired worker claim). Do not reuse.
         criteria:
           c11: WHEN the minute check finds unfinished work with no valid worker claim and its next action is due THE SYSTEM SHALL resume the persisted stage regardless of current address balance or workflow running label
           c12: WHEN a worker executes THE SYSTEM SHALL renew its 120-second claim at intervals no greater than 30 seconds and use a new generation when reclaiming expired work
-          c5: WHEN an operation durably sleeps THE SYSTEM SHALL persist its next action time and release its worker claim while retaining the address's open operation
+          c5: "WHEN an operation durably sleeps THE SYSTEM SHALL persist its next action time and release its worker claim while retaining the address's open operation"
           c6: IF another worker holds a valid claim or a stale worker tries to commit a stage advance THE SYSTEM SHALL NOT create a competing worker or accept that stale advance
           c7: IF a successful burn or sweep is recorded THE SYSTEM SHALL NOT repeat it and SHALL resume verification of its original transaction and message
           c8: WHEN a safe eligible balance has no open sweep operation THE SYSTEM SHALL create one operation under a database-unique address claim after checking minimum and maximum guards
@@ -508,40 +557,44 @@ journeys:
           c10: IF a delivery budget is exhausted THE SYSTEM SHALL NOT restart it without an operator resend
           c3: WHEN a workflow is still pending and the process that ran it has not recorded a heartbeat for 2 minutes THE SYSTEM SHALL resume the workflow from its last completed step
           c13: IF an executor has a heartbeat in the last 120 seconds and the pending operation holds a valid worker claim THE SYSTEM SHALL NOT resume that operation elsewhere
+          c14: WHEN an accepted wallet payment is due and unclaimed THE SYSTEM SHALL resume its persisted submission or verification stage using the original payment ID and authorization
+          c15: IF a wallet broadcast outcome is unknown THE SYSTEM SHALL NOT create a new authorization or independent fresh-nonce payment to repair it
+          c16: IF accepted work is paused by a gas or spending limit THE SYSTEM SHALL NOT broadcast outside its persisted budget and SHALL continue read-only reconciliation and pending webhook delivery
+          c17: WHEN a wallet attempt satisfies the D111 failed_no_debit proof THE SYSTEM SHALL atomically close that operation and its payment attention episode without creating a credit and retain the evidence in account history
       - id: J6.S3
         title: Checks the books
         bucket: script
-        does: Matches each credited deposit to a verified arrival at its recipient, and each treasury arrival to a credited deposit
-        decisions: [D35, D54, D125]
-        invariants: [I7, I4]
+        does: "Reconciles manual full-net credits, fixed quoted credits, host fee residuals and any host-funded shortfall against exclusive verified backing"
+        decisions: [D35, D54, D125, D126, D127]
+        invariants: [I10, I4]
         next: J6.S4
-        # Retired criteria: c5. Do not reuse.
         criteria:
-          c1: WHEN the check runs THE SYSTEM SHALL match every credit to a verified USDC arrival at its stored recipient on Base
-          c2: IF a credited deposit has no matching arrival THE SYSTEM SHALL NOT mark the check clean, and SHALL record a critical alert naming the deposit
-          c3: IF a treasury arrival matches no credit THE SYSTEM SHALL record it for investigation
+          c2: "IF a credited deposit has no matching arrival THE SYSTEM SHALL NOT mark the check clean, and SHALL record a critical alert naming the deposit"
           c4: WHEN the check records a problem THE SYSTEM SHALL store it in the alerts table and log it at error level
-          c6: WHEN reconciliation runs THE SYSTEM SHALL verify retained source, destination and cursor block hashes against the canonical chains and rewind invalid uncredited discovery to the last canonical cursor
+          c6: "WHEN reconciliation runs THE SYSTEM SHALL verify retained source, destination and cursor block hashes against the canonical chains and rewind invalid uncredited discovery to the last canonical cursor"
           c7: IF a credit loses canonical source or Base backing THE SYSTEM SHALL NOT alter the credit or create an automatic replacement credit and SHALL open a critical incident with old and current block evidence and pause new credits involving the affected chain
           c8: IF canonical reconciliation has not succeeded or the operator has not acknowledged the reorg incident THE SYSTEM SHALL NOT resume affected-chain credit creation
           c9: IF any required scan or verification is incomplete or any incident is open THE SYSTEM SHALL NOT report clean books
-          c10: WHEN the demo or listAlerts reports reconciliation THE SYSTEM SHALL include the last complete check time, captured per-chain boundaries and open problems
+          c10: "WHEN the demo or listAlerts reports reconciliation THE SYSTEM SHALL include the last complete check time, captured per-chain boundaries and open problems"
           c11: IF no check has completed or the last completed check is older than 120 seconds THE SYSTEM SHALL NOT show clean books and SHALL show unknown or stale respectively
           c12: "WHEN the latest check completed all required work with no open problems and is at most 120 seconds old THE SYSTEM SHALL show \"Books: clean as of T\" with that check's captured boundaries"
+          c13: IF a quoted credit differs from its accepted quote or credit plus host residual differs from verified backing THE SYSTEM SHALL NOT report clean books
+          c14: IF host shortfall funding is already allocated or cannot be verified at Base safe THE SYSTEM SHALL NOT count it as additional backing
+          c15: WHEN the check runs THE SYSTEM SHALL match every credit to exclusive canonical safe USDC backing at its stored Base recipient and reconcile the credit and host residual allocation
+          c16: "IF a treasury arrival has no credit, host residual or authenticated shortfall allocation THE SYSTEM SHALL record it for investigation"
       - id: J6.S4
         title: Re-checks attention cases
         bucket: script
-        does: Re-checks deposits in needs_attention on D17's schedule
-        decisions: [D17, D21, D14, D54, D121, D230, D125]
+        does: "Re-checks deposits in needs_attention on D17's schedule"
+        decisions: [D17, D21, D14, D54, D121, D230, D125, D126, D127, D111]
         exit: checked
-        # Retired criteria: c2. Do not reuse.
         criteria:
-          c1: WHEN a deposit has been in needs_attention for under 7 days THE SYSTEM SHALL re-check it every 15 minutes, and daily after that
+          c1: "WHEN a deposit has been in needs_attention for under 7 days THE SYSTEM SHALL re-check it every 15 minutes, and daily after that"
           c3: IF a re-check finds no verified arrival THE SYSTEM SHALL NOT credit the deposit or mark its funds lost
-          c4: WHEN attention rechecking finds a candidate Base arrival THE SYSTEM SHALL run the same source attribution, unique-arrival, net-amount, canonical-safe and chain-pause checks before creating a credit
-          c5: WHEN a new attention episode is recorded THE SYSTEM SHALL atomically create its immutable deposit.needs_attention event and pending delivery and expose the problem through listAlerts, the demo and an error log
+          c5: "WHEN a new attention episode is recorded THE SYSTEM SHALL atomically create its immutable deposit.needs_attention event and pending delivery and expose the problem through listAlerts, the demo and an error log"
           c6: IF the deposit was recovered to the source refund address THE SYSTEM SHALL NOT create a Base credit or mark the payer repaid from that recovery and SHALL retain the unresolved recovery alert
-
+          c7: "WHEN attention rechecking finds candidate backing THE SYSTEM SHALL apply the matching manual or quoted allocation rule plus source attribution, exclusive backing, canonical safe and chain-pause checks before creating a credit"
+          c8: IF a wallet attempt has failed_no_debit evidence THE SYSTEM SHALL NOT wait for a nonexistent Base arrival and SHALL close its payment attention episode under D111
   - id: J7
     title: Operator recovers an over-limit Arbitrum balance
     actor: developer
@@ -555,33 +608,351 @@ journeys:
         title: Reads the over-limit alert
         bucket: human
         surface: settle_api
-        does: Reads listAlerts and verifies the account, source balance and stored refund address
+        does: "Reads listAlerts and verifies the account, source balance and stored refund address"
         decisions: [D17, D28, D44, D54]
         next: J7.S2
         criteria:
-          c1: WHEN a safe Arbitrum balance exceeds the gross cap or live net-burn limit THE SYSTEM SHALL expose needs_attention as over_limit with account, address, balance and stored refund destination
+          c1: "WHEN a safe Arbitrum balance exceeds the gross cap or live net-burn limit THE SYSTEM SHALL expose needs_attention as over_limit with account, address, balance and stored refund destination"
           c2: IF the balance is over either limit THE SYSTEM SHALL NOT split it into automatic burns or charge a sweep fee
       - id: J7.S2
         title: Calls the fixed-destination recovery
         bucket: human
-        does: Calls recoverOverLimit() from a block explorer or a one-line script; in slice 1 the SDK does not submit recovery transactions (X6)
+        does: Calls recoverOverLimit() from a block explorer or operator script; the SDK observes the result and does not submit recovery transactions
         decisions: [D27, D28, D33]
-        invariants: [I9]
+        invariants: [I11]
         next: J7.S3
         criteria:
-          c1: WHEN recoverOverLimit() executes while either Arbitrum limit is exceeded THE SYSTEM SHALL transfer the entire USDC balance to the stored refund address, charge zero USDC sweep fee and emit the recovered amount and destination
+          c1: "WHEN recoverOverLimit() executes while either Arbitrum limit is exceeded THE SYSTEM SHALL transfer the entire USDC balance to the stored refund address, charge zero USDC sweep fee and emit the recovered amount and destination"
           c2: IF neither limit is exceeded or the function is invoked on Base THE SYSTEM SHALL NOT recover USDC
           c3: IF a caller supplies a different recipient or invokes rescue(USDC) THE SYSTEM SHALL NOT move USDC to that recipient or through rescue
-          # c4 (SDK-submitted recovery) retired: in slice 1 the operator submits recovery (X6). Do not reuse.
       - id: J7.S3
         title: Verifies recovery and retains the repayment case
         bucket: script
-        does: Finds the recovery event at source safe, links its transfers and keeps the repayment alert open
+        does: "Finds the recovery event at source safe, links its transfers and keeps the repayment alert open"
         decisions: [D17, D27, D34, D54, D121, D230]
-        invariants: [I1, I7, I8]
+        invariants: [I1, I10, I8]
         exit: recovered
         criteria:
-          c1: WHEN a canonical recovery is at source safe THE SYSTEM SHALL assign its source transfers after the preceding successful drain and before this recovery, verify the recovered gross amount and fixed refund receipt, and enter needs_attention as recovered_to_refund_address
+          c1: "WHEN a canonical recovery is at source safe THE SYSTEM SHALL assign its source transfers after the preceding successful drain and before this recovery, verify the recovered gross amount and fixed refund receipt, and enter needs_attention as recovered_to_refund_address"
           c2: IF a transfer belongs to a recovery THE SYSTEM SHALL NOT include it in a later sweep credit or create a Base credit from the refund receipt
           c3: WHEN source recovery is verified THE SYSTEM SHALL publish its attention episode through the durable event path and retain the alert until the host records repayment or another verified resolution
           c4: IF only source recovery evidence is available THE SYSTEM SHALL NOT tell the user that their account was credited or that the payer was repaid
+  - id: J8
+    title: User pays from a connected wallet with an exact quote
+    actor: user
+    goal: "Choose payment or credit amount, sign once without payer ETH and receive the locked credit after verified settlement"
+    proves: "Receive-first consent, fixed fees and durable recovery preserve the quoted result"
+    exits:
+      - id: credited
+        title: Exact quoted credit acknowledged by the host
+      - id: not_submitted
+        title: No accepted payment; user can retry preparation or use the address option
+      - id: attention
+        title: Original operation retained for recovery; no unsupported credit
+      - id: failed_no_debit
+        title: Authorization cannot execute; no successful payment found; new quote allowed
+    steps:
+      - id: J8.S1
+        title: Connects an existing wallet
+        bucket: human
+        surface: deposit_widget
+        state: connect_wallet
+        next:
+          - to: J8.S2
+            when: supported wallet and network selected
+          - to: J8.S9
+            when: connection rejected or wallet unsupported
+        decisions: [D10, D11, D41, D50, D231, D140, D128]
+        criteria:
+          c1: WHEN the connected-wallet view opens THE SYSTEM SHALL show receive-first amount entry and an available manual address option
+          c2: WHEN a wallet connects THE SYSTEM SHALL bind the payer address and supported native-USDC network to payment preparation
+          c3: "IF a wallet lacks the required typed-signature capability or refuses a network switch THE SYSTEM SHALL NOT request a seed, upgrade the account or submit a payment"
+          c4: WHEN wallet compatibility is unverified THE SYSTEM SHALL label that wallet unsupported for the gasless path and retain manual instructions
+          c5: IF the payer refuses wallet connection THE SYSTEM SHALL NOT hide manual address and QR instructions for the supported chains
+          c6: WHEN the widget opens after reload or on another device THE SYSTEM SHALL fetch authenticated account history and restore accepted wallet attempts even when no transfer or cached payment ID exists
+          c7: IF an unresolved attempt exists THE SYSTEM SHALL NOT present a blank history or describe a new payment as recovery for that attempt
+          c8: WHEN live submission is unavailable due to host gas or spending limits THE SYSTEM SHALL show that reason before requesting a new payment signature
+      - id: J8.S2
+        title: Edits either amount and prepares a quote
+        bucket: script
+        surface: deposit_widget
+        state: quote
+        invariants: [I12]
+        next:
+          - to: J8.S3
+            when: user accepts a valid displayed quote
+          - to: J8.S9
+            when: "invalid input, unavailable route or abandoned preparation"
+        decisions: [D110, D126, D140, D141, D22, D28, D111, D128]
+        criteria:
+          c1: WHEN the user edits You receive THE SYSTEM SHALL call preparePayment with that receive amount as the only authoritative amount and display the computed total debit
+          c2: WHEN the user edits You pay THE SYSTEM SHALL call preparePayment with that pay amount as the only authoritative amount and display the computed credit
+          c3: "WHEN a quote is returned THE SYSTEM SHALL show its source chain, total debit, exact USDC credit, fixed processing fee and expiry before signing"
+          c4: "IF both amount directions are supplied, precision exceeds six USDC decimals, input is nonpositive or the route is outside its limits THE SYSTEM SHALL NOT prepare executable signing data"
+          c5: WHEN preparePayment repeats the same authenticated idempotency key and canonical input THE SYSTEM SHALL return the same payment and quote; an expired result requires a new preparation key and consent
+          c6: IF the same preparation key has different input THE SYSTEM SHALL NOT mutate the saved quote and SHALL return a conflict
+          c7: IF the route fee cannot be bounded or a required provider read fails THE SYSTEM SHALL NOT display an executable guaranteed quote
+          c8: "WHEN an amount, account, payer or chain changes before submission THE SYSTEM SHALL invalidate the displayed consent and ignore stale quote responses"
+          c9: WHEN quote arithmetic needs rounding THE SYSTEM SHALL round required debit upward and keep the final displayed credit and fee in integer USDC base units
+          c10: "WHEN an Arbitrum quote is prepared THE SYSTEM SHALL persist gross debit, source-retained fee, burn amount, quoted credit and the combined Circle maxFee in integer units with burn amount minus maxFee at least the quoted credit"
+          c11: IF the quote requires an ordinary host top-up to cover its permitted Circle deductions THE SYSTEM SHALL NOT return executable signing data
+          c12: WHEN a quote is shown THE SYSTEM SHALL distinguish the submission cutoff from the signed execution deadline and explain that acceptance does not extend that deadline
+          c13: IF the signed execution deadline is not finite or does not follow the submission cutoff THE SYSTEM SHALL NOT issue the quote
+      - id: J8.S3
+        title: Signs the displayed authorization
+        bucket: human
+        surface: deposit_widget
+        state: signing
+        invariants: [I12]
+        next:
+          - to: J8.S4
+            when: matching signature returned
+          - to: J8.S9
+            when: "signature rejected, account changed or quote expired"
+        decisions: [D110, D231, D141, D126, D111]
+        criteria:
+          c2: IF signing is rejected or the wallet account changes THE SYSTEM SHALL NOT submit the signature or imply that funds moved
+          c3: IF the quote expired before submission THE SYSTEM SHALL NOT silently refresh or reprice the signed payment and SHALL require a new displayed quote and consent
+          c4: WHEN the user signs THE SYSTEM SHALL require no prior USDC approval or payer ETH balance for this entry path
+          c5: "WHEN the user accepts the quote THE SYSTEM SHALL request an ERC-3009 authorization whose domain and nonce commitment bind payer, token, recipient, gross debit, fee split, quoted credit, burn amount, Circle maxFee, original validity window and payment identity"
+      - id: J8.S4
+        title: Durably accepts the signed payment
+        bucket: script
+        surface: deposit_widget
+        state: submitting
+        invariants: [I1, I12]
+        next:
+          - to: J8.S5
+            when: accepted operation recorded
+          - to: J8.S9
+            when: confirmed rejected before acceptance
+        decisions: [D140, D141, D231, D139, D126, D128, D111]
+        criteria:
+          c2: "IF account ownership, payer signature, quote binding, current route guards or expiry validation fails THE SYSTEM SHALL NOT accept or broadcast the payment"
+          c3: WHEN the same paymentId and authorization are submitted again THE SYSTEM SHALL return the saved operation without another executable payment
+          c4: IF an accepted payment receives a different authorization THE SYSTEM SHALL NOT replace its consent or create another operation
+          c5: IF submission acknowledgment times out THE SYSTEM SHALL NOT instruct another payment and SHALL recover through getPayment with the original paymentId
+          c6: WHEN getPayment is called before any source transfer exists THE SYSTEM SHALL return the saved preparation or submission state separately from deposit settlement
+          c7: "WHEN a matching unexpired signature passes account authorization, route, gas-reserve and submission-budget checks THE SYSTEM SHALL atomically save the accepted quote, authorization and one payment operation before acknowledging acceptance"
+          c8: IF gas is unavailable or a submission limit is exhausted before acceptance THE SYSTEM SHALL NOT accept new execution and SHALL return a visible unavailable reason without changing the signed quote
+          c9: WHEN a payment is accepted THE SYSTEM SHALL expose it in authenticated listDeposits history before any on-chain transfer exists and keep the same history identity when its transfer arrives
+      - id: J8.S5
+        title: Relays an exact-amount source payment
+        bucket: script
+        invariants: [I1, I11, I12]
+        next:
+          - to: J8.S6
+            when: source execution independently found and canonical at source safe
+          - to: J8.S10
+            when: "reverted, uncertain or delayed source execution needs attention"
+          - to: J8.S11
+            when: complete source-safe proof establishes failed_no_debit
+        decisions: [D231, D139, D27, D28, D126, D111, D128]
+        criteria:
+          c2: "WHEN the source contract executes THE SYSTEM SHALL consume one authorization, move exactly its authorized gross amount and fee to configured destinations and emit their payment identity atomically"
+          c3: "IF signature validation, balance, deadline, amount limits, fee bounds or any source transfer or burn fails THE SYSTEM SHALL NOT retain a payer USDC debit or USDC fee from that transaction"
+          c5: IF unrelated manual funds are present at the contract THE SYSTEM SHALL NOT consume them or assign them to the quoted payment
+          c6: IF broadcast outcome is unknown THE SYSTEM SHALL NOT create a fresh authorization or independent retry and SHALL reconcile or rebroadcast the saved transaction
+          c7: "WHEN a source transaction is replaced for fees THE SYSTEM SHALL retain its nonce, destination, call data and all transaction hashes"
+          c8: WHEN a source transaction is proven reverted THE SYSTEM SHALL record that outcome and the host gas expense without charging a payer USDC fee
+          c10: "WHEN an accepted source payment is ready THE SYSTEM SHALL simulate, enforce fee and validity guards, reserve its conservative maximum ETH cost against shared persisted limits and persist the signed transaction, hash and relayer nonce before broadcast"
+          c11: "IF replay or a changed recipient, quoted credit, principal, fee split, burn amount or Circle maxFee does not match signed consent THE SYSTEM SHALL NOT execute the authorization"
+          c12: "IF original execution history is incomplete or the authorization can still execute THE SYSTEM SHALL NOT declare failed_no_debit from expiry on the server clock, a nonce-state boolean or a reverted attempt"
+          c13: IF burn amount minus Circle maxFee is below the signed quoted credit or gross debit differs from source-retained fee plus burn amount THE SYSTEM SHALL NOT burn or retain a payer debit or fee
+          c14: "IF a gas budget, transaction ceiling, reserve or attempt limit blocks broadcast or replacement THE SYSTEM SHALL NOT exceed that configured limit and SHALL retain the operation for reconciliation"
+          c15: WHEN a submission receipt is reconciled THE SYSTEM SHALL record its host ETH expense and reconcile the persisted cost reservation while unknown attempts retain their reservation
+          c16: WHEN fee replacement is prepared THE SYSTEM SHALL reserve any additional maximum cost for the same nonce without treating both replacements as simultaneously payable
+          c17: IF an attempt reverted but its authorization remains valid THE SYSTEM SHALL NOT prompt a new payment and SHALL retry only the original operation within its validity and remaining spend allowance
+      - id: J8.S6
+        title: Verifies the original Base arrival
+        bucket: script
+        surface: deposit_widget
+        state: processing
+        invariants: [I10, I12]
+        next:
+          - to: J8.S7
+            when: verified backing covers the exact quoted credit
+          - to: J8.S10
+            when: "shortfall, forwarding failure, delay or evidence mismatch"
+        decisions: [D21, D138, D56, D231, D126, D127, D17, D38]
+        criteria:
+          c1: "WHEN the source is Base THE SYSTEM SHALL independently verify the exact operation event, payer debit, fee and corresponding native-USDC transfer to the stored treasury at Base safe"
+          c2: "WHEN the source is Arbitrum THE SYSTEM SHALL retain its original burn message, follow Circle Forwarding under D56 and verify the corresponding Base mint, recipient and executed fee deductions at Base safe"
+          c3: "IF Circle is delayed, fails or reports an arrival absent on chain THE SYSTEM SHALL NOT credit, burn again or change the quoted credit and SHALL retain the original operation for recovery"
+          c4: "IF payer debit, authorization identity, gross and fee amounts, source canonicality or destination linkage do not match THE SYSTEM SHALL NOT allocate the arrival to this payment"
+          c5: WHEN verified backing is less than the locked credit THE SYSTEM SHALL enter needs_attention as quote_shortfall with the exact deficit and original evidence
+          c6: "IF a quote shortfall exists THE SYSTEM SHALL NOT create a partial credit, charge the payer again or treat a host funding promise as chain evidence"
+          c7: WHEN the original CCTP message executes at Standard finality THE SYSTEM SHALL retain the quoted credit and original burn identity and show confirmation progress without another burn
+      - id: J8.S7
+        title: Commits the exact credit and host allocation
+        bucket: script
+        invariants: [I1, I4, I10, I12]
+        next: J8.S8
+        decisions: [D21, D23, D126, D127, D230, D125]
+        criteria:
+          c1: "WHEN all quote and safe-backing checks pass THE SYSTEM SHALL atomically claim the source operation and backing group, record the exact quoted credit and separate host residual, and insert its immutable credit event with pending delivery"
+          c2: "IF backing is already claimed, credited amount differs from the quote, credit plus residual differs from backing or an affected-chain credit pause is active THE SYSTEM SHALL NOT commit the credit"
+          c3: WHEN verified backing exceeds the quoted credit THE SYSTEM SHALL retain the difference as recorded host residual without increasing the payer credit
+          c4: WHEN a retry finds the committed payment credit and event THE SYSTEM SHALL return that same result without another credit or event
+          c5: "WHEN a quoted credit is committed THE SYSTEM SHALL reconcile total payer debit as quoted credit plus fixed processing fee and verify source USDC fees, actual Circle deductions, Base arrival and host funding without charging extra ETH gas to the payer"
+      - id: J8.S8
+        title: Receives the quoted account credit
+        bucket: script
+        surface: deposit_widget
+        state: account_update_pending
+        exit: credited
+        decisions: [D18, D124, D140, D41]
+        criteria:
+          c1: WHEN settlement commits before the host acknowledges processing THE SYSTEM SHALL show account update pending with the locked credit and separate delivery state
+          c2: "WHEN the host acknowledges the committed credit event THE SYSTEM SHALL show the exact quoted credit, fixed processing fee and source and Base explorer evidence"
+          c4: IF the host has not acknowledged committed processing THE SYSTEM SHALL NOT show the account as credited
+          c5: IF browser state is lost or the user changes device THE SYSTEM SHALL NOT create another payment and SHALL discover the original accepted attempt through authenticated listDeposits before querying getPayment
+      - id: J8.S9
+        title: Leaves preparation without an accepted payment
+        bucket: script
+        surface: deposit_widget
+        state: not_submitted
+        exit: not_submitted
+        decisions: [D10, D110, D140, D141]
+        criteria:
+          c1: WHEN preparation or signing ends before acceptance THE SYSTEM SHALL show no accepted payment and keep retry preparation and manual address instructions available
+          c2: IF submission outcome is uncertain THE SYSTEM SHALL NOT enter this exit and SHALL query the original payment ID without prompting another transfer
+      - id: J8.S10
+        title: Retains an exception for recovery
+        bucket: script
+        surface: deposit_widget
+        state: needs_attention
+        invariants: [I10, I12]
+        exit: attention
+        decisions: [D17, D54, D127, D140, D230, D111, D128]
+        criteria:
+          c1: "WHEN an accepted operation needs attention THE SYSTEM SHALL expose its payment ID, stage, original evidence and reason through getPayment, listAlerts and the durable attention event"
+          c2: IF a signed payment is pending or has uncertain outcome THE SYSTEM SHALL NOT present paying again as its recovery action
+          c3: WHEN verified host funding resolves a quote shortfall THE SYSTEM SHALL resume original-payment verification and exact credit allocation through J6 without changing the locked quote
+          c4: IF only source recovery or a host promise is known THE SYSTEM SHALL NOT mark the payer credited or refunded
+          c5: WHEN reconciliation proves failed_no_debit THE SYSTEM SHALL close the payment attention episode using J8.S11 rules without treating it as settled or refunded
+      - id: J8.S11
+        title: Closes an unsuccessful authorized payment
+        bucket: script
+        surface: deposit_widget
+        state: failed_no_debit
+        invariants: [I1, I12]
+        exit: failed_no_debit
+        decisions: [D111, D140, D17]
+        criteria:
+          c1: WHEN a complete canonical source-safe scan through the authorization deadline finds no successful execution and the source-safe timestamp is at or beyond validBefore THE SYSTEM SHALL atomically record failed_no_debit and its evidence without a credit
+          c2: WHEN canonical source-safe cancellation and a complete execution scan prove the original authorization cannot execute and did not pay THE SYSTEM SHALL record failed_no_debit without using the nonce-state boolean as payment proof
+          c3: IF any successful matching source operation exists or execution history is incomplete THE SYSTEM SHALL NOT declare failed_no_debit or offer a replacement payment as recovery
+          c4: "WHEN failed_no_debit is recorded THE SYSTEM SHALL close its payment attention episode, show that no USDC was charged and permit a new quote only after explicit user action"
+          c5: IF a payment already has verified source execution THE SYSTEM SHALL NOT close it as failed_no_debit because a quote or attestation expired
+  - id: J9
+    title: Developer builds a custom deposit interface
+    actor: developer
+    goal: Use the same account data and payment flow without the prebuilt widget
+    proves: The headless API is usable and preserves the same quote and money rules
+    exits:
+      - id: ready
+        title: Custom interface uses the supported hooks
+    steps:
+      - id: J9.S1
+        title: Reads deposits with useDeposits
+        bucket: human
+        surface: deposit_hook
+        next: J9.S2
+        decisions: [D18, D40, D41, D140, D111]
+        criteria:
+          c2: "IF the account is unauthorized THE SYSTEM SHALL NOT expose its history, address or payment identifiers"
+          c3: WHEN useDeposits is mounted for an authorized account THE SYSTEM SHALL expose manual observations and accepted wallet attempts including pre-transfer pending and failed_no_debit items with settlement and host delivery distinguished
+      - id: J9.S2
+        title: Pays with usePayWithWallet
+        bucket: human
+        surface: wallet_payment_hook
+        exit: ready
+        decisions: [D41, D110, D140, D141, D231, D43]
+        criteria:
+          c1: "WHEN usePayWithWallet prepares, signs or submits THE SYSTEM SHALL use the same server quote and payment operation rules as Deposit"
+          c2: IF custom UI passes changed amounts or destination data with a prepared payment THE SYSTEM SHALL NOT bypass consent validation
+          c3: WHEN the consumer themes Deposit THE SYSTEM SHALL apply documented CSS variables without requiring Tailwind or @repo/ui
+          c4: "WHEN the widget is used by keyboard or assistive technology THE SYSTEM SHALL expose labeled amount inputs, actionable errors and status announcements without requiring color to interpret payment state"
+  - id: J10
+    title: Operator checks and recovers processing
+    actor: developer
+    goal: "Inspect alerts, rerun reconciliation and resend events through the small operator API"
+    proves: Recovery is available without a dashboard or a generic balance override
+    exits:
+      - id: checked
+        title: Original operation remains tracked and results are visible
+    steps:
+      - id: J10.S1
+        title: Inspects alerts and captured scan status
+        bucket: human
+        surface: settle_api
+        next: J10.S2
+        decisions: [D51, D54, D140]
+        criteria:
+          c1: "WHEN an authorized operator calls listAlerts THE SYSTEM SHALL return open attention, failed-delivery and reconciliation problems with their stored identities and last complete scan boundaries"
+          c2: IF an operator action lacks host authorization THE SYSTEM SHALL NOT expose private alerts or execute it
+      - id: J10.S2
+        title: Requests a reconciliation run
+        bucket: human
+        surface: settle_api
+        invariants: [I1, I10, I12]
+        next: J10.S3
+        decisions: [D35, D36, D140, D126, D127]
+        criteria:
+          c1: WHEN an authorized operator calls reconcile THE SYSTEM SHALL run the same captured-range checks and persisted recovery as the scheduled J6 check
+          c2: IF another worker holds a valid claim or any required read fails THE SYSTEM SHALL NOT create a competing payment or report the incomplete scan clean
+          c3: "WHEN a host supplies shortfall funding evidence through the documented authenticated operator procedure THE SYSTEM SHALL verify chain, native token, fixed treasury, safe canonical receipt and exclusive transfer identity before linking it to the original payment"
+          c4: "IF claimed host funding belongs to a customer transfer, another payment, a manual sweep or an already used backing allocation THE SYSTEM SHALL NOT use it to resolve the shortfall"
+          c5: WHEN a quote shortfall is backed by verified host funding THE SYSTEM SHALL resume the original exact-quote credit checks without another customer debit
+          c6: IF an affected chain has an open reorg incident THE SYSTEM SHALL NOT resume credit creation until canonical reconciliation succeeds and an authenticated operator records acknowledgment through the documented procedure
+      - id: J10.S3
+        title: Resends a failed event when required
+        bucket: human
+        surface: settle_api
+        invariants: [I1]
+        exit: checked
+        decisions: [D45, D124, D140]
+        criteria:
+          c1: WHEN an operator calls resendWebhook for an existing event THE SYSTEM SHALL restart delivery with that same event ID and immutable payload
+          c2: IF the event was already processed by the host THE SYSTEM SHALL NOT create another balance update
+          c3: IF the requested event does not exist or is outside the host scope THE SYSTEM SHALL NOT create a replacement credit or fabricate an event
+  - id: J11
+    title: Developer demonstrates the narrow release publicly
+    actor: developer
+    goal: Provide reproducible product and infrastructure evidence for hiring
+    proves: The public claims match the actual integration and route evidence
+    exits:
+      - id: shown
+        title: "Repo, setup guide, demonstration and evidence ready to share"
+    steps:
+      - id: J11.S1
+        title: Validates the reference integration
+        bucket: human
+        surface: demo
+        next: J11.S2
+        decisions: [D5, D37, D50, D53, D57, D142]
+        criteria:
+          c1: "WHEN the reference integration is evaluated THE SYSTEM SHALL demonstrate a separate consumer setup with the documented long-running server, Postgres and CSS-variable widget or headless hooks"
+          c2: IF the only evidence is simulated or fork execution THE SYSTEM SHALL NOT label browser compatibility or a live route as proven
+          c3: WHEN a browser-wallet route is claimed supported THE SYSTEM SHALL link an actual zero-ETH payer testnet transaction and independently verified receipt
+          c4: IF a mainnet route has no recorded live payment THE SYSTEM SHALL NOT describe it as live-proven
+          c5: "WHEN onboarding is evaluated THE SYSTEM SHALL provide the separate consumer with authenticated account routes, isolated operator routes, migrations, background startup and atomic webhook balance handling"
+          c6: "WHEN the consumer starts simulated mode THE SYSTEM SHALL demonstrate manual and wallet scenarios without live keys, RPC credentials or a funded wallet"
+          c7: WHEN an independent developer follows the consumer setup THE SYSTEM SHALL record the run and remove any undocumented required step before calling onboarding proven
+          c8: IF the consumer is only a proposed code sketch THE SYSTEM SHALL NOT describe its setup as runnable or independently validated
+          c9: WHEN implementation gates are evaluated THE SYSTEM SHALL record the real Base browser-wallet proof and combined Arbitrum authorization-to-Base proof before treating their integration assumptions as validated
+          c10: "WHEN route evidence is recorded THE SYSTEM SHALL distinguish source submission, source safe, Base arrival, Base safe and host acknowledgment times without substituting CCTP attestation latency for account-credit latency"
+          c11: WHEN upgrade recovery is demonstrated THE SYSTEM SHALL resume a pending operation across a compatible package upgrade and complete an old workflow through its retained implementation after a new workflow name is introduced
+      - id: J11.S2
+        title: Shows success and recovery
+        bucket: human
+        surface: demo
+        exit: shown
+        decisions: [D2, D5, D51, D52, D53, D1]
+        criteria:
+          c1: "WHEN the demonstration is prepared THE SYSTEM SHALL expose connected-wallet and manual paths, fee consent, actual chain evidence, one duplicate or restart recovery case and readable alerts"
+          c2: "WHEN the public material describes the SDK THE SYSTEM SHALL identify experimental contract status and distinguish simulated, fork, testnet and mainnet evidence"
+          c3: "WHEN the coherent demo is ready THE SYSTEM SHALL support sharing its repository, setup guide, short video and architectural write-up without requiring a docs website, dashboard or formal npm release"
+          c4: WHEN public material describes custody THE SYSTEM SHALL explain that the SDK does not hold payer keys but deposited funds go to the business treasury and app credits are controlled by that business
+source: docs/decisions.md

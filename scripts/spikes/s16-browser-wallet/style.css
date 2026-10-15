@@ -1,0 +1,198 @@
+:root {
+  color-scheme: light;
+  --background: #f6f5f0;
+  --card: #fff;
+  --ink: #172c29;
+  --muted: #596863;
+  --border: #dce4dc;
+  --primary: #226349;
+  --subtle: #edf3ed;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+}
+* {
+  box-sizing: border-box;
+}
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--ink);
+}
+main {
+  max-width: 760px;
+  margin: 64px auto;
+  padding: 0 24px;
+}
+.badge {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  background: var(--subtle);
+  border: 1px solid var(--border);
+  padding: 8px 12px;
+  border-radius: 24px;
+}
+.eyebrow {
+  font-size: 11px;
+  letter-spacing: 0.15em;
+  margin-top: 30px;
+  color: var(--muted);
+}
+h1 {
+  font-size: clamp(34px, 6vw, 52px);
+  line-height: 1.12;
+  letter-spacing: -0.04em;
+  margin: 16px 0;
+}
+h2 {
+  font-size: 18px;
+  margin: 0 0 18px;
+}
+.intro {
+  font-size: 17px;
+  line-height: 1.6;
+  max-width: 570px;
+  color: var(--muted);
+  margin-bottom: 32px;
+}
+.card {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 18px;
+  padding: 26px;
+  margin: 16px 0;
+}
+.row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.row h2 {
+  margin: 0;
+}
+.balances {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin: 20px 0;
+}
+.balances div {
+  background: var(--subtle);
+  padding: 16px;
+  border-radius: 10px;
+}
+.balances span {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+}
+strong {
+  display: block;
+  margin-top: 7px;
+  font-size: 24px;
+}
+.hint,
+details,
+footer {
+  font-size: 13px;
+  line-height: 1.65;
+  color: var(--muted);
+}
+button {
+  background: var(--primary);
+  color: white;
+  padding: 13px 18px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+}
+button.secondary {
+  background: var(--subtle);
+  color: var(--ink);
+  border-color: var(--border);
+}
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+button:focus-visible,
+a:focus-visible {
+  outline: 3px solid var(--primary);
+  outline-offset: 4px;
+}
+.actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+dl {
+  margin: 8px 0 20px;
+}
+.card dl div {
+  display: flex;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--border);
+}
+dt {
+  color: var(--muted);
+}
+dd {
+  font-weight: 600;
+  margin: 0;
+}
+a {
+  color: var(--primary);
+}
+#wallet,
+#addresses {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+  line-height: 1.7;
+}
+pre {
+  font-size: 12px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: var(--subtle);
+  padding: 16px;
+  border-radius: 10px;
+}
+details {
+  padding: 20px 8px;
+}
+summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+footer {
+  margin: 26px 0 60px;
+  text-align: center;
+}
+#status {
+  line-height: 1.6;
+}
+@media (max-width: 520px) {
+  main {
+    margin-top: 36px;
+    padding: 0 16px;
+  }
+  .card {
+    padding: 20px;
+  }
+  .row {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .balances {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+#addresses {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}

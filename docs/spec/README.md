@@ -9,7 +9,12 @@ their IDs. Shared rules: the Spec process section of
 | 1 Decide | What are we building, and what did we rule out? | [`docs/decisions.md`](../decisions.md) | [decide skill](../../.agents/skills/decide/SKILL.md) | Answer open questions, confirm the list |
 | 2 Journeys | What exactly happens, step by step, including every failure? What must always hold? | `docs/journeys/settle-kit.yaml` | [journeys skill](../../.agents/skills/journeys/SKILL.md) | Agree the invariants, walk each journey, challenge branches |
 
-Then: a short design doc and task specs that cite decision and step IDs, and code whose
+**Current status (2026-10-15):** decisions and journeys are complete for the agreed
+narrow scope, with no owner product questions open. S14–S16 conclude exploratory
+spiking. The live MetaMask result and remaining implementation acceptance checks
+are recorded in [spikes](../spikes.md). Product implementation has not started.
+
+**Next:** a short design doc and task specs that cite decision and step IDs, and code whose
 tests are named after the criterion or invariant they prove (`it("J2.S4.c1: …")`,
 `it("I1: …")`).
 

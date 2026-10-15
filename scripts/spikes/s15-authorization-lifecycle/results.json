@@ -1,0 +1,63 @@
+{
+  "evidence": "LOCAL FORKS ONLY; deterministic public keys and simulated funding. Tests token authorization semantics, not source-safe scan completeness, real chain finality, browser wallets, CCTP or SDK recovery.",
+  "results": [
+    {
+      "chain": "Base Sepolia",
+      "chainId": 84532,
+      "forkBlock": "48143481",
+      "checksPassed": 15,
+      "checks": [
+        "changed fee split rejected",
+        "changed recipient rejected",
+        "expired authorization rejected",
+        "wrong chain rejected",
+        "direct signature consumption outside router rejected",
+        "failed transfer rolls back debit, fee and authorization; relayer burns gas",
+        "zero-ETH EOA pays 10.20: destination gets 10, fee recipient gets 0.20",
+        "authorization replay rejected",
+        "authorization consumption observable for reconciliation; not credit proof",
+        "insufficient payer USDC rejected",
+        "same authorization executes after a reverted attempt once payer balance is restored",
+        "cancellation consumes authorization nonce without payer debit or destination credit",
+        "cancelled authorization cannot execute",
+        "previously valid signature is rejected at validBefore",
+        "expired unused authorization remains unconsumed and payer retains USDC and zero ETH"
+      ],
+      "lifecycleEvidence": {
+        "revertedAttemptHash": "0x3ef90250e540d256d02fba509db7907d32b8e3cca8370af452d2949877ca441d",
+        "cancellationHash": "0x4ff6fb1215297c5d703720c06e9d7a780b527febef4e4996baa6075b59154c48",
+        "executionDeadline": "1792055311",
+        "observedForkTimestamp": "1792055311"
+      }
+    },
+    {
+      "chain": "Arbitrum Sepolia",
+      "chainId": 421614,
+      "forkBlock": "319387788",
+      "checksPassed": 15,
+      "checks": [
+        "changed fee split rejected",
+        "changed recipient rejected",
+        "expired authorization rejected",
+        "wrong chain rejected",
+        "direct signature consumption outside router rejected",
+        "failed transfer rolls back debit, fee and authorization; relayer burns gas",
+        "zero-ETH EOA pays 10.20: destination gets 10, fee recipient gets 0.20",
+        "authorization replay rejected",
+        "authorization consumption observable for reconciliation; not credit proof",
+        "insufficient payer USDC rejected",
+        "same authorization executes after a reverted attempt once payer balance is restored",
+        "cancellation consumes authorization nonce without payer debit or destination credit",
+        "cancelled authorization cannot execute",
+        "previously valid signature is rejected at validBefore",
+        "expired unused authorization remains unconsumed and payer retains USDC and zero ETH"
+      ],
+      "lifecycleEvidence": {
+        "revertedAttemptHash": "0xc32f541e8f38981e296b1852a812438d93c727406716550cd27bb8cead799387",
+        "cancellationHash": "0x13cc306caea9c1517880b0d0de1c314ff438613ceb8ee9fcfd01b2409b0c5b68",
+        "executionDeadline": "1792059059",
+        "observedForkTimestamp": "1792059059"
+      }
+    }
+  ]
+}
