@@ -5,14 +5,7 @@
     "build": {
       "dependsOn": ["^build"],
       "inputs": ["$TURBO_DEFAULT$", ".env*"],
-      "outputs": [
-        ".next/**",
-        "!.next/cache/**",
-        "!.next/dev/**",
-        "app/.well-known/workflow/**",
-        "dist/**",
-        ".vercel/output/**"
-      ],
+      "outputs": [".next/**", "!.next/cache/**", "!.next/dev/**", "dist/**", ".vercel/output/**"],
       "env": ["NODE_ENV", "VERCEL", "SKIP_ENV_VALIDATION"],
       "passThroughEnv": ["CI", "VERCEL_ENV", "VERCEL_URL", "VERCEL_REGION"]
     },

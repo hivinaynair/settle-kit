@@ -58,7 +58,7 @@ journeys:
   - id: J1
     title: Developer sets up Settle Kit and shows the deposit widget
     actor: developer
-    goal: Go from an empty Next.js app to a page showing a user's deposit address in test mode
+    goal: Go from an existing app (any Node or Bun server, React for the widget) to a page showing a user's deposit address in test mode
     proves: A stranger can install and run it (D5)
     exits:
       - id: ready
@@ -67,7 +67,7 @@ journeys:
       - id: J1.S1
         title: Installs the packages
         bucket: human
-        does: Adds @settle-kit/server and @settle-kit/react to a Next.js app
+        does: Adds @settle-kit/server to the server (Express, Fastify, Hono, Next.js or plain Node/Bun) and @settle-kit/react to the frontend
         decisions: [D37, D44]
         next: J1.S2
         criteria:
@@ -107,13 +107,15 @@ journeys:
         title: Mounts the handlers and renders the widget
         bucket: human
         surface: settle_api
-        does: Exports settle.handlers from a route and renders <Deposit accountId="user_42" /> on a page
-        decisions: [D40, D44]
+        does: Mounts settle.handlers on a route, runs scheduled work (settle.start() on a long-running server, or a cron hitting the protected cron route on serverless), and renders <Deposit accountId="user_42" /> on a page
+        decisions: [D36, D40, D44, D131]
         exit: ready
         criteria:
           c1: WHEN the widget requests an account's deposit address through the mounted route THE SYSTEM SHALL answer with that account's address for each supported chain
           c2: WHEN SETTLE_MODE is test THE SYSTEM SHALL mark the widget and QR code as TEST
           c3: WHEN SETTLE_MODE is test THE SYSTEM SHALL show a "Simulate a deposit" button that runs the deposit journey (J2) with simulated transfers
+          c4: WHEN settle.start() runs THE SYSTEM SHALL launch the durable engine with Settle Kit's pinned release as the application version and a fresh executor ID for this process
+          c5: WHEN the cron route receives a request without the configured cron secret THE SYSTEM SHALL answer 401 and SHALL NOT run any scheduled work
 
   - id: J2
     title: User deposits USDC on Base
@@ -176,6 +178,7 @@ journeys:
           c3: IF a sweep is already running for the address THE SYSTEM SHALL NOT start a second one, and a deposit recorded meanwhile SHALL wait for the next sweep
           c4: IF a sweep transaction fails THE SYSTEM SHALL NOT mark the deposit credited, and SHALL retry the sweep
           c5: WHEN the sweep transaction is confirmed THE SYSTEM SHALL link to it every USDC transfer into the address that came before it on that chain, recording any not yet recorded
+          c6: IF the sweep step runs again after a crash THE SYSTEM SHALL NOT sign a second sweep transaction for the same sweep, and SHALL re-send or look up the one it already signed
       - id: J2.S5
         title: Verifies the arrival and credits
         bucket: script
@@ -312,6 +315,7 @@ journeys:
           c2: WHEN sweep() runs THE SYSTEM SHALL pay the stored sweep fee to the gas wallet and burn the rest of the balance, with the stored recipient on Base as the mint recipient
           c3: IF the sweep transaction fails THE SYSTEM SHALL NOT record the burn, and SHALL retry the sweep
           c4: WHEN the sweep transaction is confirmed THE SYSTEM SHALL link to it every USDC transfer into the address that came before it on that chain, recording any not yet recorded
+          c5: IF the sweep step runs again after a crash THE SYSTEM SHALL NOT sign a second sweep transaction for the same sweep, and SHALL re-send or look up the one it already signed
       - id: J4.S3
         title: Circle attests the burn
         bucket: external
@@ -402,6 +406,8 @@ journeys:
         criteria:
           c1: WHEN an address holds recorded, uncredited deposits at or above its minimum and has no running sweep or credit workflow THE SYSTEM SHALL start its sweep workflow
           c2: IF the address already has a running sweep or credit workflow THE SYSTEM SHALL NOT start a second one
+          c3: WHEN a workflow is still pending and the process that ran it has not recorded a heartbeat for 2 minutes THE SYSTEM SHALL resume the workflow from its last completed step
+          c4: IF the process that ran a pending workflow recorded a heartbeat in the last 2 minutes THE SYSTEM SHALL NOT resume that workflow elsewhere
       - id: J6.S3
         title: Checks the books
         bucket: script

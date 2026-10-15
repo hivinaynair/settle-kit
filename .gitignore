@@ -41,7 +41,4 @@ yarn-error.log*
 *.pem
 lefthook-local.yml
 
-# Workflow SDK
-.well-known/workflow
-.workflow-data
 .env*

@@ -28,7 +28,7 @@ Rules that hold across every journey, ordering and crash point. Tests cite `I1: 
 ## J1 · Developer sets up Settle Kit and shows the deposit widget
 
 **Actor:** Developer integrating Settle Kit  
-**Goal:** Go from an empty Next.js app to a page showing a user's deposit address in test mode  
+**Goal:** Go from an existing app (any Node or Bun server, React for the widget) to a page showing a user's deposit address in test mode  
 **Proves:** A stranger can install and run it (D5)  
 
 | Exit | Title | Named by |
@@ -50,11 +50,11 @@ flowchart LR
 
 | Step | Bucket | Surface · state | Sees | Does | Next | Criteria |
 |---|---|---|---|---|---|---|
-| `J1.S1` Installs the packages | human | — | — | Adds @settle-kit/server and @settle-kit/react to a Next.js app | `J1.S2` | 2 |
+| `J1.S1` Installs the packages | human | — | — | Adds @settle-kit/server to the server (Express, Fastify, Hono, Next.js or plain Node/Bun) and @settle-kit/react to the frontend | `J1.S2` | 2 |
 | `J1.S2` Sets the configuration | human | — | — | Sets the database URL, treasury and refund addresses, gas wallet key, Base and Arbitrum RPC URLs, webhook URL and secret, and the address namespace (32 random bytes, generated once) | `J1.S3` | 4 |
 | `J1.S3` Runs the database migrations | human | — | — | Applies the numbered SQL migrations shipped with the package to the app's Postgres | `J1.S4` | 2 |
 | `J1.S4` Uses the shared deposit-address factory | script | — | — | Points at the factory Settle Kit deployed once on Base and Arbitrum; nothing to deploy unless the developer sets their own factory address | `J1.S5` | 2 |
-| `J1.S5` Mounts the handlers and renders the widget | human | `settle_api` | — | Exports settle.handlers from a route and renders <Deposit accountId='user_42' /> on a page | exit `ready` | 3 |
+| `J1.S5` Mounts the handlers and renders the widget | human | `settle_api` | — | Mounts settle.handlers on a route, runs scheduled work (settle.start() on a long-running server, or a cron hitting the protected cron route on serverless), and renders <Deposit accountId='user_42' /> on a page | exit `ready` | 5 |
 
 ### J1 acceptance criteria
 
@@ -80,11 +80,13 @@ flowchart LR
 - `J1.S4.c1` WHEN createSettle() starts in live mode THE SYSTEM SHALL check that the factory exists at the configured address on Base and on Arbitrum and name any chain where it is missing
 - `J1.S4.c2` WHERE the developer sets their own factory address THE SYSTEM SHALL use it instead of the shared one
 
-**`J1.S5`** Mounts the handlers and renders the widget · decisions D40, D44
+**`J1.S5`** Mounts the handlers and renders the widget · decisions D36, D40, D44, D131
 
 - `J1.S5.c1` WHEN the widget requests an account's deposit address through the mounted route THE SYSTEM SHALL answer with that account's address for each supported chain
 - `J1.S5.c2` WHEN SETTLE_MODE is test THE SYSTEM SHALL mark the widget and QR code as TEST
 - `J1.S5.c3` WHEN SETTLE_MODE is test THE SYSTEM SHALL show a "Simulate a deposit" button that runs the deposit journey (J2) with simulated transfers
+- `J1.S5.c4` WHEN settle.start() runs THE SYSTEM SHALL launch the durable engine with Settle Kit's pinned release as the application version and a fresh executor ID for this process
+- `J1.S5.c5` WHEN the cron route receives a request without the configured cron secret THE SYSTEM SHALL answer 401 and SHALL NOT run any scheduled work
 
 ## J2 · User deposits USDC on Base
 
@@ -116,7 +118,7 @@ flowchart LR
 | `J2.S1` Sees their Base deposit address | script | `deposit_widget` · show_address | QR code, the address in groups, 'USDC on Base only', minimum 2 USDC, 'you'll receive about X' | Returns the account's stored address, computing and storing it on first use | `J2.S2` | 4 |
 | `J2.S2` Sends USDC on Base | human | `deposit_widget` · show_address | — | Scans the QR code with a wallet or withdraws from an exchange to the address | `J2.S3` | 1 |
 | `J2.S3` The transfer is recorded | script | `deposit_widget` · received | 'Received 10.00 USDC. Moving it to your account' | Reads the USDC transfer at or below Base's safe block and records the deposit | `J2.S4` | 4 |
-| `J2.S4` Sweeps to the recipient on Base | script | — | — | The gas wallet deploys the address's contract if needed and calls sweep(), which pays the sweep fee and forwards the rest | `J2.S5` | 5 |
+| `J2.S4` Sweeps to the recipient on Base | script | — | — | The gas wallet deploys the address's contract if needed and calls sweep(), which pays the sweep fee and forwards the rest | `J2.S5` | 6 |
 | `J2.S5` Verifies the arrival and credits | script | — | — | Reads the USDC arrival at the stored recipient at the safe block and credits the deposit | `J2.S6` | 7 |
 | `J2.S6` Sees it credited | script | `deposit_widget` · credited | '9.99 USDC credited' with a Base explorer link to the arrival | Shows the credited amount | exit `credited` | 1 |
 
@@ -147,6 +149,7 @@ flowchart LR
 - `J2.S4.c3` IF a sweep is already running for the address THE SYSTEM SHALL NOT start a second one, and a deposit recorded meanwhile SHALL wait for the next sweep
 - `J2.S4.c4` IF a sweep transaction fails THE SYSTEM SHALL NOT mark the deposit credited, and SHALL retry the sweep
 - `J2.S4.c5` WHEN the sweep transaction is confirmed THE SYSTEM SHALL link to it every USDC transfer into the address that came before it on that chain, recording any not yet recorded
+- `J2.S4.c6` IF the sweep step runs again after a crash THE SYSTEM SHALL NOT sign a second sweep transaction for the same sweep, and SHALL re-send or look up the one it already signed
 
 **`J2.S5`** Verifies the arrival and credits · decisions D17, D21, D22, D23, D32, D121 · invariants I1, I2, I4
 
@@ -255,7 +258,7 @@ flowchart LR
 | Step | Bucket | Surface · state | Sees | Does | Next | Criteria |
 |---|---|---|---|---|---|---|
 | `J4.S1` Starts the sweep workflow | script | — | — | Starts one durable workflow per sweep, one sweep at a time per address | `J4.S2` | 2 |
-| `J4.S2` Burns the USDC through CCTP | script | — | — | The gas wallet deploys the contract if needed and calls sweep(), which pays the sweep fee and burns the rest with CCTP V2 Fast and the Forwarding Service | `J4.S3` | 4 |
+| `J4.S2` Burns the USDC through CCTP | script | — | — | The gas wallet deploys the contract if needed and calls sweep(), which pays the sweep fee and burns the rest with CCTP V2 Fast and the Forwarding Service | `J4.S3` | 5 |
 | `J4.S3` Circle attests the burn | external | — | — | Circle signs the burn message | `J4.S4` | 2 |
 | `J4.S4` Circle mints on Base | external | — | — | The Forwarding Service mints the USDC to the recipient on Base and takes its fee from the minted amount | exit `minted` | 2 |
 
@@ -272,6 +275,7 @@ flowchart LR
 - `J4.S2.c2` WHEN sweep() runs THE SYSTEM SHALL pay the stored sweep fee to the gas wallet and burn the rest of the balance, with the stored recipient on Base as the mint recipient
 - `J4.S2.c3` IF the sweep transaction fails THE SYSTEM SHALL NOT record the burn, and SHALL retry the sweep
 - `J4.S2.c4` WHEN the sweep transaction is confirmed THE SYSTEM SHALL link to it every USDC transfer into the address that came before it on that chain, recording any not yet recorded
+- `J4.S2.c5` IF the sweep step runs again after a crash THE SYSTEM SHALL NOT sign a second sweep transaction for the same sweep, and SHALL re-send or look up the one it already signed
 
 **`J4.S3`** Circle attests the burn · decisions D17
 
@@ -352,7 +356,7 @@ flowchart LR
 | Step | Bucket | Surface · state | Sees | Does | Next | Criteria |
 |---|---|---|---|---|---|---|
 | `J6.S1` Reads the chains | script | — | — | Reads USDC transfers to our deposit addresses on Base and Arbitrum from the saved position up to the safe block | `J6.S2` | 3 |
-| `J6.S2` Restarts stuck work | script | — | — | Starts the sweep or credit workflow for any address whose deposits have none running | `J6.S3` | 2 |
+| `J6.S2` Restarts stuck work | script | — | — | Starts the sweep or credit workflow for any address whose deposits have none running | `J6.S3` | 4 |
 | `J6.S3` Checks the books | script | — | — | Matches each credited deposit to a verified arrival at its recipient, and each treasury arrival to a credited deposit | `J6.S4` | 5 |
 | `J6.S4` Re-checks attention cases | script | — | — | Re-checks deposits in needs_attention on D17's schedule | exit `checked` | 3 |
 
@@ -368,6 +372,8 @@ flowchart LR
 
 - `J6.S2.c1` WHEN an address holds recorded, uncredited deposits at or above its minimum and has no running sweep or credit workflow THE SYSTEM SHALL start its sweep workflow
 - `J6.S2.c2` IF the address already has a running sweep or credit workflow THE SYSTEM SHALL NOT start a second one
+- `J6.S2.c3` WHEN a workflow is still pending and the process that ran it has not recorded a heartbeat for 2 minutes THE SYSTEM SHALL resume the workflow from its last completed step
+- `J6.S2.c4` IF the process that ran a pending workflow recorded a heartbeat in the last 2 minutes THE SYSTEM SHALL NOT resume that workflow elsewhere
 
 **`J6.S3`** Checks the books · decisions D35, D54 · invariants I2
 
