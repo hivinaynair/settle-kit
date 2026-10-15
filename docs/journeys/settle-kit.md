@@ -222,7 +222,7 @@ flowchart LR
 
 | Step | Bucket | Surface · state | Sees | Does | Next | Criteria |
 |---|---|---|---|---|---|---|
-| `J3.S1` Sees their Arbitrum deposit address | script | `deposit_widget` · show_address | QR code, address, 'USDC on Arbitrum only', minimum 2 USDC, maximum automatic balance 1,000 USDC, estimated fees | Returns the account's stored Arbitrum address, computing and storing it on first use | `J3.S2` | 7 |
+| `J3.S1` Sees their Arbitrum deposit address | script | `deposit_widget` · show_address | QR code, address, 'USDC on Arbitrum only', minimum 2 USDC, maximum automatic balance (1,000 USDC by default), estimated fees | Returns the account's stored Arbitrum address, computing and storing it on first use | `J3.S2` | 7 |
 | `J3.S2` Sends USDC on Arbitrum | human | `deposit_widget` · show_address | — | Scans the QR code with a wallet or withdraws from an exchange on Arbitrum | `J3.S3` | 1 |
 | `J3.S3` The transfer is recorded | script | `deposit_widget` · received | 'Received 10.00 USDC on Arbitrum. Moving it to Base' | Reads the USDC transfer at or below Arbitrum's safe block and records the deposit | `J3.S4` | 8 |
 | `J3.S4` Sweeps through CCTP | script | — | — | — | uses `J4`; `J3.S5` | 0 |
@@ -239,7 +239,7 @@ flowchart LR
 - `J3.S1.c5` WHEN an account first requests an address THE SYSTEM SHALL atomically store the address and its complete versioned CREATE2 inputs under a unique business, account and route key, and return the stored winner of concurrent requests
 - `J3.S1.c6` WHEN an address is predicted THE SYSTEM SHALL bind the namespace and account ID with unambiguous encoding and bind every immutable D33 money setting and supported creation-code version
 - `J3.S1.c7` IF a predicted contract already exists with different code, version or immutable settings THE SYSTEM SHALL NOT use it or sweep it
-- `J3.S1.c8` WHEN the Arbitrum address is shown THE SYSTEM SHALL show the 1,000 USDC gross automatic-processing maximum and explain that larger balances require host recovery
+- `J3.S1.c8` WHEN the Arbitrum address is shown THE SYSTEM SHALL show the address's stored gross automatic-processing maximum (1,000 USDC by default) and explain that larger balances require host recovery
 
 **`J3.S2`** Sends USDC on Arbitrum · decisions D131
 
@@ -310,14 +310,14 @@ flowchart LR
 **`J4.S1`** Starts the sweep workflow · decisions D36, D28, D17
 
 - `J4.S1.c3` IF an address has an open sweep operation THE SYSTEM SHALL NOT start another operation, including while it is sleeping or awaiting mint verification
-- `J4.S1.c4` IF the gross address balance exceeds 1,000,000,000 USDC base units or its net burn exceeds Circle's current on-chain per-message limit THE SYSTEM SHALL NOT start an automatic burn and SHALL enter needs_attention as over_limit
+- `J4.S1.c4` IF the gross address balance exceeds the address's stored maximum (1,000,000,000 USDC base units by default) or its net burn exceeds Circle's current on-chain per-message limit THE SYSTEM SHALL NOT start an automatic burn and SHALL enter needs_attention as over_limit
 - `J4.S1.c5` WHEN safe unassigned funds meet the minimum, satisfy both Arbitrum limits and the address has no open operation THE SYSTEM SHALL atomically start one sweep operation keyed by address and sweep number
 
 **`J4.S2`** Burns the USDC through CCTP · decisions D33, D39, D121, D28, D134, D139 · invariants I9, I1, I8
 
 - `J4.S2.c1` WHEN the address has no contract yet THE SYSTEM SHALL deploy it before calling sweep()
 - `J4.S2.c14` WHEN an eligible sweep executes THE SYSTEM SHALL pay exactly the stored fee and burn the remainder to the stored Base domain and recipient using CCTP V2 Fast and Forwarding Service
-- `J4.S2.c6` IF any caller invokes sweep() below the minimum, above the gross 1,000,000,000-unit maximum or above Circle's current net-burn limit THE SYSTEM SHALL NOT burn any USDC or charge any USDC sweep fee
+- `J4.S2.c6` IF any caller invokes sweep() below the minimum, above the address's stored gross maximum or above Circle's current net-burn limit THE SYSTEM SHALL NOT burn any USDC or charge any USDC sweep fee
 - `J4.S2.c7` IF the burn amount minus its maximum CCTP protocol and forwarding fee budget is not positive THE SYSTEM SHALL NOT burn or charge a sweep fee and SHALL enter needs_attention as route_fee_unaffordable
 - `J4.S2.c8` WHEN a successful burn is discovered THE SYSTEM SHALL assign only incoming transfers after the preceding successful full-balance drain and before this sweep in chain execution order, record the gross, fee and burned amounts, and retain the burn-message identity
 - `J4.S2.c9` IF a transfer is already assigned to a sweep or recovery THE SYSTEM SHALL NOT reassign it
@@ -495,7 +495,7 @@ flowchart LR
 | Step | Bucket | Surface · state | Sees | Does | Next | Criteria |
 |---|---|---|---|---|---|---|
 | `J7.S1` Reads the over-limit alert | human | `settle_api` | — | Reads listAlerts and verifies the account, source balance and stored refund address | `J7.S2` | 2 |
-| `J7.S2` Calls the fixed-destination recovery | human | — | — | Calls recoverOverLimit() through a block explorer or script; no guided refund tool is required | `J7.S3` | 4 |
+| `J7.S2` Calls the fixed-destination recovery | human | — | — | Calls recoverOverLimit() from a block explorer or a one-line script; in slice 1 the SDK does not submit recovery transactions (X6) | `J7.S3` | 3 |
 | `J7.S3` Verifies recovery and retains the repayment case | script | — | — | Finds the recovery event at source safe, links its transfers and keeps the repayment alert open | exit `recovered` | 4 |
 
 ### J7 acceptance criteria
@@ -505,12 +505,11 @@ flowchart LR
 - `J7.S1.c1` WHEN a safe Arbitrum balance exceeds the gross cap or live net-burn limit THE SYSTEM SHALL expose needs_attention as over_limit with account, address, balance and stored refund destination
 - `J7.S1.c2` IF the balance is over either limit THE SYSTEM SHALL NOT split it into automatic burns or charge a sweep fee
 
-**`J7.S2`** Calls the fixed-destination recovery · decisions D27, D28, D33, D139 · invariants I9
+**`J7.S2`** Calls the fixed-destination recovery · decisions D27, D28, D33 · invariants I9
 
 - `J7.S2.c1` WHEN recoverOverLimit() executes while either Arbitrum limit is exceeded THE SYSTEM SHALL transfer the entire USDC balance to the stored refund address, charge zero USDC sweep fee and emit the recovered amount and destination
 - `J7.S2.c2` IF neither limit is exceeded or the function is invoked on Base THE SYSTEM SHALL NOT recover USDC
 - `J7.S2.c3` IF a caller supplies a different recipient or invokes rescue(USDC) THE SYSTEM SHALL NOT move USDC to that recipient or through rescue
-- `J7.S2.c4` WHEN the SDK submits recovery THE SYSTEM SHALL persist its operation, chain, signer, globally reserved nonce, signed bytes and hash before broadcast and reconcile an unknown outcome before any fresh-nonce attempt
 
 **`J7.S3`** Verifies recovery and retains the repayment case · decisions D17, D27, D34, D54, D121, D230 · invariants I1, I7, I8
 

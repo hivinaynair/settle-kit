@@ -260,7 +260,7 @@ journeys:
         bucket: script
         surface: deposit_widget
         state: show_address
-        sees: QR code, address, "USDC on Arbitrum only", minimum 2 USDC, maximum automatic balance 1,000 USDC, estimated fees
+        sees: QR code, address, "USDC on Arbitrum only", minimum 2 USDC, maximum automatic balance (1,000 USDC by default), estimated fees
         does: Returns the account's stored Arbitrum address, computing and storing it on first use
         decisions: [D13, D20, D28, D33, D38, D39, D135, D134]
         next: J3.S2
@@ -272,7 +272,7 @@ journeys:
           c5: WHEN an account first requests an address THE SYSTEM SHALL atomically store the address and its complete versioned CREATE2 inputs under a unique business, account and route key, and return the stored winner of concurrent requests
           c6: WHEN an address is predicted THE SYSTEM SHALL bind the namespace and account ID with unambiguous encoding and bind every immutable D33 money setting and supported creation-code version
           c7: IF a predicted contract already exists with different code, version or immutable settings THE SYSTEM SHALL NOT use it or sweep it
-          c8: WHEN the Arbitrum address is shown THE SYSTEM SHALL show the 1,000 USDC gross automatic-processing maximum and explain that larger balances require host recovery
+          c8: WHEN the Arbitrum address is shown THE SYSTEM SHALL show the address's stored gross automatic-processing maximum (1,000 USDC by default) and explain that larger balances require host recovery
       - id: J3.S2
         title: Sends USDC on Arbitrum
         bucket: human
@@ -363,7 +363,7 @@ journeys:
         # Retired criteria: c1, c2. Do not reuse.
         criteria:
           c3: IF an address has an open sweep operation THE SYSTEM SHALL NOT start another operation, including while it is sleeping or awaiting mint verification
-          c4: IF the gross address balance exceeds 1,000,000,000 USDC base units or its net burn exceeds Circle's current on-chain per-message limit THE SYSTEM SHALL NOT start an automatic burn and SHALL enter needs_attention as over_limit
+          c4: IF the gross address balance exceeds the address's stored maximum (1,000,000,000 USDC base units by default) or its net burn exceeds Circle's current on-chain per-message limit THE SYSTEM SHALL NOT start an automatic burn and SHALL enter needs_attention as over_limit
           c5: WHEN safe unassigned funds meet the minimum, satisfy both Arbitrum limits and the address has no open operation THE SYSTEM SHALL atomically start one sweep operation keyed by address and sweep number
       - id: J4.S2
         title: Burns the USDC through CCTP
@@ -376,7 +376,7 @@ journeys:
         criteria:
           c1: WHEN the address has no contract yet THE SYSTEM SHALL deploy it before calling sweep()
           c14: WHEN an eligible sweep executes THE SYSTEM SHALL pay exactly the stored fee and burn the remainder to the stored Base domain and recipient using CCTP V2 Fast and Forwarding Service
-          c6: IF any caller invokes sweep() below the minimum, above the gross 1,000,000,000-unit maximum or above Circle's current net-burn limit THE SYSTEM SHALL NOT burn any USDC or charge any USDC sweep fee
+          c6: IF any caller invokes sweep() below the minimum, above the address's stored gross maximum or above Circle's current net-burn limit THE SYSTEM SHALL NOT burn any USDC or charge any USDC sweep fee
           c7: IF the burn amount minus its maximum CCTP protocol and forwarding fee budget is not positive THE SYSTEM SHALL NOT burn or charge a sweep fee and SHALL enter needs_attention as route_fee_unaffordable
           c8: WHEN a successful burn is discovered THE SYSTEM SHALL assign only incoming transfers after the preceding successful full-balance drain and before this sweep in chain execution order, record the gross, fee and burned amounts, and retain the burn-message identity
           c9: IF a transfer is already assigned to a sweep or recovery THE SYSTEM SHALL NOT reassign it
@@ -564,15 +564,15 @@ journeys:
       - id: J7.S2
         title: Calls the fixed-destination recovery
         bucket: human
-        does: Calls recoverOverLimit() through a block explorer or script; no guided refund tool is required
-        decisions: [D27, D28, D33, D139]
+        does: Calls recoverOverLimit() from a block explorer or a one-line script; in slice 1 the SDK does not submit recovery transactions (X6)
+        decisions: [D27, D28, D33]
         invariants: [I9]
         next: J7.S3
         criteria:
           c1: WHEN recoverOverLimit() executes while either Arbitrum limit is exceeded THE SYSTEM SHALL transfer the entire USDC balance to the stored refund address, charge zero USDC sweep fee and emit the recovered amount and destination
           c2: IF neither limit is exceeded or the function is invoked on Base THE SYSTEM SHALL NOT recover USDC
           c3: IF a caller supplies a different recipient or invokes rescue(USDC) THE SYSTEM SHALL NOT move USDC to that recipient or through rescue
-          c4: WHEN the SDK submits recovery THE SYSTEM SHALL persist its operation, chain, signer, globally reserved nonce, signed bytes and hash before broadcast and reconcile an unknown outcome before any fresh-nonce attempt
+          # c4 (SDK-submitted recovery) retired: in slice 1 the operator submits recovery (X6). Do not reuse.
       - id: J7.S3
         title: Verifies recovery and retains the repayment case
         bucket: script
