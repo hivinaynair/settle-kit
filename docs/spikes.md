@@ -65,6 +65,11 @@ not a raw confirmation count. Unique keys: `fill_id` and `(chain_id, tx_hash, lo
 
 ## Still open
 
+- **S11 · Arbitrum `safe` lag and CCTP Fast finality** — for Q15. Measure on mainnet how far
+  Arbitrum's `safe` tag trails `latest` (sample over a day), and confirm in Circle's docs how a
+  Fast transfer treats source-chain finality (what Circle attests before the source block is
+  final, and who bears a rollback).
+
 - **S10 · Workflow SDK Postgres World** — the self-hosted durability D37 relies on. Plan:
   run the S1 checks (poll loop, `sleep`, retries, `FatalError`) on `@workflow/world-postgres`,
   then `kill -9` the process mid-run and restart it. Pass: the run resumes from its last

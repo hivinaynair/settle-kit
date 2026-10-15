@@ -238,7 +238,7 @@ journeys:
         state: received
         sees: '"Received 10.00 USDC on Arbitrum. Moving it to Base"'
         does: Reads the USDC transfer at or below Arbitrum's safe block and records the deposit
-        decisions: [D18, D21, D23, D28, D34]
+        decisions: [D18, D21, D23, D28, D34, Q15]
         invariants: [I1, I6]
         next: J3.S4
         criteria:

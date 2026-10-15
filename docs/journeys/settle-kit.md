@@ -205,7 +205,7 @@ flowchart LR
 
 - `J3.S2.c1` WHILE the widget is open and no transfer is recorded THE SYSTEM SHALL check that one address every 5 s
 
-**`J3.S3`** The transfer is recorded · decisions D18, D21, D23, D28, D34 · invariants I1, I6
+**`J3.S3`** The transfer is recorded · decisions D18, D21, D23, D28, D34, Q15 · invariants I1, I6
 
 - `J3.S3.c1` WHEN a USDC transfer to the address is at or below Arbitrum's safe block THE SYSTEM SHALL record one deposit keyed by chain ID, tx hash and log index
 - `J3.S3.c2` IF the same transfer is read again THE SYSTEM SHALL NOT record a second deposit
