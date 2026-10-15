@@ -65,6 +65,12 @@ not a raw confirmation count. Unique keys: `fill_id` and `(chain_id, tx_hash, lo
 
 ## Still open
 
+- **S10 · Workflow SDK Postgres World** — the self-hosted durability D37 relies on. Plan:
+  run the S1 checks (poll loop, `sleep`, retries, `FatalError`) on `@workflow/world-postgres`,
+  then `kill -9` the process mid-run and restart it. Pass: the run resumes from its last
+  step. If it doesn't, self-hosted payments recover through reconciliation restarts (D36),
+  which is correct but slower; record the delay.
+
 - **S4 · real deposit on Base mainnet** — waiting for funds (see S4a and S7). Plan:
   Base ETH → Base USDC via a deposit address (funds the payer with USDC), then
   $2 Base USDC → Base USDC to a fresh address, then $2 again to the same address,
