@@ -20,7 +20,7 @@ Rules that hold across every journey, ordering and crash point. Tests cite `I1: 
 |---|---|---|---|---|
 | `I1` | One credit per transfer | THE SYSTEM SHALL NOT credit the same on-chain transfer (chain ID, tx hash, log index) more than once | D23 | `J2.S3` `J2.S5` `J3.S3` `J3.S5` `J6.S1` |
 | `I2` | Never credit more than arrived | THE SYSTEM SHALL NOT let the total credited for a recipient exceed the total USDC verified arriving at that recipient on Base at the safe block | D21 | `J2.S5` `J3.S5` `J6.S3` |
-| `I3` | Contracts pay only fixed destinations | THE SYSTEM SHALL NOT let a deposit contract send USDC anywhere but its stored recipient and its stored sweep fee to the gas wallet, or other tokens anywhere but its refund address | D132, D136 | `J2.S4` `J4.S2` |
+| `I3` | Contracts pay only fixed destinations | THE SYSTEM SHALL NOT let a deposit contract send USDC anywhere but its stored recipient and its stored sweep fee to the gas wallet, or other tokens anywhere but its refund address | D33, D39 | `J2.S4` `J4.S2` |
 | `I4` | A credit is final | THE SYSTEM SHALL NOT change a credited deposit's amount or move it out of the credited state | D32 | `J2.S5` `J3.S5` |
 | `I5` | Secrets stay secret | THE SYSTEM SHALL NOT put the gas wallet key or the webhook secret in logs, errors or API responses | D27 | `J1.S2` `J5.S1` |
 | `I6` | Nothing is missed | THE SYSTEM SHALL NOT end a scheduled check while a USDC transfer to one of our deposit addresses at or below the safe block has no deposit record | D34, D131 | `J2.S3` `J3.S3` `J6.S1` |
@@ -63,7 +63,7 @@ flowchart LR
 - `J1.S1.c1` WHEN createSettle() starts without SETTLE_MODE THE SYSTEM SHALL refuse to start and name the missing variable
 - `J1.S1.c2` WHEN SETTLE_MODE is test THE SYSTEM SHALL simulate deposits and SHALL NOT send any transaction on a real chain
 
-**`J1.S2`** Sets the configuration · decisions D26, D135, D136 · invariants I5
+**`J1.S2`** Sets the configuration · decisions D26, D39, D135 · invariants I5
 
 - `J1.S2.c1` WHEN createSettle() starts THE SYSTEM SHALL validate the database URL and every address and URL, and name each invalid or missing value
 - `J1.S2.c2` IF the treasury or refund address is missing or not a valid address THE SYSTEM SHALL NOT start
@@ -122,7 +122,7 @@ flowchart LR
 
 ### J2 acceptance criteria
 
-**`J2.S1`** Sees their Base deposit address · decisions D13, D20, D110, D123, D132, D135, D136, D137
+**`J2.S1`** Sees their Base deposit address · decisions D13, D20, D28, D33, D38, D39, D135
 
 - `J2.S1.c1` WHEN an account first asks for a Base deposit address THE SYSTEM SHALL compute its CREATE2 address from a salt of the business's address namespace and the account ID, plus the stored recipient, minimum and sweep fee, and store it with its lane and destination
 - `J2.S1.c2` WHEN the account asks again THE SYSTEM SHALL return the same stored address and SHALL NOT issue a new one
@@ -133,14 +133,14 @@ flowchart LR
 
 - `J2.S2.c1` WHILE the widget is open and no transfer is recorded THE SYSTEM SHALL check that one address every 5 s
 
-**`J2.S3`** The transfer is recorded · decisions D18, D21, D23, D34, D123 · invariants I1, I6
+**`J2.S3`** The transfer is recorded · decisions D18, D21, D23, D28, D34 · invariants I1, I6
 
 - `J2.S3.c1` WHEN a USDC transfer to the address is at or below the safe block THE SYSTEM SHALL record one deposit keyed by chain ID, tx hash and log index
 - `J2.S3.c2` IF the same transfer is read again THE SYSTEM SHALL NOT record a second deposit
 - `J2.S3.c3` IF the address's balance is below its 2 USDC minimum THE SYSTEM SHALL NOT start a sweep and SHALL show "Received X. Send Y more to reach the 2 USDC minimum"
 - `J2.S3.c4` WHEN our own read finds the transfer at the latest block THE SYSTEM SHALL show "Received" with the amount, and SHALL NOT record or credit it before it is at or below the safe block
 
-**`J2.S4`** Sweeps to the recipient on Base · decisions D36, D122, D132, D136 · invariants I3
+**`J2.S4`** Sweeps to the recipient on Base · decisions D33, D36, D39, D121 · invariants I3
 
 - `J2.S4.c1` WHEN a recorded deposit brings the address's balance to the minimum or more and no sweep is running for the address THE SYSTEM SHALL start one sweep workflow keyed by the address and a sweep number
 - `J2.S4.c2` WHEN the address has no contract yet THE SYSTEM SHALL deploy it in the sweep workflow before calling sweep()
@@ -148,7 +148,7 @@ flowchart LR
 - `J2.S4.c4` IF a sweep transaction fails THE SYSTEM SHALL NOT mark the deposit credited, and SHALL retry the sweep
 - `J2.S4.c5` WHEN the sweep transaction is confirmed THE SYSTEM SHALL link to it every USDC transfer into the address that came before it on that chain, recording any not yet recorded
 
-**`J2.S5`** Verifies the arrival and credits · decisions D17, D21, D22, D23, D32, D122 · invariants I1, I2, I4
+**`J2.S5`** Verifies the arrival and credits · decisions D17, D21, D22, D23, D32, D121 · invariants I1, I2, I4
 
 - `J2.S5.c1` WHEN the sweep's USDC arrival at the stored recipient is at or below the safe block THE SYSTEM SHALL record one credit for that sweep with the verified amount, in base units, covering every deposit linked to it
 - `J2.S5.c2` IF no matching arrival is verified THE SYSTEM SHALL NOT credit the deposit
@@ -198,7 +198,7 @@ flowchart LR
 
 ### J3 acceptance criteria
 
-**`J3.S1`** Sees their Arbitrum deposit address · decisions D13, D20, D110, D123, D132, D135, D136, D137
+**`J3.S1`** Sees their Arbitrum deposit address · decisions D13, D20, D28, D33, D38, D39, D135
 
 - `J3.S1.c1` WHEN an account first asks for an Arbitrum deposit address THE SYSTEM SHALL compute its CREATE2 address from a salt of the business's address namespace and the account ID, plus the stored recipient on Base, minimum and sweep fee, and store it with its lane and destination
 - `J3.S1.c2` WHEN the account asks again THE SYSTEM SHALL return the same stored address and SHALL NOT issue a new one
@@ -209,14 +209,14 @@ flowchart LR
 
 - `J3.S2.c1` WHILE the widget is open and no transfer is recorded THE SYSTEM SHALL check that one address every 5 s
 
-**`J3.S3`** The transfer is recorded · decisions D18, D21, D23, D34, D123, Q15 · invariants I1, I6
+**`J3.S3`** The transfer is recorded · decisions D18, D21, D23, D28, D34, Q15 · invariants I1, I6
 
 - `J3.S3.c1` WHEN a USDC transfer to the address is at or below Arbitrum's safe block THE SYSTEM SHALL record one deposit keyed by chain ID, tx hash and log index
 - `J3.S3.c2` IF the same transfer is read again THE SYSTEM SHALL NOT record a second deposit
 - `J3.S3.c3` IF the address's balance is below its 2 USDC minimum THE SYSTEM SHALL NOT start a sweep and SHALL show "Received X. Send Y more to reach the 2 USDC minimum"
 - `J3.S3.c4` WHEN our own read finds the transfer at the latest block THE SYSTEM SHALL show "Received" with the amount, and SHALL NOT record or credit it before it is at or below the safe block
 
-**`J3.S5`** Verifies the mint on Base and credits · decisions D17, D21, D22, D23, D32, D122 · invariants I1, I2, I4
+**`J3.S5`** Verifies the mint on Base and credits · decisions D17, D21, D22, D23, D32, D121 · invariants I1, I2, I4
 
 - `J3.S5.c1` WHEN the CCTP mint to the stored recipient on Base is at or below the safe block THE SYSTEM SHALL record one credit for that sweep with the verified minted amount, in base units, covering every deposit linked to it
 - `J3.S5.c2` IF no matching mint is verified on Base THE SYSTEM SHALL NOT credit the deposit, whatever the burn or attestation shows
@@ -266,7 +266,7 @@ flowchart LR
 - `J4.S1.c1` WHEN a recorded deposit brings the address's balance to the minimum or more and no sweep is running for the address THE SYSTEM SHALL start one sweep workflow keyed by the address and a sweep number
 - `J4.S1.c2` IF a sweep is already running for the address THE SYSTEM SHALL NOT start a second one, and a deposit recorded meanwhile SHALL wait for the next sweep
 
-**`J4.S2`** Burns the USDC through CCTP · decisions D122, D132, D136 · invariants I3
+**`J4.S2`** Burns the USDC through CCTP · decisions D33, D39, D121 · invariants I3
 
 - `J4.S2.c1` WHEN the address has no contract yet THE SYSTEM SHALL deploy it before calling sweep()
 - `J4.S2.c2` WHEN sweep() runs THE SYSTEM SHALL pay the stored sweep fee to the gas wallet and burn the rest of the balance, with the stored recipient on Base as the mint recipient
@@ -310,7 +310,7 @@ flowchart LR
 
 ### J5 acceptance criteria
 
-**`J5.S1`** Settle Kit sends the signed event · decisions D14, D22, D45, D122 · invariants I5
+**`J5.S1`** Settle Kit sends the signed event · decisions D14, D22, D45, D121 · invariants I5
 
 - `J5.S1.c1` WHEN a credit is recorded THE SYSTEM SHALL POST one deposit.credited with a stable event ID, the account ID, the verified amount as a decimal string and the incoming transfers it covers
 - `J5.S1.c2` IF the business does not answer with a 2xx status within 10 s THE SYSTEM SHALL retry up to 10 times, waiting 2^(n-1) minutes before retry n, and SHALL NOT change the event ID or payload
@@ -332,7 +332,7 @@ flowchart LR
 
 **Actor:** Settle Kit engine (indexer, workflows, scheduled jobs)  
 **Goal:** Every minute, find every deposit, restart stuck work and check the books  
-**Proves:** Nothing is missed and nothing is credited without an arrival (D131, D133)  
+**Proves:** Nothing is missed and nothing is credited without an arrival (D131, D35)  
 
 | Exit | Title | Named by |
 |---|---|---|
@@ -369,7 +369,7 @@ flowchart LR
 - `J6.S2.c1` WHEN an address holds recorded, uncredited deposits at or above its minimum and has no running sweep or credit workflow THE SYSTEM SHALL start its sweep workflow
 - `J6.S2.c2` IF the address already has a running sweep or credit workflow THE SYSTEM SHALL NOT start a second one
 
-**`J6.S3`** Checks the books · decisions D133, D54 · invariants I2
+**`J6.S3`** Checks the books · decisions D35, D54 · invariants I2
 
 - `J6.S3.c1` WHEN the check runs THE SYSTEM SHALL match every credit to a verified USDC arrival at its stored recipient on Base
 - `J6.S3.c2` IF a credited deposit has no matching arrival THE SYSTEM SHALL NOT mark the check clean, and SHALL record a critical alert naming the deposit

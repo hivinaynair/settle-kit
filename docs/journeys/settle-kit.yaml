@@ -1,4 +1,4 @@
-# Settle Kit journey spine. Slice 1 (D7): own-rails deposits of USDC on Base and Arbitrum.
+# Settle Kit journey spine. Slice 1 (D2): own-rails deposits of USDC on Base and Arbitrum.
 # Each journey is one straight path; what can go wrong at a step is a rule on that step.
 product: settle-kit
 
@@ -40,7 +40,7 @@ invariants:
   - id: I3
     title: Contracts pay only fixed destinations
     rule: THE SYSTEM SHALL NOT let a deposit contract send USDC anywhere but its stored recipient and its stored sweep fee to the gas wallet, or other tokens anywhere but its refund address
-    decisions: [D132, D136]
+    decisions: [D33, D39]
   - id: I4
     title: A credit is final
     rule: THE SYSTEM SHALL NOT change a credited deposit's amount or move it out of the credited state
@@ -77,7 +77,7 @@ journeys:
         title: Sets the configuration
         bucket: human
         does: Sets the database URL, treasury and refund addresses, gas wallet key, Base and Arbitrum RPC URLs, webhook URL and secret, and the address namespace (32 random bytes, generated once)
-        decisions: [D26, D135, D136]
+        decisions: [D26, D39, D135]
         invariants: [I5]
         next: J1.S3
         criteria:
@@ -131,7 +131,7 @@ journeys:
         state: show_address
         sees: QR code, the address in groups, "USDC on Base only", minimum 2 USDC, "you'll receive about X"
         does: Returns the account's stored address, computing and storing it on first use
-        decisions: [D13, D20, D110, D123, D132, D135, D136, D137]
+        decisions: [D13, D20, D28, D33, D38, D39, D135]
         next: J2.S2
         criteria:
           c1: WHEN an account first asks for a Base deposit address THE SYSTEM SHALL compute its CREATE2 address from a salt of the business's address namespace and the account ID, plus the stored recipient, minimum and sweep fee, and store it with its lane and destination
@@ -155,7 +155,7 @@ journeys:
         state: received
         sees: '"Received 10.00 USDC. Moving it to your account"'
         does: Reads the USDC transfer at or below Base's safe block and records the deposit
-        decisions: [D18, D21, D23, D34, D123]
+        decisions: [D18, D21, D23, D28, D34]
         invariants: [I1, I6]
         next: J2.S4
         criteria:
@@ -167,7 +167,7 @@ journeys:
         title: Sweeps to the recipient on Base
         bucket: script
         does: The gas wallet deploys the address's contract if needed and calls sweep(), which pays the sweep fee and forwards the rest
-        decisions: [D36, D122, D132, D136]
+        decisions: [D33, D36, D39, D121]
         invariants: [I3]
         next: J2.S5
         criteria:
@@ -180,7 +180,7 @@ journeys:
         title: Verifies the arrival and credits
         bucket: script
         does: Reads the USDC arrival at the stored recipient at the safe block and credits the deposit
-        decisions: [D17, D21, D22, D23, D32, D122]
+        decisions: [D17, D21, D22, D23, D32, D121]
         invariants: [I1, I2, I4]
         next: J2.S6
         criteria:
@@ -218,7 +218,7 @@ journeys:
         state: show_address
         sees: QR code, the address in groups, "USDC on Arbitrum only", minimum 2 USDC, "you'll receive about X"
         does: Returns the account's stored Arbitrum address, computing and storing it on first use
-        decisions: [D13, D20, D110, D123, D132, D135, D136, D137]
+        decisions: [D13, D20, D28, D33, D38, D39, D135]
         next: J3.S2
         criteria:
           c1: WHEN an account first asks for an Arbitrum deposit address THE SYSTEM SHALL compute its CREATE2 address from a salt of the business's address namespace and the account ID, plus the stored recipient on Base, minimum and sweep fee, and store it with its lane and destination
@@ -242,7 +242,7 @@ journeys:
         state: received
         sees: '"Received 10.00 USDC on Arbitrum. Moving it to Base"'
         does: Reads the USDC transfer at or below Arbitrum's safe block and records the deposit
-        decisions: [D18, D21, D23, D34, D123, Q15]
+        decisions: [D18, D21, D23, D28, D34, Q15]
         invariants: [I1, I6]
         next: J3.S4
         criteria:
@@ -259,7 +259,7 @@ journeys:
         title: Verifies the mint on Base and credits
         bucket: script
         does: Reads the USDC minted to the stored recipient on Base at the safe block and credits the deposit
-        decisions: [D17, D21, D22, D23, D32, D122]
+        decisions: [D17, D21, D22, D23, D32, D121]
         invariants: [I1, I2, I4]
         next: J3.S6
         criteria:
@@ -304,7 +304,7 @@ journeys:
         title: Burns the USDC through CCTP
         bucket: script
         does: The gas wallet deploys the contract if needed and calls sweep(), which pays the sweep fee and burns the rest with CCTP V2 Fast and the Forwarding Service
-        decisions: [D122, D132, D136]
+        decisions: [D33, D39, D121]
         invariants: [I3]
         next: J4.S3
         criteria:
@@ -345,7 +345,7 @@ journeys:
         bucket: script
         surface: credited_webhook
         does: POSTs deposit.credited, signed with Standard Webhooks
-        decisions: [D14, D22, D45, D122]
+        decisions: [D14, D22, D45, D121]
         invariants: [I5]
         next: J5.S2
         criteria:
@@ -377,7 +377,7 @@ journeys:
     title: The minute check
     actor: engine
     goal: Every minute, find every deposit, restart stuck work and check the books
-    proves: Nothing is missed and nothing is credited without an arrival (D131, D133)
+    proves: Nothing is missed and nothing is credited without an arrival (D131, D35)
     exits:
       - id: checked
         title: Check finished; problems flagged
@@ -406,7 +406,7 @@ journeys:
         title: Checks the books
         bucket: script
         does: Matches each credited deposit to a verified arrival at its recipient, and each treasury arrival to a credited deposit
-        decisions: [D133, D54]
+        decisions: [D35, D54]
         invariants: [I2]
         next: J6.S4
         criteria:

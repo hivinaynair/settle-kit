@@ -30,8 +30,10 @@ Two artifacts drive the spec, written in this order. How to write them:
 
 - Other docs (design doc, task specs, PRs) link these IDs; they never restate them.
 - Decisions: record the owner's answer once with an ID and date; never re-ask a settled one.
-  To change one, add a new row that supersedes it. Ask one question at a time, with a
-  recommendation and the rejected options.
+  Until the first slice 1 task is merged, change one by editing its row in place (git keeps
+  the history) and update every citation in the same commit; after that, add a new row whose
+  `Supersedes` column names the row it replaces. Never reuse a retired ID. Ask one question at
+  a time, with a recommendation and the rejected options.
 - No guessing: a missing business, money or user-visible rule becomes an open question in
   `docs/decisions.md`. Internal technical choices (names, layout, helpers) are the builder's.
 - Journeys: never hand-edit the generated `.md`; never renumber or reuse a step,
