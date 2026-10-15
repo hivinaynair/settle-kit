@@ -298,8 +298,8 @@ flowchart LR
 
 | Step | Bucket | Surface · state | Sees | Does | Next | Criteria |
 |---|---|---|---|---|---|---|
-| `J5.S1` Settle Kit sends the signed event | script | `credited_webhook` | — | POSTs deposit.credited, signed with Standard Webhooks | `J5.S2` | 3 |
-| `J5.S2` The business verifies and credits its user | external | — | — | Calls settle.webhook(handler), which checks the signature, then credits user_42 in its own database | `J5.S3` | 2 |
+| `J5.S1` Settle Kit sends the signed event | script | `credited_webhook` | — | POSTs deposit.credited, signed with Standard Webhooks | `J5.S2` | 4 |
+| `J5.S2` The business verifies and credits its user | external | — | — | Calls settle.webhook(handler), which checks the signature, then credits user_42 in its own database | `J5.S3` | 3 |
 | `J5.S3` Delivery is marked done | script | — | — | Records the acknowledgment | exit `delivered` | 2 |
 
 ### J5 acceptance criteria
@@ -309,11 +309,13 @@ flowchart LR
 - `J5.S1.c1` WHEN a credit is recorded THE SYSTEM SHALL POST one deposit.credited with a stable event ID, the account ID, the verified amount as a decimal string and the incoming transfers it covers
 - `J5.S1.c2` IF the business does not answer with a 2xx status within 10 s THE SYSTEM SHALL retry up to 10 times, waiting 2^(n-1) minutes before retry n, and SHALL NOT change the event ID or payload
 - `J5.S1.c3` IF a delivery attempt fails THE SYSTEM SHALL NOT log the webhook secret or the signature
+- `J5.S1.c4` IF all 11 attempts fail THE SYSTEM SHALL NOT retry again, and SHALL mark the delivery failed so an operator can resend it, leaving the credit unchanged
 
 **`J5.S2`** The business verifies and credits its user · decisions D44
 
 - `J5.S2.c1` WHEN settle.webhook receives a request with a valid signature THE SYSTEM SHALL call the handler once with the parsed event
 - `J5.S2.c2` IF the signature is missing, invalid or older than 5 minutes THE SYSTEM SHALL answer 401 and SHALL NOT call the handler
+- `J5.S2.c3` WHEN the handler is called THE SYSTEM SHALL pass the event ID, so the business can ignore an event it has already processed
 
 **`J5.S3`** Delivery is marked done · decisions D45
 

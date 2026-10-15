@@ -346,6 +346,7 @@ journeys:
           c1: WHEN a credit is recorded THE SYSTEM SHALL POST one deposit.credited with a stable event ID, the account ID, the verified amount as a decimal string and the incoming transfers it covers
           c2: IF the business does not answer with a 2xx status within 10 s THE SYSTEM SHALL retry up to 10 times, waiting 2^(n-1) minutes before retry n, and SHALL NOT change the event ID or payload
           c3: IF a delivery attempt fails THE SYSTEM SHALL NOT log the webhook secret or the signature
+          c4: IF all 11 attempts fail THE SYSTEM SHALL NOT retry again, and SHALL mark the delivery failed so an operator can resend it, leaving the credit unchanged
       - id: J5.S2
         title: The business verifies and credits its user
         bucket: external
@@ -355,6 +356,7 @@ journeys:
         criteria:
           c1: WHEN settle.webhook receives a request with a valid signature THE SYSTEM SHALL call the handler once with the parsed event
           c2: IF the signature is missing, invalid or older than 5 minutes THE SYSTEM SHALL answer 401 and SHALL NOT call the handler
+          c3: WHEN the handler is called THE SYSTEM SHALL pass the event ID, so the business can ignore an event it has already processed
       - id: J5.S3
         title: Delivery is marked done
         bucket: script
