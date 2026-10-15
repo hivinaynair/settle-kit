@@ -276,3 +276,115 @@ rate-limit load test or post-safe reorganization was executed in this check.
 The Arbitrum source policy remains `safe` in slice 1 (D34). S11's timing measurement
 is still open; none of these sources proves a completion-time guarantee. D36 now selects DBOS based on S12; its version, executor and side-effect constraints
 remain part of the setup and recovery rules.
+
+## S14 · USDC authorization relayer versus ERC-4337 paymaster — 2026-10-15 (local forks)
+
+**Recommendation:** ERC-3009 authorization plus the host's relayer for the first
+gasless connected-wallet path. Circle's existing USDC paymaster is a viable
+alternative for a product that starts with compatible smart accounts. “Relayer”
+here is our submitting service, not Relay Protocol. No product decision was
+changed by this experiment.
+
+Executable evidence and the detailed comparison are in
+[`scripts/spikes/s14-gas-payment`](../scripts/spikes/s14-gas-payment/README.md).
+Run `bun scripts/spikes/s14-gas-payment/run.ts`; it requires Forge/Anvil and the
+existing Bun workspace dependencies. The saved results include the pinned blocks,
+contracts, token domains and all named checks.
+
+| Tested on local Base Sepolia and Arbitrum Sepolia forks | Result |
+|---|---|
+| EOA with zero ETH signs 10.20 USDC; host relays an atomic receive-and-split | 10 USDC reaches the destination, 0.20 reaches the fixed fee recipient; payer needs no allowance or account upgrade |
+| Change recipient/fee split; replay; expired/wrong-chain signature; insufficient USDC; direct consumption outside the adapter | Rejected |
+| Recipient transfer fails after the adapter pulls USDC | Principal, fee and authorization use roll back; host still spends gas |
+| Zero-ETH EOA signs 7702 delegation, USDC permit and UserOperation using deployed Circle v0.8 paymaster | 10 USDC reaches destination, Circle charges USDC gas; no prior approval required |
+| Repeat UserOperation or supply insufficient fee cap | Rejected |
+| Payment inside UserOperation fails | Outer transaction succeeds, UserOperation fails, payer still pays USDC gas |
+
+**14 named checks passed per chain.** This is local fork evidence with simulated
+funding, not live testnet/mainnet transfers. We submitted directly to EntryPoint
+as a local bundler; no browser wallet, public bundler admission, CCTP transfer,
+database crash recovery or L2-accurate gas pricing was tested. The 0.20-USDC fee
+is an example input, not a recommended price.
+
+Authorization fits D10/D33 and reuses D27/D139's operator and recovery work. A
+production integration must preserve fixed destinations (now I11), bind the fee
+quote and keep D21's independent safe-credit checks. At the time of this experiment,
+the wallet journey and fee policy were still recommendations: fees reimburse an ETH-funded operator, and 10 USDC
+received on Arbitrum is not necessarily 10 USDC credited on Base after J4's costs.
+The next gate is a real zero-ETH browser-wallet test on testnet. The report explains
+when Circle's paymaster is preferable and the remaining wallet compatibility gap.
+
+
+### S14 follow-up after the scope review — 2026-10-15
+
+The recommendations above are historical. D111/D126–D128/D140–D142/D231 and J8
+now specify the wallet path, fixed-fee policy, spending controls and failure closure.
+I9 is retired; I11 is the current fixed-destination invariant. These specification
+updates do not upgrade S14's evidence from local forks to a live payment.
+A stricter decoded-revert predicate was added to the runner. Its recheck passed all
+14 Base checks and ten Arbitrum authorization checks, then stopped on unavailable
+historical EntryPoint storage; the original paymaster results were not overwritten.
+
+## S15 · Review validation and remaining proofs — 2026-10-15
+
+**Research completed; 15 authorization checks passed on each local fork.**
+This check closes specification gaps without claiming implementation of the SDK.
+
+| Finding | Evidence and resulting rule |
+|---|---|
+| A reverted attempt need not invalidate its authorization | [ERC-3009](https://eips.ethereum.org/EIPS/eip-3009) defines an on-chain validity window and cancellation. D111 separates failed attempts from a conclusively unused, unexecutable payment. A complete source-safe execution scan is still required by the SDK |
+| A fixed credit needs an enforceable deduction ceiling | [Circle forwarding](https://developers.circle.com/cctp/concepts/forwarding-service) uses maxFee for the combined protocol/forwarding budget and can execute at Standard finality when the budget cannot also cover Fast. D126 requires burn amount minus maxFee to cover quoted credit; D38 records actual execution rather than promising Fast completion |
+| Package version and workflow compatibility are different | [DBOS upgrading workflows](https://docs.dbos.dev/typescript/tutorials/upgrading-workflows) describes application-version recovery and keeping old workers during version transitions. D36 keeps compatible upgrades on the same workflow version and retains old implementations until their work drains. This research does not prove recovery in our pinned runtime |
+
+The runnable local-fork lifecycle experiment is
+[`scripts/spikes/s15-authorization-lifecycle`](../scripts/spikes/s15-authorization-lifecycle/README.md).
+It reuses S14's isolated adapter and native-USDC deployments. Base block 48,143,481
+and Arbitrum block 319,387,788 passed; an earlier Arbitrum run stopped on missing
+historical RPC state and was not counted as a rejection result. The tests confirm
+that a reverted attempt can later succeed with the same signature, cancellation
+consumes the nonce without payment, and the signed chain deadline stops execution.
+Its results do
+not prove canonical scan completeness, CCTP, browser compatibility or DBOS recovery.
+
+### Implementation acceptance checks (D57)
+
+| Gate | Smallest useful proof | Current status |
+|---|---|---|
+| Real browser wallet | One named browser wallet signs a Base testnet authorization with zero payer ETH; verify receipt and balances independently; record rejection and account-switch behavior | S16: MetaMask payment, safe verification and read-only replay rejection passed; cancellation and account/network-switch cases remain |
+| Combined Arbitrum route | Authorization entry point enforces the quoted fee bound and burns through Circle Forwarding; match the original message to the Base mint and record source safe, destination arrival and destination safe times | Not run; S14/S15 do not contain a CCTP adapter or a live transfer |
+| Upgrade recovery | Reproducible DBOS/Postgres runner pauses a pending payment stage, upgrades compatible package code, then tests an old workflow name alongside a new one | Not run; S12's earlier external script is not a reproducible repository artifact |
+| Consumer onboarding | Replace the [integration sketch](examples/minimal-host.md) with a runnable separate consumer, start simulated mode without chain credentials, recover a pre-transfer attempt and process duplicate delivery once | Not run; product package exports remain placeholders |
+
+Exploratory spiking is complete by owner decision. Carry the unfinished checks into
+implementation tasks; do not start another standalone spike phase.
+Do not add more providers or account-abstraction mechanisms to answer these questions.
+A live browser signature cannot be replaced by another private-key fork script.
+
+## S16 · Live browser-wallet payment — 2026-10-15
+
+The [local browser runner](../scripts/spikes/s16-browser-wallet/README.md) is ready
+for D50/D57 and J8. A separate random operator received Base Sepolia faucet ETH,
+and the S14 authorization adapter was deployed successfully in block 48145649.
+The runner reuses Lycoris's existing Coinbase faucet configuration to send **only
+USDC** to the browser payer, preserving zero payer ETH. Its fixed experimental
+payment is 1.00 USDC: 0.99 to treasury and 0.01 to the operator.
+
+Strict standalone TypeScript and six local HTTP checks passed. The page was
+visually inspected. Private state is excluded from Git and inaccessible through
+the server.
+
+**Live MetaMask payment passed on Base Sepolia.** The user connected MetaMask in
+Chrome and completed the signature flow. Transaction
+[`0x9b2a8e…adac0cf3`](https://sepolia.basescan.org/tx/0x9b2a8e601638aa2031324dab2e25216b2028d61d1f63f0b1342dc015adac0cf3)
+succeeded in canonical block 48146110. Independent RPC checks confirmed the
+operator submitted it, the payer spent 1.00 USDC, treasury received 0.99 USDC,
+and the operator received 0.01 USDC. Payer ETH was zero in both the preceding
+block and the receipt block. The saved verifier reached safe block 48146148.
+USDC marked the authorization consumed and rejected an exact replay in a
+read-only simulation; no second transaction was sent.
+
+This validates the successful ERC-3009 browser path for this MetaMask session
+without a paymaster. Wallet version and signature-screen presentation were not
+captured. Cancellation and account/network-switch behavior still need explicit
+tests. No broader wallet compatibility, CCTP, host crediting or production SDK
+claim is made.

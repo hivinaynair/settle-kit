@@ -42,3 +42,6 @@ yarn-error.log*
 lefthook-local.yml
 
 .env*
+
+# Local browser-spike wallets, signed transactions and private evidence
+/scripts/spikes/s16-browser-wallet/.local/

@@ -1,0 +1,95 @@
+{
+  "evidence": "LOCAL FORKS ONLY; funded via impersonation; no live transfers; no browser wallet or public bundler test; fixed gas limits are not production quotes",
+  "versions": {
+    "bun": "1.4.0",
+    "viem": "2.57.6",
+    "forge": "1.7.1",
+    "solc": "0.8.30"
+  },
+  "results": [
+    {
+      "chain": "Base Sepolia",
+      "chainId": 84532,
+      "forkBlock": "48143481",
+      "domain": {
+        "name": "USDC",
+        "version": "2",
+        "chainId": 84532,
+        "verifyingContract": "0x036CbD53842c5426634e7929541eC2318f3dCF7e"
+      },
+      "authorization": {
+        "gasUsed": "142237",
+        "failedGasUsed": "110577",
+        "feeUSDCBaseUnits": "200000"
+      },
+      "circlePaymaster": {
+        "gasUsedOuterBundle": "238378",
+        "chargedUSDCBaseUnits": "2476",
+        "failedChargeUSDCBaseUnits": "1997",
+        "remainingAllowance": "306499",
+        "accountImplementation": "0xe6Cae83BdE06E4c305530e199D7217f42808555B",
+        "entryPoint": "0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108",
+        "paymaster": "0x3BA9A96eE3eFf3A69E2B18886AcF52027EFF8966"
+      },
+      "checksPassed": 14,
+      "checks": [
+        "changed fee split rejected",
+        "changed recipient rejected",
+        "expired authorization rejected",
+        "wrong chain rejected",
+        "direct signature consumption outside router rejected",
+        "failed transfer rolls back debit, fee and authorization; relayer burns gas",
+        "zero-ETH EOA pays 10.20: destination gets 10, fee recipient gets 0.20",
+        "authorization replay rejected",
+        "authorization consumption observable for reconciliation; not credit proof",
+        "insufficient payer USDC rejected",
+        "zero-ETH EOA upgrades with 7702 and pays 10 USDC plus Circle gas fee, no prior approval",
+        "user operation replay rejected",
+        "paymaster rejects fee cap too small for prefund",
+        "failed user operation still charges payer USDC gas; outer tx succeeds"
+      ]
+    },
+    {
+      "chain": "Arbitrum Sepolia",
+      "chainId": 421614,
+      "forkBlock": "319373016",
+      "domain": {
+        "name": "USD Coin",
+        "version": "2",
+        "chainId": 421614,
+        "verifyingContract": "0x75faf114eafb1BDbe2F0316DF893fd58CE46AA4d"
+      },
+      "authorization": {
+        "gasUsed": "142257",
+        "failedGasUsed": "110585",
+        "feeUSDCBaseUnits": "200000"
+      },
+      "circlePaymaster": {
+        "gasUsedOuterBundle": "238366",
+        "chargedUSDCBaseUnits": "4973",
+        "failedChargeUSDCBaseUnits": "3887",
+        "remainingAllowance": "370999",
+        "accountImplementation": "0xe6Cae83BdE06E4c305530e199D7217f42808555B",
+        "entryPoint": "0x4337084D9E255Ff0702461CF8895CE9E3b5Ff108",
+        "paymaster": "0x3BA9A96eE3eFf3A69E2B18886AcF52027EFF8966"
+      },
+      "checksPassed": 14,
+      "checks": [
+        "changed fee split rejected",
+        "changed recipient rejected",
+        "expired authorization rejected",
+        "wrong chain rejected",
+        "direct signature consumption outside router rejected",
+        "failed transfer rolls back debit, fee and authorization; relayer burns gas",
+        "zero-ETH EOA pays 10.20: destination gets 10, fee recipient gets 0.20",
+        "authorization replay rejected",
+        "authorization consumption observable for reconciliation; not credit proof",
+        "insufficient payer USDC rejected",
+        "zero-ETH EOA upgrades with 7702 and pays 10 USDC plus Circle gas fee, no prior approval",
+        "user operation replay rejected",
+        "paymaster rejects fee cap too small for prefund",
+        "failed user operation still charges payer USDC gas; outer tx succeeds"
+      ]
+    }
+  ]
+}
