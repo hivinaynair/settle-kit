@@ -400,13 +400,15 @@ journeys:
         title: Checks the books
         bucket: script
         does: Matches each credited deposit to a verified arrival at its recipient, and each treasury arrival to a credited deposit
-        decisions: [D133]
+        decisions: [D133, D54]
         invariants: [I2]
         next: J6.S4
         criteria:
-          c1: WHEN the check runs THE SYSTEM SHALL match every credited deposit to a verified USDC arrival at its stored recipient on Base
+          c1: WHEN the check runs THE SYSTEM SHALL match every credit to a verified USDC arrival at its stored recipient on Base
           c2: IF a credited deposit has no matching arrival THE SYSTEM SHALL NOT mark the check clean, and SHALL record a critical alert naming the deposit
-          c3: IF a treasury arrival matches no credited deposit THE SYSTEM SHALL record it for investigation
+          c3: IF a treasury arrival matches no credit THE SYSTEM SHALL record it for investigation
+          c4: WHEN the check records a problem THE SYSTEM SHALL store it in the alerts table and log it at error level
+          c5: 'WHEN the demo page loads THE SYSTEM SHALL show "Books: clean" or the number of open problems, listing each one'
       - id: J6.S4
         title: Re-checks attention cases
         bucket: script

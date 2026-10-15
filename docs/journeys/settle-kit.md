@@ -347,7 +347,7 @@ flowchart LR
 |---|---|---|---|---|---|---|
 | `J6.S1` Reads the chains | script | — | — | Reads USDC transfers to our deposit addresses on Base and Arbitrum from the saved position up to the safe block | `J6.S2` | 3 |
 | `J6.S2` Restarts stuck work | script | — | — | Starts the sweep or credit workflow for any address whose deposits have none running | `J6.S3` | 2 |
-| `J6.S3` Checks the books | script | — | — | Matches each credited deposit to a verified arrival at its recipient, and each treasury arrival to a credited deposit | `J6.S4` | 3 |
+| `J6.S3` Checks the books | script | — | — | Matches each credited deposit to a verified arrival at its recipient, and each treasury arrival to a credited deposit | `J6.S4` | 5 |
 | `J6.S4` Re-checks attention cases | script | — | — | Re-checks deposits in needs_attention on D17's schedule | exit `checked` | 3 |
 
 ### J6 acceptance criteria
@@ -363,11 +363,13 @@ flowchart LR
 - `J6.S2.c1` WHEN an address holds recorded, uncredited deposits at or above its minimum and has no running sweep or credit workflow THE SYSTEM SHALL start its sweep workflow
 - `J6.S2.c2` IF the address already has a running sweep or credit workflow THE SYSTEM SHALL NOT start a second one
 
-**`J6.S3`** Checks the books · decisions D133 · invariants I2
+**`J6.S3`** Checks the books · decisions D133, D54 · invariants I2
 
-- `J6.S3.c1` WHEN the check runs THE SYSTEM SHALL match every credited deposit to a verified USDC arrival at its stored recipient on Base
+- `J6.S3.c1` WHEN the check runs THE SYSTEM SHALL match every credit to a verified USDC arrival at its stored recipient on Base
 - `J6.S3.c2` IF a credited deposit has no matching arrival THE SYSTEM SHALL NOT mark the check clean, and SHALL record a critical alert naming the deposit
-- `J6.S3.c3` IF a treasury arrival matches no credited deposit THE SYSTEM SHALL record it for investigation
+- `J6.S3.c3` IF a treasury arrival matches no credit THE SYSTEM SHALL record it for investigation
+- `J6.S3.c4` WHEN the check records a problem THE SYSTEM SHALL store it in the alerts table and log it at error level
+- `J6.S3.c5` WHEN the demo page loads THE SYSTEM SHALL show "Books: clean" or the number of open problems, listing each one
 
 **`J6.S4`** Re-checks attention cases · decisions D17, D21
 
