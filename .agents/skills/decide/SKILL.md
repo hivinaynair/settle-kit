@@ -13,8 +13,10 @@ Follow the Spec process section of `AGENTS.md`. Output: `docs/decisions.md`, kee
    operations, release. Each row: ID, decision, why (one line), rejected options, date.
 3. List open questions separately. Each: ID (`Q4`), the question, your recommendation, what
    it blocks, who answers. Ask the owner the single question that blocks the most scope.
-4. When answered, move it to decisions with the owner's words. A reversal adds a new
-   decision with `supersedes: D7`; never edit the old row's meaning.
+4. When answered, move it to decisions with the owner's words. To change a decision before
+   the first slice 1 task is merged, edit its row in place and fix every citation in the same
+   commit; after that, add a new row with `Supersedes: D7` and never edit the old row's
+   meaning. Never reuse a retired ID.
 5. Scope check: every feature named in decisions is either in scope (it will get journeys)
    or explicitly out with a reason. "Later" is out.
 

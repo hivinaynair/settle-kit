@@ -228,3 +228,33 @@ committed: the package and `instrumentation.ts` were removed afterwards.
   ([Circle migration guide](https://developers.circle.com/cctp/migration-from-v1-to-v2)).
 - **Not yet confirmed:** what happens to a Fast burn when the allowance is used up, and that
   Circle, not the recipient, bears an Arbitrum rollback after a Fast mint.
+
+## S12 · DBOS Transact as the durable engine — 2026-10-15
+
+`@dbos-inc/dbos-sdk` 5.2.11 (MIT, Node 20+, needs only Postgres), local Postgres 16, run under
+Node 22 and Bun. A standalone script outside the repo, shaped like S1's spike workflow
+(poll, durable sleep, a step that fails once, optional crash and fatal error). Nothing committed.
+
+| Check | Result |
+|---|---|
+| Poll loop, `DBOS.sleep`, a step that fails once (`retriesAllowed`) | Completed; the step retried after 1 s |
+| Error thrown by the workflow | Run `ERROR`, no retry |
+| `kill -9` during a 20 s sleep, restart | Resumed **~1 s** after the restart on the new process |
+| Process killed **inside** a step, restart | Resumed **~1 s** after the restart; only the interrupted step re-ran, finished steps did not |
+| Redeploy with changed workflow code, default settings | **Run stranded**: the version is a hash of the workflow code, and a process only recovers its own version ("No workflows to recover from application version …") |
+| Same, version pinned (`DBOS__APPVERSION=settle-v1`) | New code recovered and finished the old run |
+| Two live processes sharing the default executor ID, one starting | The starting process re-queued the other's live run: **one step ran twice, 4 ms apart**; the run still finished once |
+| Two processes with distinct executor IDs (`DBOS__VMID`) | No interference, no duplicate |
+| Process gone for good; a short-lived process with another executor ID calls `DBOS.resumeWorkflow` | Resumed and finished the orphaned run, then exited (works for cron and serverless) |
+| Bun as the runtime | Works, including crash-inside-a-step recovery |
+
+**So:**
+- Durable and fast to recover (~1 s against S10's ~14 min), runs in any Node or Bun process,
+  and needs nothing but the host's Postgres. No framework plugin, no extra route.
+- Settle Kit must pin the application version (its own release line, not the code hash) and
+  keep workflow code compatible across releases: same steps in the same order; an
+  incompatible change gets a new workflow name.
+- Each process needs its own executor ID. The scheduled check (J6) resumes runs left
+  `PENDING` by a process that is gone, using `DBOS.resumeWorkflow`.
+- Steps are at-least-once: a step can run twice (crash, recovery overlap), so every step with
+  a side effect (a sweep transaction, a webhook) must be safe to repeat.
