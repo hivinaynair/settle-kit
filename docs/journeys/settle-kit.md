@@ -21,7 +21,7 @@ Rules that hold across every journey, ordering and crash point. Tests cite `I1: 
 | `I1` | One credit per transfer | THE SYSTEM SHALL NOT credit the same on-chain transfer (chain ID, tx hash, log index) more than once | D23 | `J2.S3` `J2.S4` `J2.S5` `J3.S3` `J3.S5` `J4.S2` `J5.S2` `J6.S1` `J7.S3` |
 | `I4` | A credit is final | THE SYSTEM SHALL NOT change a credited deposit's amount or move it out of the credited state | D32 | `J2.S5` `J3.S5` `J6.S3` |
 | `I5` | Secrets stay secret | THE SYSTEM SHALL NOT put the gas wallet key or the webhook secret in logs, errors or API responses | D27 | `J1.S2` `J5.S1` |
-| `I7` | Every credit has unique verified backing when created | THE SYSTEM SHALL NOT create a credit without a uniquely claimed canonical USDC arrival at the stored Base recipient at safe and matching source attribution, or for an amount other than that verified net arrival | D21, D23, D121, D123 | `J2.S5` `J3.S5` `J6.S3` `J7.S3` |
+| `I7` | Every credit has unique verified backing when created | THE SYSTEM SHALL NOT create a credit without a uniquely claimed canonical USDC arrival at the stored Base recipient at safe and matching source attribution, or for an amount other than that verified net arrival | D21, D23, D121, D125 | `J2.S5` `J3.S5` `J6.S3` `J7.S3` |
 | `I8` | Complete discovery means a complete captured range | THE SYSTEM SHALL NOT advance a discovery cursor beyond a fully read and committed range, or mark a captured scan complete before every required page and event through its captured safe boundary is read and committed | D34, D131 | `J2.S3` `J2.S4` `J3.S3` `J4.S2` `J6.S1` `J7.S3` |
 | `I9` | All callers are bound to fixed money destinations | THE SYSTEM SHALL NOT let any caller send deposit-contract USDC except to its stored treasury or CCTP destination and fixed sweep-fee recipient during an eligible sweep, or its entire over-limit Arbitrum balance to its stored refund address with zero sweep fee; non-USDC rescue pays only the stored refund address | D28, D33, D39 | `J2.S4` `J4.S2` `J7.S2` |
 
@@ -162,7 +162,7 @@ flowchart LR
 - `J2.S3.c8` WHEN safe unassigned funds first reach the stored minimum THE SYSTEM SHALL persist the processing-eligibility time for that batch and retain it through top-ups, retries and restarts
 - `J2.S3.c9` IF safe unassigned funds are below the stored minimum and no sweep is pending THE SYSTEM SHALL NOT start a sweep and SHALL show "Received X. Send Y more to reach the minimum"
 
-**`J2.S4`** Sweeps to the recipient on Base · decisions D33, D36, D39, D121, D28, D134, D136 · invariants I9, I1, I8
+**`J2.S4`** Sweeps to the recipient on Base · decisions D33, D36, D39, D121, D28, D134, D139 · invariants I9, I1, I8
 
 - `J2.S4.c2` WHEN the address has no contract yet THE SYSTEM SHALL deploy it in the sweep workflow before calling sweep()
 - `J2.S4.c16` IF an address has an open sweep operation THE SYSTEM SHALL NOT start a second operation, including while the first is sleeping or awaiting verification
@@ -177,7 +177,7 @@ flowchart LR
 - `J2.S4.c15` WHEN safe unassigned funds meet the minimum and the address has no open operation THE SYSTEM SHALL atomically start one sweep operation keyed by address and sweep number
 - `J2.S4.c17` IF a sweep step replays after a crash with an unknown transaction outcome THE SYSTEM SHALL NOT create an independently executable fresh-nonce transaction and SHALL reconcile or rebroadcast the saved attempt
 
-**`J2.S5`** Verifies the arrival and credits · decisions D17, D21, D22, D23, D32, D121, D123, D137 · invariants I1, I7, I4
+**`J2.S5`** Verifies the arrival and credits · decisions D17, D21, D22, D23, D32, D121, D125, D230 · invariants I1, I7, I4
 
 - `J2.S5.c2` IF no matching arrival is verified THE SYSTEM SHALL NOT credit the deposit
 - `J2.S5.c3` IF two workers try to credit the same deposit THE SYSTEM SHALL NOT credit it twice
@@ -256,7 +256,7 @@ flowchart LR
 - `J3.S3.c8` WHEN safe unassigned funds first reach the stored minimum THE SYSTEM SHALL persist the processing-eligibility time for that batch and retain it through top-ups, retries and restarts
 - `J3.S3.c9` IF safe unassigned funds are below the stored minimum and no sweep is pending THE SYSTEM SHALL NOT start a sweep and SHALL show "Received X. Send Y more to reach the minimum"
 
-**`J3.S5`** Verifies the mint on Base and credits · decisions D17, D21, D22, D23, D32, D121, D123, D137, D138 · invariants I1, I7, I4
+**`J3.S5`** Verifies the mint on Base and credits · decisions D17, D21, D22, D23, D32, D121, D125, D230, D138 · invariants I1, I7, I4
 
 - `J3.S5.c2` IF no matching mint is verified on Base THE SYSTEM SHALL NOT credit the deposit, whatever the burn or attestation shows
 - `J3.S5.c3` IF two workers try to credit the same deposit THE SYSTEM SHALL NOT credit it twice
@@ -313,7 +313,7 @@ flowchart LR
 - `J4.S1.c4` IF the gross address balance exceeds 1,000,000,000 USDC base units or its net burn exceeds Circle's current on-chain per-message limit THE SYSTEM SHALL NOT start an automatic burn and SHALL enter needs_attention as over_limit
 - `J4.S1.c5` WHEN safe unassigned funds meet the minimum, satisfy both Arbitrum limits and the address has no open operation THE SYSTEM SHALL atomically start one sweep operation keyed by address and sweep number
 
-**`J4.S2`** Burns the USDC through CCTP · decisions D33, D39, D121, D28, D134, D136 · invariants I9, I1, I8
+**`J4.S2`** Burns the USDC through CCTP · decisions D33, D39, D121, D28, D134, D139 · invariants I9, I1, I8
 
 - `J4.S2.c1` WHEN the address has no contract yet THE SYSTEM SHALL deploy it before calling sweep()
 - `J4.S2.c14` WHEN an eligible sweep executes THE SYSTEM SHALL pay exactly the stored fee and burn the remainder to the stored Base domain and recipient using CCTP V2 Fast and Forwarding Service
@@ -327,7 +327,7 @@ flowchart LR
 - `J4.S2.c13` WHEN an attempt is proven reverted or its nonce is proven consumed by another canonical transaction at source safe THE SYSTEM SHALL recheck all sweep guards before any fresh-nonce retry of the same operation
 - `J4.S2.c15` IF a sweep step replays after a crash with an unknown transaction outcome THE SYSTEM SHALL NOT create an independently executable fresh-nonce transaction and SHALL reconcile or rebroadcast the saved attempt
 
-**`J4.S3`** Circle attests the burn · decisions D17, D55, D138
+**`J4.S3`** Circle attests the burn · decisions D17, D56, D138
 
 - `J4.S3.c3` WHILE a known burn is pending before attention THE SYSTEM SHALL schedule Iris polls no less than 5 seconds apart through one persisted poller per burn and a shared rolling budget of at most 20 requests per second across all workers and stages
 - `J4.S3.c4` WHEN a pending burn enters attention THE SYSTEM SHALL replace the five-second poll schedule with a poll every 15 minutes for 7 days from attention entry and daily after that, subject to the shared budget
@@ -335,11 +335,11 @@ flowchart LR
 - `J4.S3.c6` IF Iris returns 429 THE SYSTEM SHALL NOT call Iris from any worker in the shared budget for at least 300 seconds or a longer valid Retry-After
 - `J4.S3.c7` IF a burn awaits attestation or forwarding recovery THE SYSTEM SHALL NOT burn again or start a custom re-attestation loop and SHALL retain the original message for Circle forwarding
 
-**`J4.S4`** Circle mints on Base · decisions D21, D17, D138, D55
+**`J4.S4`** Circle mints on Base · decisions D21, D17, D138, D56
 
 - `J4.S4.c1` WHEN Circle reports the mint THE SYSTEM SHALL wait for the mint to be at or below Base's safe block before reporting the exit
 - `J4.S4.c2` IF Circle reports a mint that is not found on Base THE SYSTEM SHALL NOT report the exit
-- `J4.S4.c3` WHEN Circle forwarding is pending THE SYSTEM SHALL retain the original burn message and continue its due verification under D17 and D55
+- `J4.S4.c3` WHEN Circle forwarding is pending THE SYSTEM SHALL retain the original burn message and continue its due verification under D17 and D56
 - `J4.S4.c4` IF Circle reports forwarding failure or an unknown forwarding status THE SYSTEM SHALL NOT treat it as a mint or a lost-funds verdict and SHALL enter needs_attention with the reported status and known message and transaction identities
 - `J4.S4.c5` IF another party submitted the original mint THE SYSTEM SHALL NOT mint or credit it again and SHALL locate and verify that same message's Base arrival
 
@@ -370,7 +370,7 @@ flowchart LR
 
 ### J5 acceptance criteria
 
-**`J5.S1`** Settle Kit sends the signed event · decisions D14, D22, D45, D121, D137, D54 · invariants I5
+**`J5.S1`** Settle Kit sends the signed event · decisions D14, D22, D45, D121, D230, D54 · invariants I5
 
 - `J5.S1.c1` WHEN a credit is recorded THE SYSTEM SHALL POST one deposit.credited with a stable event ID, the account ID, the verified amount as a decimal string and the incoming transfers it covers
 - `J5.S1.c2` IF the business does not answer with a 2xx status within 10 s THE SYSTEM SHALL retry up to 10 times, waiting 2^(n-1) minutes before retry n, and SHALL NOT change the event ID or payload
@@ -438,7 +438,7 @@ flowchart LR
 - `J6.S1.c10` WHEN a newly issued address joins discovery THE SYSTEM SHALL scan it from its stored start through the captured boundary even if the global cursor has advanced past that start
 - `J6.S1.c11` IF a newly issued address has not completed that catch-up THE SYSTEM SHALL NOT report its discovery complete
 
-**`J6.S2`** Restarts stuck work · decisions D36, D136, D137, D45
+**`J6.S2`** Restarts stuck work · decisions D36, D139, D230, D45
 
 - `J6.S2.c11` WHEN the minute check finds unfinished work with no valid worker claim and its next action is due THE SYSTEM SHALL resume the persisted stage regardless of current address balance or workflow running label
 - `J6.S2.c12` WHEN a worker executes THE SYSTEM SHALL renew its 120-second claim at intervals no greater than 30 seconds and use a new generation when reclaiming expired work
@@ -451,7 +451,7 @@ flowchart LR
 - `J6.S2.c3` WHEN a workflow is still pending and the process that ran it has not recorded a heartbeat for 2 minutes THE SYSTEM SHALL resume the workflow from its last completed step
 - `J6.S2.c13` IF an executor has a heartbeat in the last 120 seconds and the pending operation holds a valid worker claim THE SYSTEM SHALL NOT resume that operation elsewhere
 
-**`J6.S3`** Checks the books · decisions D35, D54, D123 · invariants I7, I4
+**`J6.S3`** Checks the books · decisions D35, D54, D125 · invariants I7, I4
 
 - `J6.S3.c1` WHEN the check runs THE SYSTEM SHALL match every credit to a verified USDC arrival at its stored recipient on Base
 - `J6.S3.c2` IF a credited deposit has no matching arrival THE SYSTEM SHALL NOT mark the check clean, and SHALL record a critical alert naming the deposit
@@ -465,7 +465,7 @@ flowchart LR
 - `J6.S3.c11` IF no check has completed or the last completed check is older than 120 seconds THE SYSTEM SHALL NOT show clean books and SHALL show unknown or stale respectively
 - `J6.S3.c12` WHEN the latest check completed all required work with no open problems and is at most 120 seconds old THE SYSTEM SHALL show "Books: clean as of T" with that check's captured boundaries
 
-**`J6.S4`** Re-checks attention cases · decisions D17, D21, D14, D54, D121, D137, D123
+**`J6.S4`** Re-checks attention cases · decisions D17, D21, D14, D54, D121, D230, D125
 
 - `J6.S4.c1` WHEN a deposit has been in needs_attention for under 7 days THE SYSTEM SHALL re-check it every 15 minutes, and daily after that
 - `J6.S4.c3` IF a re-check finds no verified arrival THE SYSTEM SHALL NOT credit the deposit or mark its funds lost
@@ -505,14 +505,14 @@ flowchart LR
 - `J7.S1.c1` WHEN a safe Arbitrum balance exceeds the gross cap or live net-burn limit THE SYSTEM SHALL expose needs_attention as over_limit with account, address, balance and stored refund destination
 - `J7.S1.c2` IF the balance is over either limit THE SYSTEM SHALL NOT split it into automatic burns or charge a sweep fee
 
-**`J7.S2`** Calls the fixed-destination recovery · decisions D27, D28, D33, D136 · invariants I9
+**`J7.S2`** Calls the fixed-destination recovery · decisions D27, D28, D33, D139 · invariants I9
 
 - `J7.S2.c1` WHEN recoverOverLimit() executes while either Arbitrum limit is exceeded THE SYSTEM SHALL transfer the entire USDC balance to the stored refund address, charge zero USDC sweep fee and emit the recovered amount and destination
 - `J7.S2.c2` IF neither limit is exceeded or the function is invoked on Base THE SYSTEM SHALL NOT recover USDC
 - `J7.S2.c3` IF a caller supplies a different recipient or invokes rescue(USDC) THE SYSTEM SHALL NOT move USDC to that recipient or through rescue
 - `J7.S2.c4` WHEN the SDK submits recovery THE SYSTEM SHALL persist its operation, chain, signer, globally reserved nonce, signed bytes and hash before broadcast and reconcile an unknown outcome before any fresh-nonce attempt
 
-**`J7.S3`** Verifies recovery and retains the repayment case · decisions D17, D27, D34, D54, D121, D137 · invariants I1, I7, I8
+**`J7.S3`** Verifies recovery and retains the repayment case · decisions D17, D27, D34, D54, D121, D230 · invariants I1, I7, I8
 
 - `J7.S3.c1` WHEN a canonical recovery is at source safe THE SYSTEM SHALL assign its source transfers after the preceding successful drain and before this recovery, verify the recovered gross amount and fixed refund receipt, and enter needs_attention as recovered_to_refund_address
 - `J7.S3.c2` IF a transfer belongs to a recovery THE SYSTEM SHALL NOT include it in a later sweep credit or create a Base credit from the refund receipt

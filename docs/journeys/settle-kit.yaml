@@ -45,7 +45,7 @@ invariants:
   - id: I7
     title: Every credit has unique verified backing when created
     rule: THE SYSTEM SHALL NOT create a credit without a uniquely claimed canonical USDC arrival at the stored Base recipient at safe and matching source attribution, or for an amount other than that verified net arrival
-    decisions: [D21, D23, D121, D123]
+    decisions: [D21, D23, D121, D125]
   - id: I8
     title: Complete discovery means a complete captured range
     rule: THE SYSTEM SHALL NOT advance a discovery cursor beyond a fully read and committed range, or mark a captured scan complete before every required page and event through its captured safe boundary is read and committed
@@ -196,7 +196,7 @@ journeys:
         title: Sweeps to the recipient on Base
         bucket: script
         does: The gas wallet deploys the address's contract if needed and calls sweep(), which pays the sweep fee and forwards the rest
-        decisions: [D33, D36, D39, D121, D28, D134, D136]
+        decisions: [D33, D36, D39, D121, D28, D134, D139]
         invariants: [I9, I1, I8]
         next: J2.S5
         # Retired criteria: c6, c1, c3, c4, c5. Do not reuse.
@@ -217,7 +217,7 @@ journeys:
         title: Verifies the arrival and credits
         bucket: script
         does: Reads the USDC arrival at the stored recipient at the safe block and credits the deposit
-        decisions: [D17, D21, D22, D23, D32, D121, D123, D137]
+        decisions: [D17, D21, D22, D23, D32, D121, D125, D230]
         invariants: [I1, I7, I4]
         next: J2.S6
         # Retired criteria: c1, c4, c5, c7. Do not reuse.
@@ -313,7 +313,7 @@ journeys:
         title: Verifies the mint on Base and credits
         bucket: script
         does: Reads the USDC minted to the stored recipient on Base at the safe block and credits the deposit
-        decisions: [D17, D21, D22, D23, D32, D121, D123, D137, D138]
+        decisions: [D17, D21, D22, D23, D32, D121, D125, D230, D138]
         invariants: [I1, I7, I4]
         next: J3.S6
         # Retired criteria: c1, c4, c7. Do not reuse.
@@ -369,7 +369,7 @@ journeys:
         title: Burns the USDC through CCTP
         bucket: script
         does: The gas wallet deploys the contract if needed and calls sweep(), which pays the sweep fee and burns the rest with CCTP V2 Fast and the Forwarding Service
-        decisions: [D33, D39, D121, D28, D134, D136]
+        decisions: [D33, D39, D121, D28, D134, D139]
         invariants: [I9, I1, I8]
         next: J4.S3
         # Retired criteria: c5, c2, c3, c4. Do not reuse.
@@ -389,7 +389,7 @@ journeys:
         title: Circle attests the burn
         bucket: external
         does: Circle signs the burn message
-        decisions: [D17, D55, D138]
+        decisions: [D17, D56, D138]
         next: J4.S4
         # Retired criteria: c1, c2. Do not reuse.
         criteria:
@@ -402,12 +402,12 @@ journeys:
         title: Circle mints on Base
         bucket: external
         does: The Forwarding Service mints the USDC to the recipient on Base and takes its fee from the minted amount
-        decisions: [D21, D17, D138, D55]
+        decisions: [D21, D17, D138, D56]
         exit: minted
         criteria:
           c1: WHEN Circle reports the mint THE SYSTEM SHALL wait for the mint to be at or below Base's safe block before reporting the exit
           c2: IF Circle reports a mint that is not found on Base THE SYSTEM SHALL NOT report the exit
-          c3: WHEN Circle forwarding is pending THE SYSTEM SHALL retain the original burn message and continue its due verification under D17 and D55
+          c3: WHEN Circle forwarding is pending THE SYSTEM SHALL retain the original burn message and continue its due verification under D17 and D56
           c4: IF Circle reports forwarding failure or an unknown forwarding status THE SYSTEM SHALL NOT treat it as a mint or a lost-funds verdict and SHALL enter needs_attention with the reported status and known message and transaction identities
           c5: IF another party submitted the original mint THE SYSTEM SHALL NOT mint or credit it again and SHALL locate and verify that same message's Base arrival
 
@@ -425,7 +425,7 @@ journeys:
         bucket: script
         surface: credited_webhook
         does: POSTs an immutable deposit.credited or deposit.needs_attention event with Standard Webhooks signing
-        decisions: [D14, D22, D45, D121, D137, D54]
+        decisions: [D14, D22, D45, D121, D230, D54]
         invariants: [I5]
         next: J5.S2
         criteria:
@@ -494,7 +494,7 @@ journeys:
         title: Restarts stuck work
         bucket: script
         does: Resumes persisted operation stages and pending deliveries, and starts eligible work without an open operation
-        decisions: [D36, D136, D137, D45]
+        decisions: [D36, D139, D230, D45]
         next: J6.S3
         # Retired criteria: c1, c2, c4 (process heartbeat alone cannot keep an expired worker claim). Do not reuse.
         criteria:
@@ -512,7 +512,7 @@ journeys:
         title: Checks the books
         bucket: script
         does: Matches each credited deposit to a verified arrival at its recipient, and each treasury arrival to a credited deposit
-        decisions: [D35, D54, D123]
+        decisions: [D35, D54, D125]
         invariants: [I7, I4]
         next: J6.S4
         # Retired criteria: c5. Do not reuse.
@@ -532,7 +532,7 @@ journeys:
         title: Re-checks attention cases
         bucket: script
         does: Re-checks deposits in needs_attention on D17's schedule
-        decisions: [D17, D21, D14, D54, D121, D137, D123]
+        decisions: [D17, D21, D14, D54, D121, D230, D125]
         exit: checked
         # Retired criteria: c2. Do not reuse.
         criteria:
@@ -565,7 +565,7 @@ journeys:
         title: Calls the fixed-destination recovery
         bucket: human
         does: Calls recoverOverLimit() through a block explorer or script; no guided refund tool is required
-        decisions: [D27, D28, D33, D136]
+        decisions: [D27, D28, D33, D139]
         invariants: [I9]
         next: J7.S3
         criteria:
@@ -577,7 +577,7 @@ journeys:
         title: Verifies recovery and retains the repayment case
         bucket: script
         does: Finds the recovery event at source safe, links its transfers and keeps the repayment alert open
-        decisions: [D17, D27, D34, D54, D121, D137]
+        decisions: [D17, D27, D34, D54, D121, D230]
         invariants: [I1, I7, I8]
         exit: recovered
         criteria:
