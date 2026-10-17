@@ -1,7 +1,7 @@
 {
   "name": "@settle-kit/server",
   "version": "0.0.0",
-  "description": "Durable deposit tracking: payment routers, workflows, exactly-once records.",
+  "description": "Self-hosted native-USDC settlement, verification and recoverable delivery.",
   "type": "module",
   "license": "MIT",
   "exports": {
