@@ -9,18 +9,21 @@ their IDs. Shared rules: the Spec process section of
 | 1 Decide | What are we building, and what did we rule out? | [`docs/decisions.md`](../decisions.md) | [decide skill](../../.agents/skills/decide/SKILL.md) | Answer open questions, confirm the list |
 | 2 Journeys | What exactly happens, step by step, including every failure? What must always hold? | `docs/journeys/settle-kit.yaml` | [journeys skill](../../.agents/skills/journeys/SKILL.md) | Agree the invariants, walk each journey, challenge branches |
 
-**Current status (2026-10-17):** the [technical design](../plans/2026-10-15-deposit-sdk-technical-design.md)
-and [16 task specs](../tasks/README.md) assign all 56 steps across 12 journeys.
+**Current status (2026-10-18):** the [technical design](../plans/2026-10-15-deposit-sdk-technical-design.md)
+and [22 task specs](../tasks/README.md) assign all 80 steps across 15 journeys.
 The [three coverage gaps](coverage-resolution.md) now have explicit acceptance
 behavior, including D129's approved evidence labels. No owner product question is
 open. S14–S16 conclude exploratory spiking; the live MetaMask result and remaining
 implementation acceptance checks are recorded in [spikes](../spikes.md).
-Product implementation has not started.
+Product implementation has not started. Vinay approved Solana as a native-USDC
+source settling only to Base (D6); its added implementation gates are D58.
+No Solana wallet, exchange, program or cross-chain path is yet proven.
 
 The [technical review](coverage-review-2026-10-17.md) records the four design
-clarifications and their task owners. The [current UX review](coverage-review-2026-10-17-ux.md)
+clarifications and their task owners. The [earlier UX review](coverage-review-2026-10-17-ux.md)
 records the approved D112–D116 refinements and their acceptance/task mappings.
-All 16 tasks have three learning
+The [current Solana review](coverage-review-2026-10-18-solana.md) traces the new
+source paths and shared handoffs. All 22 tasks have three learning
 checkpoints, focused checks and a code walkthrough. Follow the
 [review-and-pause protocol](../tasks/README.md#how-we-implement-together).
 

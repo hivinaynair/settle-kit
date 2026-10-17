@@ -92,8 +92,12 @@ and secret. It uses isolated fixture destinations, no real wallet signature and 
 chain credentials. The reference run exercises both entry methods, pre-transfer
 reload and duplicate delivery. A simulated receipt is labeled simulated throughout.
 
-Live mode adds the D26/D27/D128/D135/D141 settings: fixed destinations, gas operator,
+Live mode adds the D26/D27/D128/D135/D136/D141 settings: fixed destinations, gas operator,
 chain RPCs, namespace, quote policy and explicit finite submission/spend limits.
+Solana adds the cluster/genesis/program manifest, explicit sweep fee, stored refund/fee
+owners and finite host SOL/priority-fee/rent limits. D143 returns owner/ATA instructions
+and chain-specific signing messages through the same methods. No Solana configuration
+field spelling is claimed runnable by this sketch.
 All are validated before live execution. Missing live configuration must not prevent
 a correctly configured simulated setup from starting.
 

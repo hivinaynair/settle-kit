@@ -20,13 +20,13 @@ Rules that hold across every journey, ordering and crash point. Tests cite `I1: 
 
 | ID | Invariant | Rule | Decisions | Steps that could break it |
 |---|---|---|---|---|
-| `I1` | One credit per transfer | THE SYSTEM SHALL NOT credit the same on-chain transfer (chain ID, tx hash, log index) more than once | D23 | `J2.S3` `J2.S4` `J2.S5` `J3.S3` `J3.S5` `J4.S2` `J5.S2` `J6.S1` `J7.S3` `J8.S4` `J8.S5` `J8.S7` `J8.S11` `J10.S2` `J10.S3` `J12.S3` `J12.S5` |
-| `I4` | A credit is final | THE SYSTEM SHALL NOT change a credited deposit's amount or move it out of the credited state | D32 | `J2.S5` `J3.S5` `J6.S3` `J8.S7` `J12.S5` |
-| `I5` | Secrets stay secret | THE SYSTEM SHALL NOT put the gas wallet key or the webhook secret in logs, errors or API responses | D27 | `J1.S2` `J5.S1` |
-| `I10` | Every credit has exclusive verified backing | THE SYSTEM SHALL NOT create a credit without exclusively claimed canonical USDC backing at the stored Base recipient at safe and verified source attribution; manual credit equals its full net arrival, and quoted credit equals the locked quote with sufficient backing and separately recorded host residual | D21, D23, D121, D126, D127 | `J2.S5` `J3.S5` `J6.S3` `J7.S3` `J8.S6` `J8.S7` `J8.S10` `J10.S2` `J12.S3` `J12.S5` |
-| `I8` | Complete discovery means a complete captured range | THE SYSTEM SHALL NOT advance a discovery cursor beyond a fully read and committed range, or mark a captured scan complete before every required page and event through its captured safe boundary is read and committed | D34, D131 | `J2.S3` `J2.S4` `J3.S3` `J4.S2` `J6.S1` `J7.S3` `J12.S3` |
-| `I11` | Fixed destinations and isolated payment amounts | THE SYSTEM SHALL NOT let a caller redirect funds from stored treasury, route, fee and refund destinations or consume unrelated manual balances in a quoted payment; manual sweep and over-limit recovery obey stored limits and non-USDC rescue uses only the stored refund address | D26, D28, D33, D39, D231 | `J2.S4` `J4.S2` `J7.S2` `J8.S5` `J12.S2` |
-| `I12` | Accepted quote matches payer consent | THE SYSTEM SHALL NOT increase the authorized debit, reduce the locked credit, change the accepted destination or fee, or execute an authorization more than once for an accepted quoted payment | D110, D126, D140, D141, D231 | `J8.S2` `J8.S3` `J8.S4` `J8.S5` `J8.S6` `J8.S7` `J8.S10` `J8.S11` `J10.S2` |
+| `I1` | One credit per transfer | THE SYSTEM SHALL NOT credit the same chain-qualified transfer more than once; identity is EVM chain/transaction/log index or Solana cluster/signature/outer-and-inner-instruction position | D23, D232 | `J2.S3` `J2.S4` `J2.S5` `J3.S3` `J3.S5` `J4.S2` `J5.S2` `J6.S1` `J7.S3` `J8.S4` `J8.S5` `J8.S7` `J8.S11` `J10.S2` `J10.S3` `J12.S3` `J12.S5` `J13.S3` `J13.S4` `J13.S5a` `J14.S3` `J14.S4` `J14.S6` `J14.S10` `J15.S3` `J15.S4` |
+| `I4` | A credit is final | THE SYSTEM SHALL NOT change a credited deposit's amount or move it out of the credited state | D32 | `J2.S5` `J3.S5` `J6.S3` `J8.S7` `J12.S5` `J13.S5a` `J14.S6` `J15.S4` |
+| `I5` | Secrets stay secret | THE SYSTEM SHALL NOT put any host operational signing key or the webhook secret in logs, errors or API responses | D27 | `J1.S2` `J1.S4a` `J5.S1` `J13.S1` `J14.S4` |
+| `I10` | Every credit has exclusive verified backing | THE SYSTEM SHALL NOT create a credit without exclusively claimed canonical USDC backing at the stored Base recipient at safe and verified source attribution; manual credit equals its full net arrival, and quoted credit equals the locked quote with sufficient backing and separately recorded host residual | D21, D23, D121, D126, D127 | `J2.S5` `J3.S5` `J6.S3` `J7.S3` `J8.S6` `J8.S7` `J8.S10` `J10.S2` `J12.S3` `J12.S5` `J13.S5` `J13.S5a` `J14.S5` `J14.S6` `J14.S9` `J15.S3` `J15.S4` |
+| `I8` | Complete discovery means a complete captured range | THE SYSTEM SHALL NOT advance a discovery cursor beyond a fully read and committed range, or mark a captured scan complete before every required page and event through its captured EVM safe or Solana finalized boundary is read and committed | D34, D131, D232 | `J2.S3` `J2.S4` `J3.S3` `J4.S2` `J6.S1` `J7.S3` `J12.S3` `J13.S3` `J13.S4` `J15.S3` |
+| `I11` | Fixed destinations and isolated payment amounts | THE SYSTEM SHALL NOT let a caller redirect funds from stored treasury, route, fee and refund destinations or consume unrelated manual balances in a quoted payment; manual sweep and over-limit recovery obey stored limits and non-USDC rescue uses only the stored refund address | D26, D28, D33, D39, D231, D136, D137, D234 | `J1.S4a` `J2.S4` `J4.S2` `J7.S2` `J8.S5` `J12.S2` `J13.S1` `J13.S4` `J14.S4` `J15.S2` |
+| `I12` | Accepted quote matches payer consent | THE SYSTEM SHALL NOT increase the authorized debit, reduce the locked credit, change the accepted destination or fee, or execute an authorization more than once for an accepted quoted payment | D110, D126, D140, D141, D231, D137, D233 | `J8.S2` `J8.S3` `J8.S4` `J8.S5` `J8.S6` `J8.S7` `J8.S10` `J8.S11` `J10.S2` `J14.S1` `J14.S2` `J14.S3` `J14.S4` `J14.S5` `J14.S6` `J14.S9` `J14.S10` `J15.S2` |
 
 ## J1 · Developer sets up Settle Kit and shows the deposit widget
 
@@ -44,21 +44,24 @@ flowchart LR
   J1_S2["Sets the configuration<br/><small>human</small>"]
   J1_S3["Runs the database migrations<br/><small>human</small>"]
   J1_S4["Uses the shared deposit-address factory<br/><small>script</small>"]
+  J1_S4a["Verifies the Solana cluster and immutable program<br/><small>script</small>"]
   J1_S5["Mounts the handlers and renders the widget<br/><small>human · settle_api</small>"]
   J1_S5a["Enables background processing for live mode<br/><small>human</small>"]
   J1_S1 --> J1_S2
   J1_S2 --> J1_S3
   J1_S3 --> J1_S4
-  J1_S4 --> J1_S5
+  J1_S4 --> J1_S4a
+  J1_S4a --> J1_S5
   J1_S5 --> J1_S5a
 ```
 
 | Step | Bucket | Surface · state | Sees | Does | Next | Criteria |
 |---|---|---|---|---|---|---|
 | `J1.S1` Installs the packages | human | — | — | Installs the core, server and React packages for the documented long-running reference setup | `J1.S2` | 2 |
-| `J1.S2` Sets the configuration | human | — | — | Sets local database and webhook configuration for simulated mode; live mode also requires fixed destinations, gas operator, chain RPCs, namespace, quote deadlines and finite D128 spending limits | `J1.S3` | 10 |
+| `J1.S2` Sets the configuration | human | — | — | Sets local database and webhook configuration for simulated mode; live mode also requires fixed destinations, gas operator, chain RPCs, namespace, quote deadlines and finite D128 spending limits | `J1.S3` | 11 |
 | `J1.S3` Runs the database migrations | human | — | — | Applies the numbered SQL migrations shipped with the package to the app's Postgres | `J1.S4` | 2 |
-| `J1.S4` Uses the shared deposit-address factory | script | — | — | Points at the factory Settle Kit deployed once on Base and Arbitrum; nothing to deploy unless the developer sets their own factory address | `J1.S5` | 3 |
+| `J1.S4` Uses the shared deposit-address factory | script | — | — | Points at the factory Settle Kit deployed once on Base and Arbitrum; nothing to deploy unless the developer sets their own factory address | `J1.S4a` | 3 |
+| `J1.S4a` Verifies the Solana cluster and immutable program | script | — | — | Verifies the Solana manifest before enabling its deposit route | `J1.S5` | 4 |
 | `J1.S5` Mounts the handlers and renders the widget | human | `settle_api` | — | Mounts authenticated settle.handlers, starts settle.start() and renders <Deposit accountId='user_42' /> | `J1.S5a` | 5 |
 | `J1.S5a` Enables background processing for live mode | human | — | — | Starts DBOS with the release-pinned version and a unique executor, and verifies scheduled work | exit `ready` | 6 |
 
@@ -69,7 +72,7 @@ flowchart LR
 - `J1.S1.c1` WHEN createSettle() starts without SETTLE_MODE THE SYSTEM SHALL refuse to start and name the missing variable
 - `J1.S1.c2` WHEN SETTLE_MODE is test THE SYSTEM SHALL simulate deposits and SHALL NOT send any transaction on a real chain
 
-**`J1.S2`** Sets the configuration · decisions D26, D39, D135, D44, D141, D128, D142 · invariants I5
+**`J1.S2`** Sets the configuration · decisions D26, D39, D135, D44, D141, D128, D142, D6, D117, D136, D143 · invariants I5
 
 - `J1.S2.c3` IF configuration validation fails THE SYSTEM SHALL NOT include the gas wallet key or webhook secret in the error
 - `J1.S2.c5` IF a configured sweep fee is negative or is greater than or equal to its minimum THE SYSTEM SHALL NOT start or create a deposit contract
@@ -81,6 +84,7 @@ flowchart LR
 - `J1.S2.c11` IF live address namespace is missing or not 32 bytes THE SYSTEM SHALL NOT issue live addresses and SHALL print a command that generates one
 - `J1.S2.c12` WHEN simulated mode starts with a local database and local webhook configuration THE SYSTEM SHALL use isolated fixture destinations and local signing material without requiring live RPC credentials, real keys or wallet funding
 - `J1.S2.c13` IF simulated mode is selected THE SYSTEM SHALL NOT load live signing material, submit chain transactions or request real payment signatures
+- `J1.S2.c14` WHEN Solana live settings are validated THE SYSTEM SHALL distinguish cluster/genesis identity and Base destination from EVM chain IDs and require the Solana-specific D128 limits without inventing fee defaults
 
 **`J1.S3`** Runs the database migrations · decisions D30, D31
 
@@ -92,6 +96,13 @@ flowchart LR
 - `J1.S4.c2` WHERE the developer sets their own factory address THE SYSTEM SHALL use it instead of the shared one
 - `J1.S4.c3` WHEN live startup or address issuance runs THE SYSTEM SHALL verify the RPC chain ID and factory runtime-code hash against the supported version manifest
 - `J1.S4.c4` IF either chain ID or factory code does not match the manifest THE SYSTEM SHALL NOT issue an address and SHALL name the failing chain
+
+**`J1.S4a`** Verifies the Solana cluster and immutable program · decisions D6, D136, D143, D232, D128 · invariants I5, I11
+
+- `J1.S4a.c1` WHEN live Solana startup runs THE SYSTEM SHALL verify genesis hash, owned program deployment/code identity and removed upgrade authority, native-USDC mint/token program and pinned CCTP programs against the cluster manifest
+- `J1.S4a.c2` IF Solana configuration or deployment differs from the supported manifest THE SYSTEM SHALL NOT issue live Solana instructions or signing data and SHALL name the invalid setting without its secret value
+- `J1.S4a.c3` WHEN live Solana configuration is validated THE SYSTEM SHALL require stored refund and fee owners, explicit manual sweep fee, host SOL signer/reserve and finite fee, priority-fee, rent, attempt and spend limits under D128
+- `J1.S4a.c4` IF SETTLE_MODE is test THE SYSTEM SHALL NOT initialize a Solana RPC or signer or request a real wallet signature
 
 **`J1.S5`** Mounts the handlers and renders the widget · decisions D36, D40, D44, D131
 
@@ -464,36 +475,38 @@ flowchart LR
 
 | Step | Bucket | Surface · state | Sees | Does | Next | Criteria |
 |---|---|---|---|---|---|---|
-| `J6.S1` Reads the chains | script | — | — | Reads incoming USDC, manual drains, quoted-payment execution and recovery events through captured safe boundaries | `J6.S2` | 12 |
-| `J6.S2` Restarts stuck work | script | — | — | Resumes persisted operation stages and pending deliveries, and starts eligible work without an open operation | `J6.S3` | 14 |
-| `J6.S3` Checks the books | script | — | — | Reconciles manual full-net credits, fixed quoted credits, host fee residuals and any host-funded shortfall against exclusive verified backing | `J6.S4` | 13 |
+| `J6.S1` Reads the chains | script | — | — | Reads incoming USDC, manual drains, quoted-payment execution and recovery events through captured EVM safe and Solana finalized boundaries | `J6.S2` | 14 |
+| `J6.S2` Restarts stuck work | script | — | — | Resumes persisted operation stages and pending deliveries, and starts eligible work without an open operation | `J6.S3` | 16 |
+| `J6.S3` Checks the books | script | — | — | Reconciles manual full-net credits, fixed quoted credits, host fee residuals and any host-funded shortfall against exclusive verified backing | `J6.S4` | 14 |
 | `J6.S4` Re-checks attention cases | script | — | — | Re-checks deposits in needs_attention on D17's schedule | exit `checked` | 6 |
 
 ### J6 acceptance criteria
 
-**`J6.S1`** Reads the chains · decisions D34, D131, D121, D135, D231, D127 · invariants I1, I8
+**`J6.S1`** Reads the chains · decisions D34, D131, D121, D135, D231, D127, D232 · invariants I1, I8
 
 - `J6.S1.c2` IF two runs overlap THE SYSTEM SHALL NOT record a transfer twice
-- `J6.S1.c4` WHEN a scan starts THE SYSTEM SHALL capture each chain's safe block number and hash and read every page of each range from its committed cursor through that boundary
+- `J6.S1.c4` WHEN an EVM scan starts THE SYSTEM SHALL capture each EVM chain's safe block number and hash and read every page of each range from its committed cursor through that boundary
 - `J6.S1.c5` WHEN a range completes THE SYSTEM SHALL atomically commit its incoming transfers, successful sweep and recovery events, drain memberships and block-hash cursor
 - `J6.S1.c6` IF any page or required RPC read fails THE SYSTEM SHALL NOT advance the incomplete range or report the scan complete
 - `J6.S1.c7` IF concurrent or targeted scans run THE SYSTEM SHALL NOT move a global cursor backwards or advance it from an address-only scan
 - `J6.S1.c8` WHEN an address is first issued THE SYSTEM SHALL persist its scan start before returning it
-- `J6.S1.c9` WHEN any successful sweep or recovery event is read THE SYSTEM SHALL record its unique chain, transaction and event-log identity regardless of caller, existing workflow or current address balance
+- `J6.S1.c9` WHEN any successful EVM sweep or recovery event is read THE SYSTEM SHALL record its unique chain, transaction and event-log identity regardless of caller, existing workflow or current address balance
 - `J6.S1.c10` WHEN a newly issued address joins discovery THE SYSTEM SHALL scan it from its stored start through the captured boundary even if the global cursor has advanced past that start
 - `J6.S1.c11` IF a newly issued address has not completed that catch-up THE SYSTEM SHALL NOT report its discovery complete
-- `J6.S1.c12` WHEN quoted-payment execution is discovered THE SYSTEM SHALL bind its authorization nonce, payer debit, emitted fee and forwarded or burned amount to one stored payment ID before attribution
+- `J6.S1.c12` WHEN EVM quoted-payment execution is discovered THE SYSTEM SHALL bind its authorization nonce, payer debit, emitted fee and forwarded or burned amount to one stored payment ID before attribution
 - `J6.S1.c13` IF a transfer is assigned to a quoted operation THE SYSTEM SHALL NOT assign it to a manual sweep or another quoted operation
 - `J6.S1.c14` WHEN another caller executes a later drain while an SDK sweep command is still pending THE SYSTEM SHALL create a separate drain settlement record without starting another SDK sweep command or merging the two drains' source memberships
+- `J6.S1.c15` WHEN the source is Solana THE SYSTEM SHALL apply the finalized scanner and instruction identities in J13.S3 instead of EVM safe-block/log-index rules
+- `J6.S1.c16` IF Solana finalized history, block ordering or required instruction data is incomplete THE SYSTEM SHALL NOT advance its cursor or report the deployment scan complete
 
-**`J6.S2`** Restarts stuck work · decisions D36, D139, D230, D45, D140, D231, D111, D128
+**`J6.S2`** Restarts stuck work · decisions D36, D139, D230, D45, D140, D231, D111, D128, D233, D137
 
 - `J6.S2.c11` WHEN the minute check finds unfinished work with no valid worker claim and its next action is due THE SYSTEM SHALL resume the persisted stage regardless of current address balance or workflow running label
 - `J6.S2.c12` WHEN a worker executes THE SYSTEM SHALL renew its 120-second claim at intervals no greater than 30 seconds and use a new generation when reclaiming expired work
 - `J6.S2.c5` WHEN an operation durably sleeps THE SYSTEM SHALL persist its next action time and release its worker claim while retaining the address's open operation
 - `J6.S2.c6` IF another worker holds a valid claim or a stale worker tries to commit a stage advance THE SYSTEM SHALL NOT create a competing worker or accept that stale advance
 - `J6.S2.c7` IF a successful burn or sweep is recorded THE SYSTEM SHALL NOT repeat it and SHALL resume verification of its original transaction and message
-- `J6.S2.c8` WHEN a safe eligible balance has no open sweep operation THE SYSTEM SHALL create one operation under a database-unique address claim after checking minimum and maximum guards
+- `J6.S2.c8` WHEN an EVM safe eligible balance has no open sweep operation THE SYSTEM SHALL create one operation under a database-unique address claim after checking minimum and maximum guards
 - `J6.S2.c9` WHEN the check finds a pending event delivery THE SYSTEM SHALL resume it even when its deposit is already credited
 - `J6.S2.c10` IF a delivery budget is exhausted THE SYSTEM SHALL NOT restart it without an operator resend
 - `J6.S2.c3` WHEN a workflow is still pending and the process that ran it has not recorded a heartbeat for 2 minutes THE SYSTEM SHALL resume the workflow from its last completed step
@@ -502,8 +515,10 @@ flowchart LR
 - `J6.S2.c15` IF a wallet broadcast outcome is unknown THE SYSTEM SHALL NOT create a new authorization or independent fresh-nonce payment to repair it
 - `J6.S2.c16` IF accepted work is paused by a gas or spending limit THE SYSTEM SHALL NOT broadcast outside its persisted budget and SHALL continue read-only reconciliation and pending webhook delivery
 - `J6.S2.c17` WHEN a wallet attempt satisfies the D111 failed_no_debit proof THE SYSTEM SHALL atomically close that operation and its payment attention episode without creating a credit and retain the evidence in account history
+- `J6.S2.c18` WHEN a Solana operation resumes THE SYSTEM SHALL use its persisted stage and D233 signed-byte, blockhash and receipt proof instead of EVM signer-nonce replacement
+- `J6.S2.c19` IF an accepted Solana message expires or its outcome is unknown THE SYSTEM SHALL NOT refresh its blockhash or request another payer signature automatically
 
-**`J6.S3`** Checks the books · decisions D35, D54, D125, D126, D127 · invariants I10, I4
+**`J6.S3`** Checks the books · decisions D35, D54, D125, D126, D127, D232 · invariants I10, I4
 
 - `J6.S3.c2` IF a credited deposit has no matching arrival THE SYSTEM SHALL NOT mark the check clean, and SHALL record a critical alert naming the deposit
 - `J6.S3.c4` WHEN the check records a problem THE SYSTEM SHALL store it in the alerts table and log it at error level
@@ -518,6 +533,7 @@ flowchart LR
 - `J6.S3.c14` IF host shortfall funding is already allocated or cannot be verified at Base safe THE SYSTEM SHALL NOT count it as additional backing
 - `J6.S3.c15` WHEN the check runs THE SYSTEM SHALL match every credit to exclusive canonical safe USDC backing at its stored Base recipient and reconcile the credit and host residual allocation
 - `J6.S3.c16` IF a treasury arrival has no credit, host residual or authenticated shortfall allocation THE SYSTEM SHALL record it for investigation
+- `J6.S3.c17` WHEN Solana source evidence or its finalized cursor is rechecked THE SYSTEM SHALL verify saved finalized blockhashes and complete attribution and apply the existing missing-backing incident and credit-pause rules if credited evidence is contradicted
 
 **`J6.S4`** Re-checks attention cases · decisions D17, D21, D14, D54, D121, D230, D125, D126, D127, D111
 
@@ -574,10 +590,10 @@ flowchart LR
 - `J7.S3.c4` IF only source recovery evidence is available THE SYSTEM SHALL NOT tell the user that their account was credited or that the payer was repaid
 - `J7.S3.c5` WHEN the host records repayment for a verified recovery THE SYSTEM SHALL apply the authenticated evidence and closure procedure in J12 without changing the original recovery evidence
 
-## J8 · User pays from a connected wallet with an exact quote
+## J8 · User pays from a connected EVM wallet with an exact quote
 
 **Actor:** User depositing USDC  
-**Goal:** Choose payment or credit amount, sign once without payer ETH and receive the locked credit after verified settlement  
+**Goal:** On Base or Arbitrum choose payment or credit amount, sign once without payer ETH and receive the locked credit after verified settlement  
 **Proves:** Receive-first consent, fixed fees and durable recovery preserve the quoted result  
 
 | Exit | Title | Named by |
@@ -778,12 +794,12 @@ flowchart LR
 
 | Step | Bucket | Surface · state | Sees | Does | Next | Criteria |
 |---|---|---|---|---|---|---|
-| `J9.S1` Reads deposits with useDeposits | human | `deposit_hook` | — | — | `J9.S2` | 7 |
-| `J9.S2` Pays with usePayWithWallet | human | `wallet_payment_hook` | — | — | exit `ready` | 7 |
+| `J9.S1` Reads deposits with useDeposits | human | `deposit_hook` | — | — | `J9.S2` | 8 |
+| `J9.S2` Pays with usePayWithWallet | human | `wallet_payment_hook` | — | — | exit `ready` | 8 |
 
 ### J9 acceptance criteria
 
-**`J9.S1`** Reads deposits with useDeposits · decisions D18, D40, D41, D140, D111, D112, D115
+**`J9.S1`** Reads deposits with useDeposits · decisions D18, D40, D41, D140, D111, D112, D115, D143, D232
 
 - `J9.S1.c2` IF the account is unauthorized THE SYSTEM SHALL NOT expose its history, address or payment identifiers
 - `J9.S1.c3` WHEN useDeposits is mounted for an authorized account THE SYSTEM SHALL expose manual observations and accepted wallet attempts including pre-transfer pending and failed_no_debit items with settlement and host delivery distinguished
@@ -792,8 +808,9 @@ flowchart LR
 - `J9.S1.c6` WHEN the payer retries a failed status read THE SYSTEM SHALL refresh authenticated history or status for the original records without preparing or submitting a payment
 - `J9.S1.c7` IF a status read fails THE SYSTEM SHALL NOT advance or reset source, settlement or delivery state, reset processing-delay timers, or infer failed_no_debit, lost funds or credited status from that failure
 - `J9.S1.c8` WHEN the account changes THE SYSTEM SHALL clear the previous account's history, payment state, read error and retrieval time and ignore responses for that previous account
+- `J9.S1.c9` WHEN an account has Solana activity THE SYSTEM SHALL expose confirmed observations separately from finalized source records and Base settlement/host acknowledgment with source-family-qualified identities
 
-**`J9.S2`** Pays with usePayWithWallet · decisions D41, D110, D140, D141, D231, D43, D115
+**`J9.S2`** Pays with usePayWithWallet · decisions D41, D110, D140, D141, D231, D43, D115, D137, D143
 
 - `J9.S2.c1` WHEN usePayWithWallet prepares, signs or submits THE SYSTEM SHALL use the same server quote and payment operation rules as Deposit
 - `J9.S2.c2` IF custom UI passes changed amounts or destination data with a prepared payment THE SYSTEM SHALL NOT bypass consent validation
@@ -802,6 +819,7 @@ flowchart LR
 - `J9.S2.c5` WHEN Deposit displays manual instructions THE SYSTEM SHALL apply D43 to address text, copy and QR through one account-and-chain-scoped state and preserve the test-mode QR watermark
 - `J9.S2.c6` WHEN a meaningful displayed payment status or error changes THE SYSTEM SHALL expose an accessible status announcement without moving keyboard focus
 - `J9.S2.c7` IF a poll produces no change to displayed status or error THE SYSTEM SHALL NOT repeat its status announcement
+- `J9.S2.c8` WHEN a Solana payment is prepared or signed THE SYSTEM SHALL select the exact transaction-signing adapter and preserve the same quote, history-first, freshness and exception rules used by the widget without requesting EVM typed signing
 
 ## J10 · Operator checks and recovers processing
 
@@ -869,24 +887,27 @@ flowchart LR
 
 | Step | Bucket | Surface · state | Sees | Does | Next | Criteria |
 |---|---|---|---|---|---|---|
-| `J11.S1` Validates the reference integration | human | `demo` | — | — | `J11.S2` | 11 |
+| `J11.S1` Validates the reference integration | human | `demo` | — | — | `J11.S2` | 14 |
 | `J11.S2` Shows success and recovery | human | `demo` | — | — | exit `shown` | 4 |
 
 ### J11 acceptance criteria
 
-**`J11.S1`** Validates the reference integration · decisions D5, D37, D50, D53, D57, D142
+**`J11.S1`** Validates the reference integration · decisions D5, D37, D50, D53, D57, D142, D6, D58, D137, D232, D233
 
 - `J11.S1.c1` WHEN the reference integration is evaluated THE SYSTEM SHALL demonstrate a separate consumer setup with the documented long-running server, Postgres and CSS-variable widget or headless hooks
 - `J11.S1.c2` IF the only evidence is simulated or fork execution THE SYSTEM SHALL NOT label browser compatibility or a live route as proven
-- `J11.S1.c3` WHEN a browser-wallet route is claimed supported THE SYSTEM SHALL link an actual zero-ETH payer testnet transaction and independently verified receipt
+- `J11.S1.c3` WHEN an EVM browser-wallet route is claimed supported THE SYSTEM SHALL link an actual zero-ETH payer testnet transaction and independently verified receipt
 - `J11.S1.c4` IF a mainnet route has no recorded live payment THE SYSTEM SHALL NOT describe it as live-proven
 - `J11.S1.c5` WHEN onboarding is evaluated THE SYSTEM SHALL provide the separate consumer with authenticated account routes, isolated operator routes, migrations, background startup and atomic webhook balance handling
 - `J11.S1.c6` WHEN the consumer starts simulated mode THE SYSTEM SHALL demonstrate manual and wallet scenarios without live keys, RPC credentials or a funded wallet
 - `J11.S1.c7` WHEN an independent developer follows the consumer setup THE SYSTEM SHALL record the run and remove any undocumented required step before calling onboarding proven
 - `J11.S1.c8` IF the consumer is only a proposed code sketch THE SYSTEM SHALL NOT describe its setup as runnable or independently validated
 - `J11.S1.c9` WHEN implementation gates are evaluated THE SYSTEM SHALL record the real Base browser-wallet proof and combined Arbitrum authorization-to-Base proof before treating their integration assumptions as validated
-- `J11.S1.c10` WHEN route evidence is recorded THE SYSTEM SHALL distinguish source submission, source safe, Base arrival, Base safe and host acknowledgment times without substituting CCTP attestation latency for account-credit latency
+- `J11.S1.c10` WHEN EVM route evidence is recorded THE SYSTEM SHALL distinguish source submission, source safe, Base arrival, Base safe and host acknowledgment times without substituting CCTP attestation latency for account-credit latency
 - `J11.S1.c11` WHEN upgrade recovery is demonstrated THE SYSTEM SHALL resume a pending operation across a compatible package upgrade and complete an old workflow through its retained implementation after a new workflow name is introduced
+- `J11.S1.c12` WHEN Solana support is evaluated THE SYSTEM SHALL demonstrate manual and browser-wallet Solana devnet to Base Sepolia flows through independently verified Base backing and committed host acknowledgment with source submission, confirmed/finalized, Base arrival/safe and acknowledgment times
+- `J11.S1.c13` IF a zero-payer-SOL browser transaction or the manual owner-plus-mint QR has no actual supported-wallet evidence THE SYSTEM SHALL NOT claim that Solana entry path or an unverified exchange is supported
+- `J11.S1.c14` WHEN Solana recovery is evaluated THE SYSTEM SHALL demonstrate identical-byte retry, expired-blockhash no-debit proof, crash recovery, repeated equal-amount message linkage and fixed-refund recovery without duplicate credit or a second payer signature
 
 **`J11.S2`** Shows success and recovery · decisions D2, D5, D51, D52, D53, D1
 
@@ -931,7 +952,7 @@ flowchart LR
 | `J12.S1` Identifies the asset and recovery case | human | `settle_api` | — | — | `J12.S2` · A supported-source non-USDC token or native ETH rescue is needed and none has been submitted; `J12.S3` · A submitted or discovered rescue awaits verification; `J12.S4` · A verified rescue or J7 recovery already has an open repayment case; `J12.S6` · No supported rescue or verified recovery case can be identified | 3 |
 | `J12.S2` Calls the allowed fixed-destination rescue | human | — | — | Operator calls rescue(token) from an explorer or script and pays its gas; the SDK does not submit it | `J12.S3` · Rescue transaction is submitted or a third party's rescue is discovered; `J12.S6` · Transfer reverts or cannot be submitted | 3 |
 | `J12.S3` Verifies rescue and opens the repayment case | script | — | — | — | `J12.S4` · Canonical source-safe rescue and fixed refund receipt are verified; `J12.S6` · Receipt is missing or unsafe or asset transfer evidence cannot be verified | 4 |
-| `J12.S4` Records repayment through the authenticated operator procedure | human | `settle_api` | — | — | `J12.S5` · Evidence is accepted and the operator confirms full resolution for the intended beneficiary; `J12.S6` · Authorization or required evidence is missing or repayment remains partial or disputed | 6 |
+| `J12.S4` Records repayment through the authenticated operator procedure | human | `settle_api` | — | — | `J12.S5` · Evidence is accepted and the operator confirms full resolution for the intended beneficiary; `J12.S6` · Authorization or required evidence is missing or repayment remains partial or disputed | 7 |
 | `J12.S5` Closes only the resolved recovery alert | script | — | — | — | exit `resolved` | 3 |
 | `J12.S6` Retains an unresolved case | script | — | — | — | exit `open` | 2 |
 
@@ -956,14 +977,15 @@ flowchart LR
 - `J12.S3.c3` IF the asset is not native USDC THE SYSTEM SHALL NOT create a Base credit or advance the address's USDC drain boundary from its rescue
 - `J12.S3.c4` IF the asset's transfer evidence is unavailable or inconsistent THE SYSTEM SHALL NOT label recovery verified or mark the payer repaid
 
-**`J12.S4`** Records repayment through the authenticated operator procedure · decisions D27, D51, D129, X15
+**`J12.S4`** Records repayment through the authenticated operator procedure · decisions D27, D51, D129, D232, X15
 
 - `J12.S4.c1` WHEN an authorized operator records repayment THE SYSTEM SHALL require the recovery-case identity, intended beneficiary, asset and amount, evidence reference and evidence kind and derive the operator identity and recording time on the server
-- `J12.S4.c2` WHEN evidence kind is chain_verified THE SYSTEM SHALL independently verify the claimed canonical safe transfer, asset, amount and recipient on a supported chain and require host confirmation that the beneficiary and payment resolve this case
+- `J12.S4.c2` WHEN evidence kind is chain_verified for an EVM transfer THE SYSTEM SHALL independently verify the claimed canonical safe transfer, asset, amount and recipient on a supported chain and require host confirmation that the beneficiary and payment resolve this case
 - `J12.S4.c3` WHEN evidence kind is host_reported THE SYSTEM SHALL store the operator's explicit repayment assertion and reference with that label without representing it as independently verified chain evidence
 - `J12.S4.c4` IF evidence or authorization is missing or chain verification fails THE SYSTEM SHALL NOT close the recovery alert
 - `J12.S4.c5` IF the only transfer is the original recovery into the host refund address THE SYSTEM SHALL NOT accept it as proof of payer repayment
 - `J12.S4.c6` WHEN the verified case comes from J7 over-limit USDC recovery or J12 asset rescue THE SYSTEM SHALL accept that case kind's original recovery evidence through the same repayment procedure without requiring a rescue event for USDC recovery
+- `J12.S4.c7` WHEN evidence kind is chain_verified for a Solana repayment THE SYSTEM SHALL independently verify finalized native asset transfer identity, amount and stored beneficiary and require the host beneficiary/full-resolution confirmation under D129
 
 **`J12.S5`** Closes only the resolved recovery alert · decisions D129, D54 · invariants I1, I4, I10
 
@@ -976,12 +998,318 @@ flowchart LR
 - `J12.S6.c1` WHEN recovery or repayment evidence remains incomplete THE SYSTEM SHALL retain the open case and its reason for the next operator attempt
 - `J12.S6.c2` IF repayment remains incomplete or disputed THE SYSTEM SHALL NOT present the case as repaid or the deposit as credited
 
+## J13 · User manually deposits native USDC on Solana for Base settlement
+
+**Actor:** User depositing USDC  
+**Goal:** Send native USDC to a reusable Solana receive address and receive verified net account credit  
+**Proves:** Program-owned receive accounts, finalized discovery and CCTP preserve manual deposit accounting  
+
+| Exit | Title | Named by |
+|---|---|---|
+| `credited` | Verified net Base credit acknowledged by the host | `J13.S6` |
+
+```mermaid
+flowchart LR
+  J13_S1["Loads initialized Solana receive instructions<br/><small>script · deposit_widget · show_address</small>"]
+  J13_S2["Sends from a supported wallet or exchange<br/><small>human · deposit_widget · show_address</small>"]
+  J13_S3["Discovers complete finalized Solana activity<br/><small>script · deposit_widget · received</small>"]
+  J13_S4["Burns one guarded manual drain through CCTP<br/><small>script</small>"]
+  J13_S5["Links the original Solana burn to canonical Base backing<br/><small>script</small>"]
+  J13_S5a["Commits the manual net credit and event<br/><small>script</small>"]
+  J13_S6["Sees the host-acknowledged net credit<br/><small>script · deposit_widget · account_update_pending</small>"]
+  J13_S1 --> J13_S2
+  J13_S2 --> J13_S3
+  J13_S3 --> J13_S4
+  J13_S4 --> J13_S5
+  J13_S5 --> J13_S5a
+  J13_S5a --> J13_S6
+```
+
+| Step | Bucket | Surface · state | Sees | Does | Next | Criteria |
+|---|---|---|---|---|---|---|
+| `J13.S1` Loads initialized Solana receive instructions | script | `deposit_widget` · show_address | — | — | `J13.S2` | 9 |
+| `J13.S2` Sends from a supported wallet or exchange | human | `deposit_widget` · show_address | — | — | `J13.S3` | 4 |
+| `J13.S3` Discovers complete finalized Solana activity | script | `deposit_widget` · received | — | — | `J13.S4` | 10 |
+| `J13.S4` Burns one guarded manual drain through CCTP | script | — | — | — | `J13.S5` | 10 |
+| `J13.S5` Links the original Solana burn to canonical Base backing | script | — | — | — | `J13.S5a` | 5 |
+| `J13.S5a` Commits the manual net credit and event | script | — | — | — | `J13.S6` | 3 |
+| `J13.S6` Sees the host-acknowledged net credit | script | `deposit_widget` · account_update_pending | — | — | exit `credited` | 3 |
+
+### J13 acceptance criteria
+
+**`J13.S1`** Loads initialized Solana receive instructions · decisions D6, D118, D136, D26, D28, D39, D43, D116, D128 · invariants I5, I11
+
+- `J13.S1.c1` WHEN an authorized account first requests Solana instructions THE SYSTEM SHALL atomically store one winning vault record with complete seed/settings commitment, program identity, cluster, owner PDA, USDC mint and ATA before exposing instructions
+- `J13.S1.c2` WHEN the vault needs setup THE SYSTEM SHALL persist and resume its host-funded setup action and verify finalized initialized settings and native-USDC ATA before returning usable instructions
+- `J13.S1.c3` IF setup is pending, fails, exceeds its SOL/rent budget or existing program/account settings differ THE SYSTEM SHALL NOT show a usable address or QR and SHALL expose setup pending or unavailable without requesting a transfer
+- `J13.S1.c4` WHEN instructions are returned again after configuration changes THE SYSTEM SHALL return the same stored owner and ATA with the original destinations and money settings
+- `J13.S1.c5` WHEN instructions are displayed THE SYSTEM SHALL show Solana cluster, native USDC, stored owner receive address, minimum 2 USDC, stored gross maximum and sweep fee, estimated CCTP deductions and Base settlement destination
+- `J13.S1.c6` WHEN instructions are copied or encoded as QR THE SYSTEM SHALL copy the stored owner address and encode that owner plus the native-USDC mint in the Solana Pay transfer URI, never substitute its ATA as the owner or encode a SOL transfer
+- `J13.S1.c7` IF an account or source selection changes THE SYSTEM SHALL NOT retain earlier instructions or copy feedback or accept a late response for that previous selection
+- `J13.S1.c8` WHEN copying completes THE SYSTEM SHALL confirm success only for the current stored owner after successful copying and provide a selectable complete address on failure
+- `J13.S1.c9` IF copy or QR interaction occurs THE SYSTEM SHALL NOT record a transfer, start a processing timer or claim wallet/exchange compatibility from that interaction
+
+**`J13.S2`** Sends from a supported wallet or exchange · decisions D10, D13, D117, D118, D131, D58
+
+- `J13.S2.c1` WHEN manual Solana instructions are used THE SYSTEM SHALL explain that the external wallet or exchange pays its own sending costs and that actual native-USDC arrival determines estimated net Base credit
+- `J13.S2.c2` IF the selected sender has no demonstrated support for the stored PDA-owner/ATA instructions THE SYSTEM SHALL NOT advertise it as supported or suggest substituting a different destination
+- `J13.S2.c3` WHILE the widget or useDeposits is mounted THE SYSTEM SHALL check the account's issued Solana instructions every 5 seconds including later transfers and top-ups
+- `J13.S2.c4` IF the browser closes or reloads THE SYSTEM SHALL NOT stop scheduled server discovery or require another transfer to recover progress
+
+**`J13.S3`** Discovers complete finalized Solana activity · decisions D18, D23, D28, D121, D131, D232, D17 · invariants I1, I8
+
+- `J13.S3.c1` WHEN a confirmed native-USDC transfer is observed THE SYSTEM SHALL show its amount as provisional and retain it separately from finalized deposit records
+- `J13.S3.c2` IF a confirmed observation is contradicted THE SYSTEM SHALL NOT retain that provisional amount and SHALL show Confirmation changed; checking
+- `J13.S3.c3` WHEN a discovery run starts THE SYSTEM SHALL capture a finalized slot and blockhash and read all required account-history pages, canonical block transaction ordering and successful outer/inner instructions through that boundary
+- `J13.S3.c4` WHEN a range is complete THE SYSTEM SHALL atomically commit its source transfers, program drains/payment events, CCTP message-account identity and finalized cursor using cluster/signature/instruction-position identities
+- `J13.S3.c5` IF history is pruned, a page/transaction is missing, instruction decoding or transaction-version support fails, or a skipped slot cannot be distinguished from unavailable history THE SYSTEM SHALL NOT advance that range or label the scan complete
+- `J13.S3.c6` WHEN a new vault joins discovery THE SYSTEM SHALL catch up from its saved start independently of global progress and apply the same rules to targeted scans without advancing the global cursor
+- `J13.S3.c7` WHEN finalized unassigned funds are below 2 USDC with no open sweep THE SYSTEM SHALL retain awaiting_minimum, show the remaining top-up amount and leave its delay timer unstarted
+- `J13.S3.c8` WHEN finalized unassigned funds first meet 2 USDC THE SYSTEM SHALL persist eligibility time and retain it through retries, top-ups and process restarts
+- `J13.S3.c9` IF a token has the wrong mint, token program or cluster, or a transaction failed THE SYSTEM SHALL NOT record it as an accepted native-USDC deposit or use its apparent balance change as credit evidence
+- `J13.S3.c10` WHEN a third party executes a sweep or recovery THE SYSTEM SHALL discover its finalized instruction evidence even when the current vault balance is zero or an older SDK command remains open
+
+**`J13.S4`** Burns one guarded manual drain through CCTP · decisions D28, D39, D121, D128, D136, D233, D234, D38 · invariants I1, I8, I11
+
+- `J13.S4.c1` WHEN eligible funds have no open SDK sweep command THE SYSTEM SHALL claim one durable command and submit the stored vault's sweep using the expected on-program full-drain sequence
+- `J13.S4.c2` IF balance is below the minimum, above the stored gross maximum, above the live CCTP burn limit or nonpositive after its maximum Circle fee THE SYSTEM SHALL NOT burn or retain a USDC sweep fee and SHALL expose the corresponding waiting or attention reason
+- `J13.S4.c3` WHEN the program sweep succeeds THE SYSTEM SHALL atomically pay the fixed fee, burn the remaining native USDC to the stored Base domain/recipient, increment the drain sequence and emit gross, fee, burn and a program-derived unique protected operation tag
+- `J13.S4.c4` IF caller-supplied accounts, program IDs, expected sequence, operation tag or destinations differ from stored settings THE SYSTEM SHALL NOT move funds
+- `J13.S4.c5` WHEN source attribution is built THE SYSTEM SHALL assign only finalized manual transfers between the prior successful drain and this drain in canonical transaction/instruction order and exclude quoted-payment vaults
+- `J13.S4.c6` IF memberships differ from emitted gross or a source transfer already belongs to another drain THE SYSTEM SHALL NOT credit or reassign the transfer
+- `J13.S4.c7` WHEN a host-only Solana action is submitted THE SYSTEM SHALL persist its exact signed bytes, signature, blockhash lifetime and conservative SOL/rent reservation before broadcast
+- `J13.S4.c8` IF submission times out THE SYSTEM SHALL NOT refresh the blockhash or repeat an independently executable drain and SHALL reconcile or rebroadcast the same saved bytes while valid
+- `J13.S4.c9` WHEN a host-only attempt expires THE SYSTEM SHALL require finalized expiry and complete no-execution evidence before refreshing its blockhash and SHALL keep the original operation and expected drain sequence
+- `J13.S4.c10` IF SOL reserve, fee/rent ceiling, attempt allowance or persisted shared budget cannot cover submission THE SYSTEM SHALL NOT broadcast and SHALL retain its original action while reads continue
+
+**`J13.S5`** Links the original Solana burn to canonical Base backing · decisions D21, D38, D56, D138, D232, D234, D58 · invariants I10
+
+- `J13.S5.c1` WHEN a Solana burn is verified THE SYSTEM SHALL link the successful finalized owned-program execution and pinned CCTP burn/message-account data to its attested protected operation tag and exact Base message consumption and native-USDC arrival at the stored recipient at Base safe
+- `J13.S5.c2` IF program, cluster/domain, mint, sender, tag, amount, executed deductions, source finality or Base message linkage differ THE SYSTEM SHALL NOT allocate that arrival to the drain
+- `J13.S5.c3` WHEN Circle forwarding is pending, throttled or fails THE SYSTEM SHALL retain the same burn/message and apply D56 shared polling and D17 attention schedules without another burn or a provider-status credit
+- `J13.S5.c4` IF equal-amount messages arrive out of order THE SYSTEM SHALL NOT match them by amount alone or reuse an allocated Base transfer
+- `J13.S5.c5` WHEN source or destination proof is incomplete THE SYSTEM SHALL retain the original deposit reference and explain the next business action without asking the payer to send again
+
+**`J13.S5a`** Commits the manual net credit and event · decisions D21, D23, D121, D125, D230, D117, D17 · invariants I1, I4, I10
+
+- `J13.S5a.c1` WHEN finalized source attribution and Base-safe exclusive backing pass THE SYSTEM SHALL atomically claim the drain and backing, commit one full-net manual credit and immutable outbox event with pending delivery
+- `J13.S5a.c2` IF a source claim or Base allocation is reused, attribution is incomplete or an affected-chain credit pause is active THE SYSTEM SHALL NOT create a credit
+- `J13.S5a.c3` WHEN processing passes 2 minutes or 15 minutes without settlement THE SYSTEM SHALL apply D17 progress/attention behavior from the original eligibility time without inferring settlement from elapsed time
+
+**`J13.S6`** Sees the host-acknowledged net credit · decisions D18, D124, D114, D115, D143
+
+- `J13.S6.c1` WHEN internal Solana deposit credit commits before host acknowledgment THE SYSTEM SHALL show Received by the business; account update pending with the original reference and separate delivery state
+- `J13.S6.c2` WHEN the host acknowledges committed account processing THE SYSTEM SHALL show the verified net credit and source Solana and Base-arrival explorer evidence
+- `J13.S6.c3` IF host acknowledgment or a status refresh is missing THE SYSTEM SHALL NOT claim credited status or ask for another payment and SHALL preserve D115 authorized retrieval/error state
+
+## J14 · User signs a host-funded Solana payment with an exact quote
+
+**Actor:** User depositing USDC  
+**Goal:** Sign one native-USDC transaction without payer SOL and receive the locked credit on Base  
+**Proves:** Solana transaction consent and expiry preserve the same exact-credit and recovery promises  
+
+| Exit | Title | Named by |
+|---|---|---|
+| `credited` | Exact credit acknowledged by the host | `J14.S7` |
+| `not_submitted` | No accepted operation; explicit new preparation available | `J14.S8` |
+| `attention` | Original accepted operation retained for checking or business action | `J14.S9` |
+| `failed_no_debit` | Finalized proof excludes execution; explicit new quote permitted | `J14.S10` |
+
+```mermaid
+flowchart LR
+  J14_S1["Restores history and prepares a Solana quote<br/><small>script · deposit_widget · quote</small>"]
+  J14_S2["Signs the exact saved transaction message<br/><small>human · deposit_widget · signing</small>"]
+  J14_S3["Durably accepts the matching payer signature<br/><small>script · settle_api</small>"]
+  J14_S4["Co-signs and submits one atomic Solana payment<br/><small>script</small>"]
+  J14_S5["Verifies the original burn and Base backing<br/><small>script</small>"]
+  J14_S6["Commits the locked credit and residual<br/><small>script</small>"]
+  J14_S7["Shows settlement and host account credit separately<br/><small>script · deposit_widget · account_update_pending</small>"]
+  J14_S8["Ends preparation without acceptance<br/><small>script · deposit_widget · not_submitted</small>"]
+  J14_S9["Retains the original payment or unavailable history for recovery<br/><small>script · deposit_widget · needs_attention</small>"]
+  J14_S10["Proves that an expired signed transaction did not debit<br/><small>script · deposit_widget · failed_no_debit</small>"]
+  J14_S1 -->|"New payment explicitly chosen and valid quote displayed"| J14_S2
+  J14_S1 -->|"Restored accepted attempt awaits source execution"| J14_S4
+  J14_S1 -->|"Restored source execution awaits Base verification"| J14_S5
+  J14_S1 -->|"Restored credit awaits or has host acknowledgment"| J14_S7
+  J14_S1 -->|"Restored attempt needs attention or history is unavailable"| J14_S9
+  J14_S1 -->|"Preparation ends with no accepted attempt"| J14_S8
+  J14_S2 -->|"Matching payer signature returned"| J14_S3
+  J14_S2 -->|"Rejected or stale signing with no accepted operation"| J14_S8
+  J14_S3 -->|"Durable acceptance recorded or original acceptance recovered"| J14_S4
+  J14_S3 -->|"Confirmed rejection before acceptance"| J14_S8
+  J14_S4 -->|"Matching source execution is finalized"| J14_S5
+  J14_S4 -->|"Execution is pending or unknown or needs business intervention"| J14_S9
+  J14_S4 -->|"Complete finalized expiry and no-execution proof exists"| J14_S10
+  J14_S5 -->|"Verified backing covers the locked credit"| J14_S6
+  J14_S5 -->|"Evidence mismatch or shortfall or forwarding delay"| J14_S9
+  J14_S6 --> J14_S7
+```
+
+| Step | Bucket | Surface · state | Sees | Does | Next | Criteria |
+|---|---|---|---|---|---|---|
+| `J14.S1` Restores history and prepares a Solana quote | script | `deposit_widget` · quote | — | — | `J14.S2` · New payment explicitly chosen and valid quote displayed; `J14.S4` · Restored accepted attempt awaits source execution; `J14.S5` · Restored source execution awaits Base verification; `J14.S7` · Restored credit awaits or has host acknowledgment; `J14.S9` · Restored attempt needs attention or history is unavailable; `J14.S8` · Preparation ends with no accepted attempt | 6 |
+| `J14.S2` Signs the exact saved transaction message | human | `deposit_widget` · signing | — | — | `J14.S3` · Matching payer signature returned; `J14.S8` · Rejected or stale signing with no accepted operation | 4 |
+| `J14.S3` Durably accepts the matching payer signature | script | `settle_api` | — | — | `J14.S4` · Durable acceptance recorded or original acceptance recovered; `J14.S8` · Confirmed rejection before acceptance | 5 |
+| `J14.S4` Co-signs and submits one atomic Solana payment | script | — | — | — | `J14.S5` · Matching source execution is finalized; `J14.S9` · Execution is pending or unknown or needs business intervention; `J14.S10` · Complete finalized expiry and no-execution proof exists | 7 |
+| `J14.S5` Verifies the original burn and Base backing | script | — | — | — | `J14.S6` · Verified backing covers the locked credit; `J14.S9` · Evidence mismatch or shortfall or forwarding delay | 4 |
+| `J14.S6` Commits the locked credit and residual | script | — | — | — | `J14.S7` | 3 |
+| `J14.S7` Shows settlement and host account credit separately | script | `deposit_widget` · account_update_pending | — | — | exit `credited` | 3 |
+| `J14.S8` Ends preparation without acceptance | script | `deposit_widget` · not_submitted | — | — | exit `not_submitted` | 2 |
+| `J14.S9` Retains the original payment or unavailable history for recovery | script | `deposit_widget` · needs_attention | — | — | exit `attention` | 4 |
+| `J14.S10` Proves that an expired signed transaction did not debit | script | `deposit_widget` · failed_no_debit | — | — | exit `failed_no_debit` | 3 |
+
+### J14 acceptance criteria
+
+**`J14.S1`** Restores history and prepares a Solana quote · decisions D110, D112, D113, D115, D126, D128, D137, D140, D141, D143 · invariants I12
+
+- `J14.S1.c1` WHEN entering the Solana wallet flow THE SYSTEM SHALL load authenticated history first and make unresolved accepted attempts primary before new preparation, without treating a failed read as empty history
+- `J14.S1.c2` WHEN an authorized payer requests a quote THE SYSTEM SHALL use one pay or receive amount, the versioned host fee policy and D126 burn-minus-maxFee bound and store exact debit, credit, fixed fee, source/destination, payment ID, deadlines and immutable Solana message
+- `J14.S1.c3` WHEN preparation repeats THE SYSTEM SHALL return the existing immutable result for equal idempotency input and reject conflicting key reuse without changing that quote
+- `J14.S1.c4` IF mint/cluster, wallet capability, amounts, limits, Circle fee bounds, SOL/rent budget or message lifetime cannot be validated THE SYSTEM SHALL NOT return executable signing data
+- `J14.S1.c5` WHEN an unaccepted quote or message blockhash expires THE SYSTEM SHALL preserve amount/direction, payer and source selection and require explicit Review updated quote with a new key and consent
+- `J14.S1.c6` IF an accepted or uncertain payment exists THE SYSTEM SHALL NOT replace it with a new quote or signature because its displayed quote or blockhash expired
+
+**`J14.S2`** Signs the exact saved transaction message · decisions D117, D113, D137, D143, D58 · invariants I12
+
+- `J14.S2.c1` WHEN signing starts THE SYSTEM SHALL explain the exact native-USDC debit, fixed fee, Base credit and business-paid SOL/setup costs and request the supported wallet's transaction signature for the saved message without a prior token approval or payer SOL requirement
+- `J14.S2.c2` IF a wallet changes message bytes, account, cluster or required signing capability THE SYSTEM SHALL NOT submit stale consent, request a seed or fall back to wallet signAndSend
+- `J14.S2.c3` IF signing is rejected THE SYSTEM SHALL NOT report a debit or accepted payment and SHALL keep the manual option available
+- `J14.S2.c4` WHEN the signature is collected THE SYSTEM SHALL keep the host fee-payer and event-account signatures private until durable acceptance so the browser cannot broadcast an executable pre-acceptance payment
+
+**`J14.S3`** Durably accepts the matching payer signature · decisions D26, D128, D137, D140, D141, D143, D233 · invariants I1, I12
+
+- `J14.S3.c1` WHEN a matching unexpired payer signature passes ownership, exact-message, quote, route and SOL-budget checks THE SYSTEM SHALL atomically save its consent and one accepted payment operation before acknowledgment or host co-signing
+- `J14.S3.c2` IF payer signature, saved message, account authority, cutoff or blockhash validity fails THE SYSTEM SHALL NOT accept or broadcast the payment
+- `J14.S3.c3` WHEN submitPayment repeats THE SYSTEM SHALL return the original operation for the same consent and reject replacement consent without another executable payment
+- `J14.S3.c4` IF acceptance acknowledgment times out THE SYSTEM SHALL NOT instruct payment again and SHALL recover the original payment through authenticated history/getPayment
+- `J14.S3.c5` WHEN acceptance commits THE SYSTEM SHALL expose the same payment ID in account history before source execution and retain it after source and Base evidence arrive
+
+**`J14.S4`** Co-signs and submits one atomic Solana payment · decisions D27, D28, D126, D128, D136, D137, D233, D234 · invariants I1, I5, I11, I12
+
+- `J14.S4.c1` WHEN an accepted operation is ready THE SYSTEM SHALL simulate the exact message, reserve bounded SOL/rent spend, co-sign only those saved bytes and persist all transaction/signature/blockhash identities before broadcast
+- `J14.S4.c2` WHEN the owned program executes THE SYSTEM SHALL require the payer and stored host operational co-signer, verify fixed accounts and quote bounds, create the permanent payment receipt and atomically debit exactly the payer amount, retain the disclosed source fee and burn via a payment-specific vault with a protected operation tag
+- `J14.S4.c3` IF any account/program check, deadline, fee bound, transfer or burn fails THE SYSTEM SHALL NOT retain a payer USDC debit or USDC fee from that transaction
+- `J14.S4.c4` IF a payment receipt already exists or a manual balance is present THE SYSTEM SHALL NOT execute that payment twice or consume manual funds
+- `J14.S4.c5` IF execution or broadcast is unknown THE SYSTEM SHALL NOT change the message, blockhash, fee payer or priority fee or request another signature and SHALL reconcile or rebroadcast identical valid bytes
+- `J14.S4.c6` WHEN a receipt or expiry is reconciled THE SYSTEM SHALL record actual host SOL fees and rent funding separately from USDC allocations and retain unknown-attempt budget reservations
+- `J14.S4.c7` IF configured spend, reserve or attempt limits block work THE SYSTEM SHALL NOT broadcast outside those limits and SHALL retain the original operation while read-only recovery continues
+
+**`J14.S5`** Verifies the original burn and Base backing · decisions D21, D38, D56, D126, D127, D138, D137, D232 · invariants I10, I12
+
+- `J14.S5.c1` WHEN source execution is finalized THE SYSTEM SHALL verify its payer debit, program receipt, fee/burn split and protected message tag then link the pinned CCTP message to its native-USDC Base-safe arrival at the stored recipient
+- `J14.S5.c2` IF source evidence, message tag, domains, amount or destination linkage differ or Base backing is already claimed THE SYSTEM SHALL NOT allocate it to this payment
+- `J14.S5.c3` WHEN forwarding is delayed or fails THE SYSTEM SHALL keep the original burn and D56 polling/attention schedule without reburning or changing the quote
+- `J14.S5.c4` WHEN verified backing is below the quote THE SYSTEM SHALL retain quote_shortfall and its deficit for D127 verified host funding without a partial credit or another payer debit
+
+**`J14.S6`** Commits the locked credit and residual · decisions D21, D23, D125, D126, D127, D230 · invariants I1, I4, I10, I12
+
+- `J14.S6.c1` WHEN source attribution and exclusive Base-safe backing pass THE SYSTEM SHALL atomically claim the payment/backing, insert exactly the quoted credit, separate host residual and immutable event with pending delivery
+- `J14.S6.c2` IF backing is reused, insufficient or mismatched or an affected-chain pause is active THE SYSTEM SHALL NOT create a credit
+- `J14.S6.c3` WHEN credit creation replays THE SYSTEM SHALL return its committed credit/event without another allocation or event
+
+**`J14.S7`** Shows settlement and host account credit separately · decisions D18, D112, D114, D115, D124, D143
+
+- `J14.S7.c1` WHEN settlement precedes host acknowledgment THE SYSTEM SHALL show the original reference and locked amount as account update pending with delivery separate from source and settlement
+- `J14.S7.c2` WHEN the host acknowledges committed processing THE SYSTEM SHALL show the exact quoted credit, fixed fee and Solana/Base explorer evidence
+- `J14.S7.c3` IF host acknowledgment or status retrieval is unavailable THE SYSTEM SHALL NOT claim credit or suggest another payment and SHALL retain authorized account-scoped state with read-only Retry
+
+**`J14.S8`** Ends preparation without acceptance · decisions D113, D114, D137, D140, D233
+
+- `J14.S8.c1` WHEN rejection or expiry is confirmed before acceptance THE SYSTEM SHALL explain that the attempt was not submitted and permit explicit fresh quote review or the manual option
+- `J14.S8.c2` IF acceptance or execution is uncertain THE SYSTEM SHALL NOT enter the unaccepted exit or claim no USDC was charged and SHALL recover the original payment identity
+
+**`J14.S9`** Retains the original payment or unavailable history for recovery · decisions D17, D54, D112, D114, D115, D127, D140, D233 · invariants I10, I12
+
+- `J14.S9.c1` WHEN an accepted Solana operation needs attention THE SYSTEM SHALL retain its stage, payment ID, original signature/blockhash/message evidence and reason through getPayment, alerts and durable attention delivery
+- `J14.S9.c2` IF a status/history read fails THE SYSTEM SHALL NOT create a payment attention episode from connectivity alone or erase retained authorized history and SHALL show D115 retrieval error with read-only Retry
+- `J14.S9.c3` WHEN payer-facing attention is shown THE SYSTEM SHALL explain the known outcome, next business action and existing reference without asking for another payment
+- `J14.S9.c4` WHEN verified host funding or late original execution resolves the problem THE SYSTEM SHALL resume verification and allocation for the same payment without another customer debit
+
+**`J14.S10`** Proves that an expired signed transaction did not debit · decisions D114, D140, D233 · invariants I1, I12
+
+- `J14.S10.c1` WHEN finalized block height exceeds the saved lastValidBlockHeight and a complete finalized execution scan plus program receipt check proves no successful original payment THE SYSTEM SHALL atomically record failed_no_debit and close its payment attention episode without a credit
+- `J14.S10.c2` IF history is incomplete, the blockhash can still land or a successful matching program payment exists THE SYSTEM SHALL NOT declare failed_no_debit from wall-clock expiry, a null lookup or an RPC error
+- `J14.S10.c3` WHEN failed_no_debit is proven THE SYSTEM SHALL show No USDC was charged and permit a new quote only after explicit payer action while preserving the old operation evidence
+
+## J15 · Operator recovers a Solana vault and records repayment
+
+**Actor:** Developer integrating Settle Kit  
+**Goal:** Recover only allowed source assets to fixed host refund accounts and retain payer repayment evidence  
+**Proves:** Source recovery, account rent and replay guards cannot become a false Base credit or payer refund  
+
+| Exit | Title | Named by |
+|---|---|---|
+| `resolved` | Verified recovery has a labeled repayment resolution | `J15.S5` |
+| `open` | Recovery or repayment remains open with its reason | `J15.S6` |
+
+```mermaid
+flowchart LR
+  J15_S1["Identifies the Solana recovery case<br/><small>human · settle_api</small>"]
+  J15_S2["Calls a guarded fixed-refund program instruction<br/><small>human</small>"]
+  J15_S3["Verifies finalized recovery and retains repayment liability<br/><small>script</small>"]
+  J15_S4["Records a labeled repayment or keeps the case open<br/><small>script · settle_api</small>"]
+  J15_S5["Reads the completed repayment record<br/><small>script</small>"]
+  J15_S6["Retains an unresolved recovery case<br/><small>script</small>"]
+  J15_S1 -->|"Guarded over-limit USDC or supported asset recovery is needed"| J15_S2
+  J15_S1 -->|"A recovery transaction is already submitted or discovered"| J15_S3
+  J15_S1 -->|"No supported evidence is available or repayment remains unresolved"| J15_S4
+  J15_S2 --> J15_S3
+  J15_S3 --> J15_S4
+  J15_S4 -->|"Authorized full repayment evidence is accepted"| J15_S5
+  J15_S4 -->|"Evidence or authorization is missing or repayment is partial or disputed"| J15_S6
+```
+
+| Step | Bucket | Surface · state | Sees | Does | Next | Criteria |
+|---|---|---|---|---|---|---|
+| `J15.S1` Identifies the Solana recovery case | human | `settle_api` | — | — | `J15.S2` · Guarded over-limit USDC or supported asset recovery is needed; `J15.S3` · A recovery transaction is already submitted or discovered; `J15.S4` · No supported evidence is available or repayment remains unresolved | 2 |
+| `J15.S2` Calls a guarded fixed-refund program instruction | human | — | — | — | `J15.S3` | 5 |
+| `J15.S3` Verifies finalized recovery and retains repayment liability | script | — | — | — | `J15.S4` | 3 |
+| `J15.S4` Records a labeled repayment or keeps the case open | script | `settle_api` | — | — | `J15.S5` · Authorized full repayment evidence is accepted; `J15.S6` · Evidence or authorization is missing or repayment is partial or disputed | 2 |
+| `J15.S5` Reads the completed repayment record | script | — | — | — | exit `resolved` | 2 |
+| `J15.S6` Retains an unresolved recovery case | script | — | — | — | exit `open` | 2 |
+
+### J15 acceptance criteria
+
+**`J15.S1`** Identifies the Solana recovery case · decisions D27, D28, D54, D129, D234, X6, X20
+
+- `J15.S1.c1` WHEN an authorized operator opens the case THE SYSTEM SHALL identify the stored cluster, vault, asset, refund owner/ATA and evidence kind and expose over-limit or unsupported-asset status without treating a support report as chain evidence
+- `J15.S1.c2` IF native-USDC balance exceeds a D28 limit THE SYSTEM SHALL NOT split it into burns or charge a sweep fee
+
+**`J15.S2`** Calls a guarded fixed-refund program instruction · decisions D27, D28, D136, D234, X6, X20 · invariants I11, I12
+
+- `J15.S2.c1` WHEN an operator or third party executes over-limit recovery while a D28 limit is exceeded THE SYSTEM SHALL move the whole native-USDC balance to the stored refund ATA, emit a zero-fee drain and advance the USDC drain sequence
+- `J15.S2.c2` IF neither USDC limit is exceeded or the supplied recipient differs THE SYSTEM SHALL NOT recover USDC or redirect funds
+- `J15.S2.c3` WHEN a supported non-USDC legacy-SPL asset or surplus native SOL is rescued THE SYSTEM SHALL send only the transferable amount to the fixed refund destination and emit asset, amount and recipient without advancing the USDC drain sequence
+- `J15.S2.c4` IF rescue targets USDC, Token-2022, required rent or persistent vault/payment state THE SYSTEM SHALL NOT transfer through that rescue, close the persistent account or reset its replay guard
+- `J15.S2.c5` IF recovery fails THE SYSTEM SHALL NOT emit successful recovery, create Base credit or record payer repayment
+
+**`J15.S3`** Verifies finalized recovery and retains repayment liability · decisions D21, D23, D121, D129, D230, D232, D234 · invariants I1, I8, I10
+
+- `J15.S3.c1` WHEN recovery is finalized THE SYSTEM SHALL verify the owned-program instruction, canonical asset transfer and fixed refund destination, record one recovery case/attention episode and assign USDC drain memberships only for over-limit USDC recovery
+- `J15.S3.c2` IF recovery evidence is missing or inconsistent THE SYSTEM SHALL NOT mark it verified or the payer repaid and SHALL retain the open reason
+- `J15.S3.c3` IF recovered USDC belongs to a drain THE SYSTEM SHALL NOT include it in a later sweep or create a Base credit from its source refund receipt
+
+**`J15.S4`** Records a labeled repayment or keeps the case open · decisions D27, D54, D129, D232, D234 · invariants I1, I4, I10
+
+- `J15.S4.c1` WHEN repayment is recorded THE SYSTEM SHALL apply J12.S4 and J12.S5 evidence/atomic-closure rules to the Solana case using finalized Solana evidence or safe EVM evidence for chain_verified and an explicit host_reported label otherwise
+- `J15.S4.c2` IF only the original source refund transfer exists THE SYSTEM SHALL NOT accept it as payer repayment or close an unrelated incident
+
+**`J15.S5`** Reads the completed repayment record · decisions D129
+
+- `J15.S5.c1` WHEN the closed case is read THE SYSTEM SHALL expose its retained recovery and immutable repayment evidence kind, beneficiary, operator and time
+- `J15.S5.c2` IF a closed-case resolution is retried THE SYSTEM SHALL NOT create a credit, duplicate resolution or close another alert
+
+**`J15.S6`** Retains an unresolved recovery case · decisions D54, D129
+
+- `J15.S6.c1` WHEN recovery or repayment remains unresolved THE SYSTEM SHALL retain the case and next operator action without describing the payer as repaid
+- `J15.S6.c2` IF the case remains unresolved THE SYSTEM SHALL NOT create a Base credit from source recovery or operator assertions
+
 ## Surfaces
 
 | Surface | Kind | States | Used by |
 |---|---|---|---|
-| `deposit_widget` | component | show_address, received, awaiting_minimum, processing, needs_attention, account_update_pending, credited, connect_wallet, quote, signing, submitting, not_submitted, failed_no_debit | `J2.S1` `J2.S2` `J2.S3` `J2.S6` `J3.S1` `J3.S2` `J3.S3` `J3.S6` `J8.S1` `J8.S2` `J8.S3` `J8.S4` `J8.S6` `J8.S8` `J8.S9` `J8.S10` `J8.S11` |
-| `settle_api` | endpoint | — | `J1.S5` `J7.S1` `J10.S1` `J10.S2` `J10.S3` `J12.S1` `J12.S4` |
+| `deposit_widget` | component | show_address, received, awaiting_minimum, processing, needs_attention, account_update_pending, credited, connect_wallet, quote, signing, submitting, not_submitted, failed_no_debit | `J2.S1` `J2.S2` `J2.S3` `J2.S6` `J3.S1` `J3.S2` `J3.S3` `J3.S6` `J8.S1` `J8.S2` `J8.S3` `J8.S4` `J8.S6` `J8.S8` `J8.S9` `J8.S10` `J8.S11` `J13.S1` `J13.S2` `J13.S3` `J13.S6` `J14.S1` `J14.S2` `J14.S7` `J14.S8` `J14.S9` `J14.S10` |
+| `settle_api` | endpoint | — | `J1.S5` `J7.S1` `J10.S1` `J10.S2` `J10.S3` `J12.S1` `J12.S4` `J14.S3` `J15.S1` `J15.S4` |
 | `credited_webhook` | webhook | — | `J5.S1` |
 | `deposit_hook` | hook | — | `J9.S1` |
 | `wallet_payment_hook` | hook | — | `J9.S2` |
@@ -1000,10 +1328,16 @@ flowchart LR
 | `M2.T3` Execute and attribute manual sweeps | `J2.S4` `J3.S4` `J4.S1` `J4.S2` | J2, J3, J4 |
 | `M2.T4` Accept wallet payments and expose authenticated history | `J8.S4` | J8 |
 | `M2.T5` Track the original CCTP message and verify Base backing | `J4.S3` `J4.S4` `J8.S6` | J4, J8 |
-| `M2.T6` Allocate backing and commit credit with its event | `J2.S5` `J3.S5` `J8.S7` | J2, J3, J8 |
+| `M2.T6` Allocate backing and commit credit with its event | `J2.S5` `J3.S5` `J8.S7` `J13.S5a` `J14.S6` | J2, J3, J8, J13, J14 |
 | `M2.T7` Deliver signed events and commit host credit once | `J5.S1` `J5.S2` `J5.S3` `J10.S3` | J5, J10 |
 | `M3.T1` Reconcile books and finish narrow operator recovery | `J6.S3` `J6.S4` `J7.S1` `J7.S3` `J8.S10` `J10.S1` `J10.S2` `J12.S1` `J12.S3` `J12.S4` `J12.S5` `J12.S6` | J6, J7, J8, J10, J12 |
 | `M3.T2` Build headless hooks and wallet consent state | `J8.S1` `J8.S3` `J8.S8` `J8.S9` `J9.S1` `J9.S2` | J8, J9 |
-| `M3.T3` Ship the Deposit interface and reference wiring | `J1.S5` `J2.S1` `J2.S2` `J2.S6` `J3.S1` `J3.S2` `J3.S6` | J1, J2, J3 |
+| `M3.T3` Ship the Deposit interface and reference wiring | `J1.S5` `J2.S1` `J2.S2` `J2.S6` `J3.S1` `J3.S2` `J3.S6` `J13.S6` `J14.S7` | J1, J2, J3, J13, J14 |
 | `M4.T1` Prove a separate consumer, live routes and upgrade recovery | `J11.S1` | J11 |
 | `M4.T2` Prepare the coherent public demonstration | `J11.S2` | J11 |
+| `M1.T5` Build the immutable Solana vault and payment program | `J1.S4a` `J15.S2` | J1, J15 |
+| `M2.T8` Issue initialized Solana instructions and scan finalized history | `J13.S1` `J13.S2` `J13.S3` | J13 |
+| `M2.T9` Submit and attribute guarded Solana manual sweeps | `J13.S4` | J13 |
+| `M2.T10` Prepare and recover exact Solana wallet transactions | `J14.S1` `J14.S2` `J14.S3` `J14.S4` `J14.S8` `J14.S10` | J14 |
+| `M2.T11` Verify Solana CCTP linkage and record actual route evidence | `J13.S5` `J14.S5` | J13, J14 |
+| `M3.T4` Integrate Solana attention, recovery and repayment evidence | `J14.S9` `J15.S1` `J15.S3` `J15.S4` `J15.S5` `J15.S6` | J14, J15 |
