@@ -11,6 +11,8 @@ published to npm. Contracts are experimental and unaudited.
 
 · [Decisions](docs/decisions.md)
 · [User journeys](docs/journeys/settle-kit.md)
+· [Technical design](docs/plans/2026-10-15-deposit-sdk-technical-design.md)
+· [Build plan](docs/tasks/README.md)
 
 ## The deposit experience
 
@@ -65,9 +67,10 @@ The SDK will not require payer or treasury private keys. The business controls
 its gas wallet, treasury and resulting customer-credit liability.
 
 [All experiment results and evidence limits](docs/spikes.md) are recorded separately
-from the specification. Exploratory spikes are complete; the next step is a short
-technical design and implementation task breakdown. Remaining checks will be part
-of the build. See [planning status](docs/spec/README.md).
+from the specification. Exploratory spikes and the technical planning are complete.
+The [build plan](docs/tasks/README.md) assigns every journey step to a task, with an
+early simulated interface and live cross-chain verification before final packaging.
+Implementation has not started. See [planning status](docs/spec/README.md).
 
 ## Explore the repository
 
@@ -102,6 +105,9 @@ Relay Protocol, paymasters, bank payouts and customer withdrawals are out of sco
 
 The aim is to make the mechanics of a stablecoin deposit system understandable
 and independently verifiable, from payer consent to the host's committed credit.
+This is also a learning project and a portfolio for payments engineering roles.
+The [first-slice tasks](docs/tasks/README.md) pair implementation with small code
+walkthroughs and review checkpoints so I can explain the system from its actual files.
 Every implementation test will trace back to a decision, journey criterion or
 invariant. Repository conventions are in [AGENTS.md](AGENTS.md).
 

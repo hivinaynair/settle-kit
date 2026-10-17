@@ -20,12 +20,12 @@ Rules that hold across every journey, ordering and crash point. Tests cite `I1: 
 
 | ID | Invariant | Rule | Decisions | Steps that could break it |
 |---|---|---|---|---|
-| `I1` | One credit per transfer | THE SYSTEM SHALL NOT credit the same on-chain transfer (chain ID, tx hash, log index) more than once | D23 | `J2.S3` `J2.S4` `J2.S5` `J3.S3` `J3.S5` `J4.S2` `J5.S2` `J6.S1` `J7.S3` `J8.S4` `J8.S5` `J8.S7` `J8.S11` `J10.S2` `J10.S3` |
-| `I4` | A credit is final | THE SYSTEM SHALL NOT change a credited deposit's amount or move it out of the credited state | D32 | `J2.S5` `J3.S5` `J6.S3` `J8.S7` |
+| `I1` | One credit per transfer | THE SYSTEM SHALL NOT credit the same on-chain transfer (chain ID, tx hash, log index) more than once | D23 | `J2.S3` `J2.S4` `J2.S5` `J3.S3` `J3.S5` `J4.S2` `J5.S2` `J6.S1` `J7.S3` `J8.S4` `J8.S5` `J8.S7` `J8.S11` `J10.S2` `J10.S3` `J12.S3` `J12.S5` |
+| `I4` | A credit is final | THE SYSTEM SHALL NOT change a credited deposit's amount or move it out of the credited state | D32 | `J2.S5` `J3.S5` `J6.S3` `J8.S7` `J12.S5` |
 | `I5` | Secrets stay secret | THE SYSTEM SHALL NOT put the gas wallet key or the webhook secret in logs, errors or API responses | D27 | `J1.S2` `J5.S1` |
-| `I10` | Every credit has exclusive verified backing | THE SYSTEM SHALL NOT create a credit without exclusively claimed canonical USDC backing at the stored Base recipient at safe and verified source attribution; manual credit equals its full net arrival, and quoted credit equals the locked quote with sufficient backing and separately recorded host residual | D21, D23, D121, D126, D127 | `J2.S5` `J3.S5` `J6.S3` `J7.S3` `J8.S6` `J8.S7` `J8.S10` `J10.S2` |
-| `I8` | Complete discovery means a complete captured range | THE SYSTEM SHALL NOT advance a discovery cursor beyond a fully read and committed range, or mark a captured scan complete before every required page and event through its captured safe boundary is read and committed | D34, D131 | `J2.S3` `J2.S4` `J3.S3` `J4.S2` `J6.S1` `J7.S3` |
-| `I11` | Fixed destinations and isolated payment amounts | THE SYSTEM SHALL NOT let a caller redirect funds from stored treasury, route, fee and refund destinations or consume unrelated manual balances in a quoted payment; manual sweep and over-limit recovery obey stored limits and non-USDC rescue uses only the stored refund address | D26, D28, D33, D39, D231 | `J2.S4` `J4.S2` `J7.S2` `J8.S5` |
+| `I10` | Every credit has exclusive verified backing | THE SYSTEM SHALL NOT create a credit without exclusively claimed canonical USDC backing at the stored Base recipient at safe and verified source attribution; manual credit equals its full net arrival, and quoted credit equals the locked quote with sufficient backing and separately recorded host residual | D21, D23, D121, D126, D127 | `J2.S5` `J3.S5` `J6.S3` `J7.S3` `J8.S6` `J8.S7` `J8.S10` `J10.S2` `J12.S3` `J12.S5` |
+| `I8` | Complete discovery means a complete captured range | THE SYSTEM SHALL NOT advance a discovery cursor beyond a fully read and committed range, or mark a captured scan complete before every required page and event through its captured safe boundary is read and committed | D34, D131 | `J2.S3` `J2.S4` `J3.S3` `J4.S2` `J6.S1` `J7.S3` `J12.S3` |
+| `I11` | Fixed destinations and isolated payment amounts | THE SYSTEM SHALL NOT let a caller redirect funds from stored treasury, route, fee and refund destinations or consume unrelated manual balances in a quoted payment; manual sweep and over-limit recovery obey stored limits and non-USDC rescue uses only the stored refund address | D26, D28, D33, D39, D231 | `J2.S4` `J4.S2` `J7.S2` `J8.S5` `J12.S2` |
 | `I12` | Accepted quote matches payer consent | THE SYSTEM SHALL NOT increase the authorized debit, reduce the locked credit, change the accepted destination or fee, or execute an authorization more than once for an accepted quoted payment | D110, D126, D140, D141, D231 | `J8.S2` `J8.S3` `J8.S4` `J8.S5` `J8.S6` `J8.S7` `J8.S10` `J8.S11` `J10.S2` |
 
 ## J1 · Developer sets up Settle Kit and shows the deposit widget
@@ -137,7 +137,7 @@ flowchart LR
 
 | Step | Bucket | Surface · state | Sees | Does | Next | Criteria |
 |---|---|---|---|---|---|---|
-| `J2.S1` Sees their Base deposit address | script | `deposit_widget` · show_address | QR code, the address in groups, 'USDC on Base only', minimum 2 USDC, 'you'll receive about X' | Returns the account's stored address, computing and storing it on first use | `J2.S2` | 9 |
+| `J2.S1` Sees their Base deposit address | script | `deposit_widget` · show_address | QR code, the address in groups, 'USDC on Base only', minimum 2 USDC, 'you'll receive about X' | Returns the account's stored address, computing and storing it on first use | `J2.S2` | 12 |
 | `J2.S2` Sends USDC on Base | human | `deposit_widget` · show_address | — | Scans the QR code with a wallet or withdraws from an exchange to the address | `J2.S3` | 4 |
 | `J2.S3` The transfer is recorded | script | `deposit_widget` · received | 'Received 10.00 USDC. Moving it to your account' | Reads the USDC transfer at or below Base's safe block and records the deposit | `J2.S4` | 8 |
 | `J2.S4` Sweeps to the recipient on Base | script | — | — | The gas wallet deploys the address's contract if needed and calls sweep(), which pays the sweep fee and forwards the rest | `J2.S5` | 14 |
@@ -146,7 +146,7 @@ flowchart LR
 
 ### J2 acceptance criteria
 
-**`J2.S1`** Sees their Base deposit address · decisions D13, D20, D28, D33, D38, D39, D135, D134, D140
+**`J2.S1`** Sees their Base deposit address · decisions D13, D20, D28, D33, D38, D39, D135, D134, D140, D43
 
 - `J2.S1.c2` WHEN the account asks again THE SYSTEM SHALL return the same stored address and SHALL NOT issue a new one
 - `J2.S1.c3` IF the browser sends a recipient, minimum or lane THE SYSTEM SHALL NOT use it
@@ -157,6 +157,9 @@ flowchart LR
 - `J2.S1.c8` WHEN depositAddress(accountId, chain) is called by an authorized host THE SYSTEM SHALL return the stored address for that supported native-USDC chain
 - `J2.S1.c9` IF the selected token or source chain is unsupported THE SYSTEM SHALL NOT present it as an accepted deposit route
 - `J2.S1.c10` WHEN manual payment instructions are shown THE SYSTEM SHALL label net credit as an estimate and disclose that exchange withdrawal fees and the actual arrival determine final credit
+- `J2.S1.c11` WHEN manual instructions are displayed, copied or encoded as QR THE SYSTEM SHALL use the same authenticated account and selected-chain stored address and expose the complete address and chain for inspection
+- `J2.S1.c12` IF incoming activity contains a zero-value transfer or lookalike counterparty THE SYSTEM SHALL NOT change, prefill or suggest a deposit destination from that activity
+- `J2.S1.c13` WHEN the account or chain changes THE SYSTEM SHALL clear the previous address and QR, disable copy until matching instructions load and ignore responses for the previous selection
 
 **`J2.S2`** Sends USDC on Base · decisions D131
 
@@ -238,7 +241,7 @@ flowchart LR
 
 | Step | Bucket | Surface · state | Sees | Does | Next | Criteria |
 |---|---|---|---|---|---|---|
-| `J3.S1` Sees their Arbitrum deposit address | script | `deposit_widget` · show_address | QR code, address, 'USDC on Arbitrum only', minimum 2 USDC, maximum automatic balance (1,000 USDC by default), estimated fees | Returns the account's stored Arbitrum address, computing and storing it on first use | `J3.S2` | 10 |
+| `J3.S1` Sees their Arbitrum deposit address | script | `deposit_widget` · show_address | QR code, address, 'USDC on Arbitrum only', minimum 2 USDC, maximum automatic balance (1,000 USDC by default), estimated fees | Returns the account's stored Arbitrum address, computing and storing it on first use | `J3.S2` | 13 |
 | `J3.S2` Sends USDC on Arbitrum | human | `deposit_widget` · show_address | — | Scans the QR code with a wallet or withdraws from an exchange on Arbitrum | `J3.S3` | 4 |
 | `J3.S3` The transfer is recorded | script | `deposit_widget` · received | 'Received 10.00 USDC on Arbitrum. Moving it to Base' | Reads the USDC transfer at or below Arbitrum's safe block and records the deposit | `J3.S4` | 8 |
 | `J3.S4` Sweeps through CCTP | script | — | — | — | uses `J4`; `J3.S5` | 0 |
@@ -247,7 +250,7 @@ flowchart LR
 
 ### J3 acceptance criteria
 
-**`J3.S1`** Sees their Arbitrum deposit address · decisions D13, D20, D28, D33, D38, D39, D135, D134, D140
+**`J3.S1`** Sees their Arbitrum deposit address · decisions D13, D20, D28, D33, D38, D39, D135, D134, D140, D43
 
 - `J3.S1.c2` WHEN the account asks again THE SYSTEM SHALL return the same stored address and SHALL NOT issue a new one
 - `J3.S1.c3` IF the browser sends a recipient, minimum or lane THE SYSTEM SHALL NOT use it
@@ -259,6 +262,9 @@ flowchart LR
 - `J3.S1.c9` WHEN depositAddress(accountId, chain) is called by an authorized host THE SYSTEM SHALL return the stored address for that supported native-USDC chain
 - `J3.S1.c10` IF the selected token or source chain is unsupported THE SYSTEM SHALL NOT present it as an accepted deposit route
 - `J3.S1.c11` WHEN manual payment instructions are shown THE SYSTEM SHALL label net credit as an estimate and disclose that exchange withdrawal fees and the actual arrival determine final credit
+- `J3.S1.c12` WHEN manual instructions are displayed, copied or encoded as QR THE SYSTEM SHALL use the same authenticated account and selected-chain stored address and expose the complete address and chain for inspection
+- `J3.S1.c13` IF incoming activity contains a zero-value transfer or lookalike counterparty THE SYSTEM SHALL NOT change, prefill or suggest a deposit destination from that activity
+- `J3.S1.c14` WHEN the account or chain changes THE SYSTEM SHALL clear the previous address and QR, disable copy until matching instructions load and ignore responses for the previous selection
 
 **`J3.S2`** Sends USDC on Arbitrum · decisions D131
 
@@ -323,7 +329,7 @@ flowchart LR
 | Step | Bucket | Surface · state | Sees | Does | Next | Criteria |
 |---|---|---|---|---|---|---|
 | `J4.S1` Starts the sweep workflow | script | — | — | Starts one durable workflow per sweep, one sweep at a time per address | `J4.S2` | 3 |
-| `J4.S2` Burns the USDC through CCTP | script | — | — | The gas wallet deploys the contract if needed and calls sweep(), which pays the sweep fee and burns the rest with CCTP V2 Fast and the Forwarding Service | `J4.S3` | 13 |
+| `J4.S2` Burns the USDC through CCTP | script | — | — | The gas wallet deploys the contract if needed and calls sweep(), which pays the sweep fee and burns the rest with CCTP V2 Fast and the Forwarding Service | `J4.S3` | 14 |
 | `J4.S3` Circle attests the burn | external | — | — | Circle signs the burn message | `J4.S4` | 5 |
 | `J4.S4` Circle mints on Base | external | — | — | The Forwarding Service mints the USDC to the recipient on Base and takes its fee from the minted amount | exit `minted` | 6 |
 
@@ -350,6 +356,7 @@ flowchart LR
 - `J4.S2.c15` IF a sweep step replays after a crash with an unknown transaction outcome THE SYSTEM SHALL NOT create an independently executable fresh-nonce transaction and SHALL reconcile or rebroadcast the saved attempt
 - `J4.S2.c16` IF an incoming transfer belongs to a verified exact-amount authorization event THE SYSTEM SHALL NOT assign it to a manual full-balance sweep or recovery
 - `J4.S2.c17` IF the deployment gas reserve, shared spend budget or bounded retry allowance cannot cover submission THE SYSTEM SHALL NOT broadcast and SHALL retain the original operation with a gas_unavailable or spend_limit reason
+- `J4.S2.c18` WHEN an Arbitrum manual burn executes THE SYSTEM SHALL emit a contract-derived unique operation tag and carry that same tag in protected CCTP hook data so repeated equal-amount burns remain distinguishable
 
 **`J4.S3`** Circle attests the burn · decisions D17, D56, D138
 
@@ -445,7 +452,7 @@ flowchart LR
 
 | Step | Bucket | Surface · state | Sees | Does | Next | Criteria |
 |---|---|---|---|---|---|---|
-| `J6.S1` Reads the chains | script | — | — | Reads incoming USDC, manual drains, quoted-payment execution and recovery events through captured safe boundaries | `J6.S2` | 11 |
+| `J6.S1` Reads the chains | script | — | — | Reads incoming USDC, manual drains, quoted-payment execution and recovery events through captured safe boundaries | `J6.S2` | 12 |
 | `J6.S2` Restarts stuck work | script | — | — | Resumes persisted operation stages and pending deliveries, and starts eligible work without an open operation | `J6.S3` | 14 |
 | `J6.S3` Checks the books | script | — | — | Reconciles manual full-net credits, fixed quoted credits, host fee residuals and any host-funded shortfall against exclusive verified backing | `J6.S4` | 13 |
 | `J6.S4` Re-checks attention cases | script | — | — | Re-checks deposits in needs_attention on D17's schedule | exit `checked` | 6 |
@@ -465,6 +472,7 @@ flowchart LR
 - `J6.S1.c11` IF a newly issued address has not completed that catch-up THE SYSTEM SHALL NOT report its discovery complete
 - `J6.S1.c12` WHEN quoted-payment execution is discovered THE SYSTEM SHALL bind its authorization nonce, payer debit, emitted fee and forwarded or burned amount to one stored payment ID before attribution
 - `J6.S1.c13` IF a transfer is assigned to a quoted operation THE SYSTEM SHALL NOT assign it to a manual sweep or another quoted operation
+- `J6.S1.c14` WHEN another caller executes a later drain while an SDK sweep command is still pending THE SYSTEM SHALL create a separate drain settlement record without starting another SDK sweep command or merging the two drains' source memberships
 
 **`J6.S2`** Restarts stuck work · decisions D36, D139, D230, D45, D140, D231, D111, D128
 
@@ -531,7 +539,7 @@ flowchart LR
 |---|---|---|---|---|---|---|
 | `J7.S1` Reads the over-limit alert | human | `settle_api` | — | Reads listAlerts and verifies the account, source balance and stored refund address | `J7.S2` | 2 |
 | `J7.S2` Calls the fixed-destination recovery | human | — | — | Calls recoverOverLimit() from a block explorer or operator script; the SDK observes the result and does not submit recovery transactions | `J7.S3` | 3 |
-| `J7.S3` Verifies recovery and retains the repayment case | script | — | — | Finds the recovery event at source safe, links its transfers and keeps the repayment alert open | exit `recovered` | 4 |
+| `J7.S3` Verifies recovery and retains the repayment case | script | — | — | Finds the recovery event at source safe, links its transfers and keeps the repayment alert open | exit `recovered` | 5 |
 
 ### J7 acceptance criteria
 
@@ -546,12 +554,13 @@ flowchart LR
 - `J7.S2.c2` IF neither limit is exceeded or the function is invoked on Base THE SYSTEM SHALL NOT recover USDC
 - `J7.S2.c3` IF a caller supplies a different recipient or invokes rescue(USDC) THE SYSTEM SHALL NOT move USDC to that recipient or through rescue
 
-**`J7.S3`** Verifies recovery and retains the repayment case · decisions D17, D27, D34, D54, D121, D230 · invariants I1, I10, I8
+**`J7.S3`** Verifies recovery and retains the repayment case · decisions D17, D27, D34, D54, D121, D230, D129 · invariants I1, I10, I8
 
 - `J7.S3.c1` WHEN a canonical recovery is at source safe THE SYSTEM SHALL assign its source transfers after the preceding successful drain and before this recovery, verify the recovered gross amount and fixed refund receipt, and enter needs_attention as recovered_to_refund_address
 - `J7.S3.c2` IF a transfer belongs to a recovery THE SYSTEM SHALL NOT include it in a later sweep credit or create a Base credit from the refund receipt
 - `J7.S3.c3` WHEN source recovery is verified THE SYSTEM SHALL publish its attention episode through the durable event path and retain the alert until the host records repayment or another verified resolution
 - `J7.S3.c4` IF only source recovery evidence is available THE SYSTEM SHALL NOT tell the user that their account was credited or that the payer was repaid
+- `J7.S3.c5` WHEN the host records repayment for a verified recovery THE SYSTEM SHALL apply the authenticated evidence and closure procedure in J12 without changing the original recovery evidence
 
 ## J8 · User pays from a connected wallet with an exact quote
 
@@ -601,8 +610,8 @@ flowchart LR
 | `J8.S2` Edits either amount and prepares a quote | script | `deposit_widget` · quote | — | — | `J8.S3` · user accepts a valid displayed quote; `J8.S9` · invalid input, unavailable route or abandoned preparation | 13 |
 | `J8.S3` Signs the displayed authorization | human | `deposit_widget` · signing | — | — | `J8.S4` · matching signature returned; `J8.S9` · signature rejected, account changed or quote expired | 4 |
 | `J8.S4` Durably accepts the signed payment | script | `deposit_widget` · submitting | — | — | `J8.S5` · accepted operation recorded; `J8.S9` · confirmed rejected before acceptance | 8 |
-| `J8.S5` Relays an exact-amount source payment | script | — | — | — | `J8.S6` · source execution independently found and canonical at source safe; `J8.S10` · reverted, uncertain or delayed source execution needs attention; `J8.S11` · complete source-safe proof establishes failed_no_debit | 14 |
-| `J8.S6` Verifies the original Base arrival | script | `deposit_widget` · processing | — | — | `J8.S7` · verified backing covers the exact quoted credit; `J8.S10` · shortfall, forwarding failure, delay or evidence mismatch | 7 |
+| `J8.S5` Relays an exact-amount source payment | script | — | — | — | `J8.S6` · source execution independently found and canonical at source safe; `J8.S10` · reverted, uncertain or delayed source execution needs attention; `J8.S11` · complete source-safe proof establishes failed_no_debit | 15 |
+| `J8.S6` Verifies the original Base arrival | script | `deposit_widget` · processing | — | — | `J8.S7` · verified backing covers the exact quoted credit; `J8.S10` · shortfall, forwarding failure, delay or evidence mismatch | 8 |
 | `J8.S7` Commits the exact credit and host allocation | script | — | — | — | `J8.S8` | 5 |
 | `J8.S8` Receives the quoted account credit | script | `deposit_widget` · account_update_pending | — | — | exit `credited` | 4 |
 | `J8.S9` Leaves preparation without an accepted payment | script | `deposit_widget` · not_submitted | — | — | exit `not_submitted` | 2 |
@@ -672,6 +681,7 @@ flowchart LR
 - `J8.S5.c15` WHEN a submission receipt is reconciled THE SYSTEM SHALL record its host ETH expense and reconcile the persisted cost reservation while unknown attempts retain their reservation
 - `J8.S5.c16` WHEN fee replacement is prepared THE SYSTEM SHALL reserve any additional maximum cost for the same nonce without treating both replacements as simultaneously payable
 - `J8.S5.c17` IF an attempt reverted but its authorization remains valid THE SYSTEM SHALL NOT prompt a new payment and SHALL retry only the original operation within its validity and remaining spend allowance
+- `J8.S5.c18` WHEN an accepted wallet payment targets an undeployed stored contract THE SYSTEM SHALL complete or resume its persisted factory deployment and verify the expected code and settings before submitting the original authorization within its original deadline and spend bounds
 
 **`J8.S6`** Verifies the original Base arrival · decisions D21, D138, D56, D231, D126, D127, D17, D38 · invariants I10, I12
 
@@ -682,6 +692,7 @@ flowchart LR
 - `J8.S6.c5` WHEN verified backing is less than the locked credit THE SYSTEM SHALL enter needs_attention as quote_shortfall with the exact deficit and original evidence
 - `J8.S6.c6` IF a quote shortfall exists THE SYSTEM SHALL NOT create a partial credit, charge the payer again or treat a host funding promise as chain evidence
 - `J8.S6.c7` WHEN the original CCTP message executes at Standard finality THE SYSTEM SHALL retain the quoted credit and original burn identity and show confirmation progress without another burn
+- `J8.S6.c8` IF an Arbitrum destination message lacks the protected operation tag matching the verified original source payment THE SYSTEM SHALL NOT allocate its Base arrival to that payment
 
 **`J8.S7`** Commits the exact credit and host allocation · decisions D21, D23, D126, D127, D230, D125 · invariants I1, I4, I10, I12
 
@@ -739,7 +750,7 @@ flowchart LR
 | Step | Bucket | Surface · state | Sees | Does | Next | Criteria |
 |---|---|---|---|---|---|---|
 | `J9.S1` Reads deposits with useDeposits | human | `deposit_hook` | — | — | `J9.S2` | 2 |
-| `J9.S2` Pays with usePayWithWallet | human | `wallet_payment_hook` | — | — | exit `ready` | 4 |
+| `J9.S2` Pays with usePayWithWallet | human | `wallet_payment_hook` | — | — | exit `ready` | 5 |
 
 ### J9 acceptance criteria
 
@@ -754,6 +765,7 @@ flowchart LR
 - `J9.S2.c2` IF custom UI passes changed amounts or destination data with a prepared payment THE SYSTEM SHALL NOT bypass consent validation
 - `J9.S2.c3` WHEN the consumer themes Deposit THE SYSTEM SHALL apply documented CSS variables without requiring Tailwind or @repo/ui
 - `J9.S2.c4` WHEN the widget is used by keyboard or assistive technology THE SYSTEM SHALL expose labeled amount inputs, actionable errors and status announcements without requiring color to interpret payment state
+- `J9.S2.c5` WHEN Deposit displays manual instructions THE SYSTEM SHALL apply D43 to address text, copy and QR through one account-and-chain-scoped state and preserve the test-mode QR watermark
 
 ## J10 · Operator checks and recovers processing
 
@@ -847,13 +859,115 @@ flowchart LR
 - `J11.S2.c3` WHEN the coherent demo is ready THE SYSTEM SHALL support sharing its repository, setup guide, short video and architectural write-up without requiring a docs website, dashboard or formal npm release
 - `J11.S2.c4` WHEN public material describes custody THE SYSTEM SHALL explain that the SDK does not hold payer keys but deposited funds go to the business treasury and app credits are controlled by that business
 
+## J12 · Operator rescues unsupported assets and records payer repayment
+
+**Actor:** Developer integrating Settle Kit  
+**Goal:** Recover an allowed asset to the host and close its repayment case with labeled evidence  
+**Proves:** Contract recovery and payer repayment are distinct auditable actions  
+
+| Exit | Title | Named by |
+|---|---|---|
+| `resolved` | Recovery case resolved with an explicit evidence kind | `J12.S5` |
+| `open` | Recovery or repayment remains open with its reason | `J12.S6` |
+
+```mermaid
+flowchart LR
+  J12_S1["Identifies the asset and recovery case<br/><small>human · settle_api</small>"]
+  J12_S2["Calls the allowed fixed-destination rescue<br/><small>human</small>"]
+  J12_S3["Verifies rescue and opens the repayment case<br/><small>script</small>"]
+  J12_S4["Records repayment through the authenticated operator procedure<br/><small>human · settle_api</small>"]
+  J12_S5["Closes only the resolved recovery alert<br/><small>script</small>"]
+  J12_S6["Retains an unresolved case<br/><small>script</small>"]
+  J12_S1 -->|"A supported-source non-USDC token or native ETH rescue is needed and none has been submitted"| J12_S2
+  J12_S1 -->|"A submitted or discovered rescue awaits verification"| J12_S3
+  J12_S1 -->|"A verified rescue or J7 recovery already has an open repayment case"| J12_S4
+  J12_S1 -->|"No supported rescue or verified recovery case can be identified"| J12_S6
+  J12_S2 -->|"Rescue transaction is submitted or a third party's rescue is discovered"| J12_S3
+  J12_S2 -->|"Transfer reverts or cannot be submitted"| J12_S6
+  J12_S3 -->|"Canonical source-safe rescue and fixed refund receipt are verified"| J12_S4
+  J12_S3 -->|"Receipt is missing or unsafe or asset transfer evidence cannot be verified"| J12_S6
+  J12_S4 -->|"Evidence is accepted and the operator confirms full resolution for the intended beneficiary"| J12_S5
+  J12_S4 -->|"Authorization or required evidence is missing or repayment remains partial or disputed"| J12_S6
+```
+
+| Step | Bucket | Surface · state | Sees | Does | Next | Criteria |
+|---|---|---|---|---|---|---|
+| `J12.S1` Identifies the asset and recovery case | human | `settle_api` | — | — | `J12.S2` · A supported-source non-USDC token or native ETH rescue is needed and none has been submitted; `J12.S3` · A submitted or discovered rescue awaits verification; `J12.S4` · A verified rescue or J7 recovery already has an open repayment case; `J12.S6` · No supported rescue or verified recovery case can be identified | 3 |
+| `J12.S2` Calls the allowed fixed-destination rescue | human | — | — | Operator calls rescue(token) from an explorer or script and pays its gas; the SDK does not submit it | `J12.S3` · Rescue transaction is submitted or a third party's rescue is discovered; `J12.S6` · Transfer reverts or cannot be submitted | 3 |
+| `J12.S3` Verifies rescue and opens the repayment case | script | — | — | — | `J12.S4` · Canonical source-safe rescue and fixed refund receipt are verified; `J12.S6` · Receipt is missing or unsafe or asset transfer evidence cannot be verified | 4 |
+| `J12.S4` Records repayment through the authenticated operator procedure | human | `settle_api` | — | — | `J12.S5` · Evidence is accepted and the operator confirms full resolution for the intended beneficiary; `J12.S6` · Authorization or required evidence is missing or repayment remains partial or disputed | 6 |
+| `J12.S5` Closes only the resolved recovery alert | script | — | — | — | exit `resolved` | 3 |
+| `J12.S6` Retains an unresolved case | script | — | — | — | exit `open` | 2 |
+
+### J12 acceptance criteria
+
+**`J12.S1`** Identifies the asset and recovery case · decisions D27, D33, D51, D129, X6
+
+- `J12.S1.c1` WHEN an authenticated operator follows the recovery procedure THE SYSTEM SHALL identify the account, chain, stored contract, asset and fixed refund address before accepting recovery evidence
+- `J12.S1.c2` IF only a support report identifies a transfer THE SYSTEM SHALL NOT label its recovery chain-verified or create a Base credit
+- `J12.S1.c3` WHEN an authenticated operator opens a rescue request THE SYSTEM SHALL persist a keyed case with its supplied evidence and unverified recovery state before recording a submission or failure
+
+**`J12.S2`** Calls the allowed fixed-destination rescue · decisions D27, D33, X6 · invariants I11
+
+- `J12.S2.c1` WHEN rescue executes for a transferable non-USDC token or native ETH balance THE SYSTEM SHALL send that asset only to the stored refund address and emit the asset, transferred amount and recipient
+- `J12.S2.c2` IF rescue is called for native USDC or a different recipient THE SYSTEM SHALL NOT transfer USDC through rescue or redirect the rescued asset
+- `J12.S2.c3` IF the asset transfer fails THE SYSTEM SHALL NOT emit a successful rescue event or record repayment
+
+**`J12.S3`** Verifies rescue and opens the repayment case · decisions D21, D33, D34, D54, D129, D230 · invariants I1, I10, I8
+
+- `J12.S3.c1` WHEN a canonical source-safe rescue is verified THE SYSTEM SHALL persist its contract event and fixed-recipient transfer evidence under a unique chain, transaction and event identity and atomically create or link the recovery case and open its verified-recovery attention episode with pending event delivery
+- `J12.S3.c2` IF the same rescue is observed again THE SYSTEM SHALL NOT create another recovery case or attention episode
+- `J12.S3.c3` IF the asset is not native USDC THE SYSTEM SHALL NOT create a Base credit or advance the address's USDC drain boundary from its rescue
+- `J12.S3.c4` IF the asset's transfer evidence is unavailable or inconsistent THE SYSTEM SHALL NOT label recovery verified or mark the payer repaid
+
+**`J12.S4`** Records repayment through the authenticated operator procedure · decisions D27, D51, D129, X15
+
+- `J12.S4.c1` WHEN an authorized operator records repayment THE SYSTEM SHALL require the recovery-case identity, intended beneficiary, asset and amount, evidence reference and evidence kind and derive the operator identity and recording time on the server
+- `J12.S4.c2` WHEN evidence kind is chain_verified THE SYSTEM SHALL independently verify the claimed canonical safe transfer, asset, amount and recipient on a supported chain and require host confirmation that the beneficiary and payment resolve this case
+- `J12.S4.c3` WHEN evidence kind is host_reported THE SYSTEM SHALL store the operator's explicit repayment assertion and reference with that label without representing it as independently verified chain evidence
+- `J12.S4.c4` IF evidence or authorization is missing or chain verification fails THE SYSTEM SHALL NOT close the recovery alert
+- `J12.S4.c5` IF the only transfer is the original recovery into the host refund address THE SYSTEM SHALL NOT accept it as proof of payer repayment
+- `J12.S4.c6` WHEN the verified case comes from J7 over-limit USDC recovery or J12 asset rescue THE SYSTEM SHALL accept that case kind's original recovery evidence through the same repayment procedure without requiring a rescue event for USDC recovery
+
+**`J12.S5`** Closes only the resolved recovery alert · decisions D129, D54 · invariants I1, I4, I10
+
+- `J12.S5.c1` WHEN a complete repayment resolution is accepted THE SYSTEM SHALL append its immutable evidence record and close only the matching recovery alert in one database transaction
+- `J12.S5.c2` WHEN the resolution is read through the operator procedure THE SYSTEM SHALL expose its chain_verified or host_reported label, operator, time and evidence reference alongside the retained source recovery
+- `J12.S5.c3` IF a resolution request is repeated or crashes before commit THE SYSTEM SHALL NOT duplicate the resolution, create a Base credit, alter any credit or close another alert
+
+**`J12.S6`** Retains an unresolved case · decisions D54, D129
+
+- `J12.S6.c1` WHEN recovery or repayment evidence remains incomplete THE SYSTEM SHALL retain the open case and its reason for the next operator attempt
+- `J12.S6.c2` IF repayment remains incomplete or disputed THE SYSTEM SHALL NOT present the case as repaid or the deposit as credited
+
 ## Surfaces
 
 | Surface | Kind | States | Used by |
 |---|---|---|---|
 | `deposit_widget` | component | show_address, received, awaiting_minimum, processing, needs_attention, account_update_pending, credited, connect_wallet, quote, signing, submitting, not_submitted, failed_no_debit | `J2.S1` `J2.S2` `J2.S3` `J2.S6` `J3.S1` `J3.S2` `J3.S3` `J3.S6` `J8.S1` `J8.S2` `J8.S3` `J8.S4` `J8.S6` `J8.S8` `J8.S9` `J8.S10` `J8.S11` |
-| `settle_api` | endpoint | — | `J1.S5` `J7.S1` `J10.S1` `J10.S2` `J10.S3` |
+| `settle_api` | endpoint | — | `J1.S5` `J7.S1` `J10.S1` `J10.S2` `J10.S3` `J12.S1` `J12.S4` |
 | `credited_webhook` | webhook | — | `J5.S1` |
 | `deposit_hook` | hook | — | `J9.S1` |
 | `wallet_payment_hook` | hook | — | `J9.S2` |
 | `demo` | page | — | `J11.S1` `J11.S2` |
+
+## Tasks
+
+| Task | Serves | Journeys |
+|---|---|---|
+| `M1.T1` Define package contracts and the explicit mode boundary | `J1.S1` `J1.S2` | J1 |
+| `M1.T2` Create the durable store and shipped migrations | `J1.S3` | J1 |
+| `M1.T3` Build owned contracts and the versioned factory manifest | `J1.S4` `J7.S2` `J12.S2` | J1, J7, J12 |
+| `M1.T4` Prepare immutable quotes in both amount directions | `J8.S2` | J8 |
+| `M2.T1` Run recoverable work with bounded transaction submission | `J1.S5a` `J6.S2` `J8.S5` `J8.S11` | J1, J6, J8 |
+| `M2.T2` Issue stable addresses and index complete chain ranges | `J2.S3` `J3.S3` `J6.S1` | J2, J3, J6 |
+| `M2.T3` Execute and attribute manual sweeps | `J2.S4` `J3.S4` `J4.S1` `J4.S2` | J2, J3, J4 |
+| `M2.T4` Accept wallet payments and expose authenticated history | `J8.S4` | J8 |
+| `M2.T5` Track the original CCTP message and verify Base backing | `J4.S3` `J4.S4` `J8.S6` | J4, J8 |
+| `M2.T6` Allocate backing and commit credit with its event | `J2.S5` `J3.S5` `J8.S7` | J2, J3, J8 |
+| `M2.T7` Deliver signed events and commit host credit once | `J5.S1` `J5.S2` `J5.S3` `J10.S3` | J5, J10 |
+| `M3.T1` Reconcile books and finish narrow operator recovery | `J6.S3` `J6.S4` `J7.S1` `J7.S3` `J8.S10` `J10.S1` `J10.S2` `J12.S1` `J12.S3` `J12.S4` `J12.S5` `J12.S6` | J6, J7, J8, J10, J12 |
+| `M3.T2` Build headless hooks and wallet consent state | `J8.S1` `J8.S3` `J8.S8` `J8.S9` `J9.S1` `J9.S2` | J8, J9 |
+| `M3.T3` Ship the Deposit interface and reference wiring | `J1.S5` `J2.S1` `J2.S2` `J2.S6` `J3.S1` `J3.S2` `J3.S6` | J1, J2, J3 |
+| `M4.T1` Prove a separate consumer, live routes and upgrade recovery | `J11.S1` | J11 |
+| `M4.T2` Prepare the coherent public demonstration | `J11.S2` | J11 |

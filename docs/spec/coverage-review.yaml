@@ -1,0 +1,77 @@
+format: settle-kit-coverage-review-v1
+reviewed_revision: 635fc602b2d247027decca5715741917c63da026
+# Supplemental review of the native schema, not a second journey spine or policy record.
+# Source references are repository-relative and inherit reviewed_revision above.
+# O/C IDs are local to this review.
+observations:
+  - id: O1
+    statement: The spec overview reports agreed scope complete and product implementation not started. This is a document observation, not runtime proof.
+    sources:
+      - {ref: docs/spec/README.md, locator: 'Product implementation has not started.'}
+  - id: O2
+    statement: Core, server and React entry points contain only empty exports at the reviewed revision.
+    sources:
+      - {ref: packages/core/src/index.ts, locator: 'export {};'}
+      - {ref: packages/server/src/index.ts, locator: 'export {};'}
+      - {ref: packages/react/src/index.ts, locator: 'export {};'}
+  - id: O3
+    statement: S15 lists combined-route, upgrade-recovery and consumer-onboarding proofs as not run. S16 reports one successful MetaMask testnet session. Those historical results were read, not rerun here.
+    sources:
+      - {ref: docs/spikes.md, locator: '### Implementation acceptance checks (D57)'}
+      - {ref: docs/spikes.md, locator: '**Live MetaMask payment passed on Base Sepolia.**'}
+  - id: O4
+    statement: Review deduction - non-USDC/native-ETH rescue is accepted in D33 and constrained by I11, but J7 maps over-limit USDC recovery and rejects rescue(USDC), without a positive rescue path.
+    sources:
+      - {ref: docs/decisions.md, locator: '| D33 |'}
+      - {ref: docs/journeys/settle-kit.yaml, locator: 'id: I11'}
+      - {ref: docs/journeys/settle-kit.yaml, locator: 'id: J7.S2'}
+  - id: O5
+    statement: Review deduction - J7.S3.c3 keeps repayment alerts open until the host records resolution, but no journey step specifies the recording, authorization and alert-closure outcome as an end-to-end procedure.
+    sources:
+      - {ref: docs/decisions.md, locator: '| D51 |'}
+      - {ref: docs/decisions.md, locator: '| D54 |'}
+      - {ref: docs/journeys/settle-kit.yaml, locator: 'retain the alert until the host records repayment'}
+  - id: O6
+    statement: Review deduction - D43 promises address-poisoning protection. Existing criteria cover account ownership, fixed destinations, test watermark and accessible controls, but do not specify the address-poisoning interaction and its acceptance outcome.
+    sources:
+      - {ref: docs/decisions.md, locator: '| D43 |'}
+      - {ref: docs/journeys/settle-kit.yaml, locator: 'id: J2.S1'}
+      - {ref: docs/journeys/settle-kit.yaml, locator: 'id: J9.S2'}
+  - id: O7
+    statement: Native and reusable formats differ. The native decision table has no Status column; journeys use bucket, uses, string next targets and exit objects. Direct portable validation is unsupported without an explicit adapter or migration.
+    sources:
+      - {ref: docs/decisions.md, locator: '| ID | Decision | Why | Rejected | Date | Supersedes |'}
+      - {ref: docs/journeys/settle-kit.yaml, locator: 'uses: J4'}
+coverage:
+  - {id: C1, actor: developer, goal: Configure and independently integrate the SDK, status: mapped, journeys: [J1, J11], policy: [D5, D37, D44, D142], refs: [J1.S2.c12, J11.S1.c5]}
+  - {id: C2, actor: user, goal: Obtain stable account-bound manual addresses, status: mapped, journeys: [J2, J3], policy: [D26, D134, D135], refs: [J2.S1.c2, J2.S1.c5, J3.S1.c7]}
+  - {id: C3, actor: user, goal: Deposit manually and distinguish provisional from verified progress, status: mapped, journeys: [J2, J3], policy: [D10, D17, D18, D28], refs: [J2.S3.c5, J2.S3.c9, J3.S3.c6]}
+  - {id: C4, actor: engine, goal: Settle and attribute manual funds on both routes, status: mapped, journeys: [J2, J3, J4], policy: [D21, D33, D38, D121], refs: [J2.S4.c7, J2.S5.c8, J3.S5.c14]}
+  - {id: C5, actor: user, goal: Consent and submit an exact-amount wallet payment, status: mapped, journeys: [J8], policy: [D110, D126, D140, D141, D231], refs: [J8.S2.c10, J8.S3.c5, J8.S4.c7]}
+  - {id: C6, actor: user, goal: Recover accepted attempts after reload or uncertain submission, status: mapped, journeys: [J8, J6], policy: [D111, D139, D140], refs: [J8.S1.c6, J8.S4.c5, J6.S2.c14, J8.S11.c3]}
+  - {id: C7, actor: host, goal: Commit balance once and recover event delivery, status: mapped, journeys: [J5, J6, J10], policy: [D124, D45, D230], refs: [J5.S2.c5, J5.S2.c6, J6.S2.c9, J10.S3.c1]}
+  - {id: C8, actor: engine, goal: Discover missed activity and resume across interruptions and upgrades, status: mapped, journeys: [J6, J1, J11], policy: [D34, D35, D36, D131], refs: [J6.S1.c10, J6.S2.c11, J1.S5a.c11, J11.S1.c11]}
+  - {id: C9, actor: engine, goal: Follow the original CCTP message through delay and throttling, status: mapped, journeys: [J4, J8], policy: [D38, D56, D138], refs: [J4.S3.c6, J4.S3.c7, J8.S6.c2]}
+  - {id: C10, actor: developer, goal: Investigate missing backing and acknowledge canonical recovery, status: mapped, journeys: [J6, J10], policy: [D125, D35, D51, D54], refs: [J6.S3.c7, J10.S2.c6]}
+  - id: C11
+    actor: developer
+    goal: Recover over-limit or unsupported assets and close host repayment cases
+    status: unresolved
+    reason: Over-limit recovery is mapped; positive non-USDC/native-ETH rescue and explicit repayment recording/closure remain incompletely mapped. Expand existing accepted policy before creating tasks; no SDK recovery UI is implied.
+    policy: [D27, D28, D33, D51, D54]
+    refs: [I11, J7.S2.c1, J7.S2.c3, J7.S3.c3]
+    observations: [O4, O5]
+  - {id: C12, actor: host, goal: Fund exceptional shortfalls and bound relayer spending, status: mapped, journeys: [J8, J10, J6], policy: [D126, D127, D128], refs: [J8.S5.c14, J8.S5.c16, J10.S2.c3, J10.S2.c4, J6.S2.c16]}
+  - id: C13
+    actor: developer
+    goal: Use accessible themed or headless UI with the promised payer protections
+    status: unresolved
+    reason: Hooks and accessibility are mapped; address-poisoning protection has no specific acceptance behavior. Clarify the existing D43 promise before treating that protection as fully specified.
+    policy: [D40, D41, D42, D43]
+    refs: [J9.S2.c1, J9.S2.c3, J9.S2.c4, J2.S1.c3]
+    observations: [O6]
+  - {id: C14, actor: developer, goal: Inspect actionable alerts and honest scan status, status: mapped, journeys: [J10, J6], policy: [D51, D54], refs: [J10.S1.c1, J6.S3.c11, J6.S3.c12]}
+  - {id: C15, actor: developer, goal: Demonstrate separate consumer and accurately bounded release evidence, status: mapped, journeys: [J11], policy: [D5, D50, D52, D53, D57, D142], refs: [J11.S1.c2, J11.S1.c7, J11.S1.c9, J11.S2.c4], observations: [O1, O2, O3]}
+  - {id: C16, actor: host, goal: Checkout orders and withdrawals, status: excluded, exclusions: [X11, X17], reason: Explicitly outside the deposit release}
+  - {id: C17, actor: developer, goal: SDK recovery buttons and embedded dashboard, status: excluded, exclusions: [X6, X15], reason: Contract functions and documented operator procedures remain in scope; the SDK UI/tooling does not}
+  - {id: C18, actor: developer, goal: Serverless deployment and framework adapters, status: excluded, exclusions: [X14], reason: Supported setup is one documented long-running process}

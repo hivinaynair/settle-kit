@@ -7,13 +7,17 @@ What we build and why: `docs/decisions.md`.
 
 ## Read first
 
-- Spec: decisions and journeys are complete for the narrowed scope; the next planning
-  artifacts are a short technical design and traced task specs (`docs/spec/README.md`). The earlier
+- Spec: read `docs/decisions.md`, `docs/journeys/settle-kit.yaml`, the technical design
+  at `docs/plans/2026-10-15-deposit-sdk-technical-design.md` and `docs/tasks/README.md`.
+  Planning is complete; product implementation has not started (`docs/spec/README.md`). The earlier
   checkout-first plan (design doc, tasks T1–T9, handoffs) is in `docs/archive/`: input
   for decisions, never instructions to build. Evidence: `docs/spikes.md`.
 - **Agents implement tasks; Vinay monitors and must be able to explain every line.**
-  One task per branch/PR, small commits, and a plain-words "what and why" after each
-  step (decisions, trade-offs, rejected options).
+  One task per branch/PR. Follow the checkpoint protocol in `docs/tasks/README.md`:
+  implement one checkpoint, run focused checks, walk through the actual diff in plain
+  words, then stop for Vinay's review. Continue when he asks; he can explicitly request
+  a longer uninterrupted run. Keep commits small. A finished task never starts the
+  next task automatically. Learning and explainable hiring evidence are D1 priorities.
 - Docs are edited by more than one AI tool. Re-read a file right before editing it,
   make targeted edits, and don't commit others' uncommitted changes without asking.
 
