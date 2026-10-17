@@ -1,8 +1,8 @@
 # settle-kit
 
-Bun-only Turborepo for **Settle Kit**: a self-hosted native-USDC deposit SDK for Base
-and Arbitrum, settling to the host treasury on Base. Payers send to a reusable address
-or sign a quoted wallet payment; our own contracts and CCTP handle settlement.
+Bun-only Turborepo for **Settle Kit**: a self-hosted native-USDC deposit SDK for Base,
+Arbitrum and Solana, settling to the host treasury on Base. Payers send to a reusable address
+or sign a quoted wallet payment; our own EVM contracts, Solana program and CCTP handle settlement.
 What we build and why: `docs/decisions.md`.
 
 ## Read first

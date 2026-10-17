@@ -1,11 +1,12 @@
 # First slice: build, review and learn
 
-2026-10-17 · Planned, not implemented. This replaces the archived checkout-first
+2026-10-18 · Planned, not implemented. This replaces the archived checkout-first
 T1–T9 plan. [Technical design](../plans/2026-10-15-deposit-sdk-technical-design.md),
 [decisions](../decisions.md) and [journeys](../journeys/settle-kit.md) are the inputs.
 
-There are **16 tasks owning all 56 steps across 12 journeys**. J12 completes existing
-rescue/repayment scope; it does not add a customer refund product. Each step has one
+There are **22 tasks owning all 80 steps across 15 journeys**. J12 completes EVM
+rescue/repayment scope; J13–J15 add Solana deposit, wallet and recovery paths. Neither
+adds a customer withdrawal product. Each step has one
 primary task owner in the YAML spine. Supporting work can cite another task's rules
 without becoming a second owner. A merged layer is not proof of the complete journey:
 record outstanding integration checks until M4.T1 closes them.
@@ -25,44 +26,56 @@ all are unchecked because product implementation has not started.
 Task prefixes group responsibilities, not a requirement to finish all M2 work before
 touching the interface. For one developer, use this order:
 
-1. **Foundations:** M1.T1 → M1.T2 → M1.T3 → M1.T4 → M2.T1 → M2.T2 → M2.T4.
-2. **Early usable preview:** M3.T2 → M3.T3. Show both payment choices, quote consent,
-   simulated progress and reload recovery. Label the preview simulated.
-3. **Live route and credit:** M2.T3 → M2.T5 → M2.T6 → M2.T7. Prove the combined
-   Arbitrum authorization-to-Base route in M2.T5, before final release work.
-4. **Operational completeness:** M3.T1 → M4.T1. Close recovery paths, test upgrades
-   and install the built SDK in a separate consumer.
-5. **Coherent public showing:** M4.T2. Incremental posts can happen earlier (D52).
+1. **Shared shapes and source programs:** M1.T1 → M1.T2 → M1.T3 → M1.T5 → M1.T4.
+2. **Submission and source entry:** M2.T1 → M2.T2 → M2.T4 → M2.T8 → M2.T9 → M2.T10.
+   EVM nonce recovery and Solana blockhash recovery remain separate implementations.
+3. **Early usable preview:** M3.T2 → M3.T3. Show both entry methods and all three
+   source choices with consent, simulated progress and history recovery; label it simulated.
+4. **Live routes and credits:** M2.T3 → M2.T5 → M2.T11 → M2.T6 → M2.T7. Record the
+   Arbitrum and Solana source-to-Base proofs before final packaging.
+5. **Operational completeness:** M3.T1 → M3.T4 → M4.T1. Close recovery paths, install
+   the built SDK in a separate consumer and validate workflow upgrades.
+6. **Coherent public showing:** M4.T2. Incremental posts can happen earlier (D52).
 
 Start with **M1.T1, checkpoint 1**, after this planning PR is reviewed. This change does not
 authorize starting implementation automatically.
 
 | Task | Result | Prerequisites | Focused days |
 |---|---|---|---|
-| [M1.T1](M1.T1.md) | Public contracts and mode boundary | — | 1–2 |
-| [M1.T2](M1.T2.md) | Durable store and migrations | M1.T1 | 2–3 |
-| [M1.T3](M1.T3.md) | Contracts, factory and manifest | M1.T1 | 4–6 |
-| [M1.T4](M1.T4.md) | Immutable two-direction quotes | M1.T2, M1.T3 | 2–3 |
-| [M2.T1](M2.T1.md) | Workflows, transaction identity and spend bounds | M1.T2, M1.T3 | 4–6 |
-| [M2.T2](M2.T2.md) | Stable addresses and complete chain discovery | M1.T2, M1.T3, M2.T1 | 3–4 |
-| [M2.T3](M2.T3.md) | Manual sweep orchestration | M2.T1, M2.T2 | 2–3 |
-| [M2.T4](M2.T4.md) | Wallet acceptance and authenticated history | M1.T4, M2.T1, M2.T2 | 2–3 |
-| [M2.T5](M2.T5.md) | Message-linked verification and first live cross-chain proof | M2.T3, M2.T4 | 3–5 |
-| [M2.T6](M2.T6.md) | Exclusive backing, credit and atomic event | M2.T5, M1.T2 | 2–3 |
-| [M2.T7](M2.T7.md) | Delivery and atomic host credit | M2.T6, M2.T1 | 2–3 |
-| [M3.T1](M3.T1.md) | Reconciliation and complete operator procedures | M2.T7 | 3–5 |
-| [M3.T2](M3.T2.md) | Hooks and wallet consent | M2.T4 | 2–3 |
-| [M3.T3](M3.T3.md) | Deposit and reference app | M3.T2, M2.T2 | 2–3 |
-| [M4.T1](M4.T1.md) | Separate consumer, route and upgrade evidence | M3.T1, M3.T3 | 3–5 |
-| [M4.T2](M4.T2.md) | Repo, demonstration and write-up | M4.T1 | 1–2 |
+| [M1.T1](M1.T1.md) | Define package contracts and the explicit mode boundary | — | 2–3 |
+| [M1.T2](M1.T2.md) | Create the durable store and shipped migrations | M1.T1 | 3–4 |
+| [M1.T3](M1.T3.md) | Build owned contracts and the versioned factory manifest | M1.T1 | 4–6 |
+| [M1.T5](M1.T5.md) | Build the immutable Solana vault and payment program | M1.T1 | 4–6 |
+| [M1.T4](M1.T4.md) | Prepare immutable quotes in both amount directions | M1.T2, M1.T3 | 2–3 |
+| [M2.T1](M2.T1.md) | Run recoverable work with bounded transaction submission | M1.T2, M1.T3 | 4–6 |
+| [M2.T2](M2.T2.md) | Issue stable addresses and index complete chain ranges | M1.T2, M1.T3, M2.T1 | 3–4 |
+| [M2.T4](M2.T4.md) | Accept wallet payments and expose authenticated history | M1.T4, M2.T1, M2.T2 | 2–3 |
+| [M2.T8](M2.T8.md) | Issue initialized Solana instructions and scan finalized history | M1.T2, M1.T5, M2.T1 | 3–5 |
+| [M2.T9](M2.T9.md) | Submit and attribute guarded Solana manual sweeps | M2.T8 | 3–4 |
+| [M2.T10](M2.T10.md) | Prepare and recover exact Solana wallet transactions | M1.T4, M2.T4, M2.T8, M2.T9 | 3–5 |
+| [M3.T2](M3.T2.md) | Build headless hooks and wallet consent state | M2.T4, M2.T10 | 3–4 |
+| [M3.T3](M3.T3.md) | Ship the Deposit interface and reference wiring | M3.T2, M2.T2, M2.T8 | 3–4 |
+| [M2.T3](M2.T3.md) | Execute and attribute manual sweeps | M2.T1, M2.T2 | 2–3 |
+| [M2.T5](M2.T5.md) | Track the original CCTP message and verify Base backing | M2.T3, M2.T4 | 3–5 |
+| [M2.T11](M2.T11.md) | Verify Solana CCTP linkage and record actual route evidence | M2.T5, M2.T9, M2.T10 | 3–5 |
+| [M2.T6](M2.T6.md) | Allocate backing and commit credit with its event | M2.T5, M1.T2, M2.T11 | 2–3 |
+| [M2.T7](M2.T7.md) | Deliver signed events and commit host credit once | M2.T6, M2.T1 | 2–3 |
+| [M3.T1](M3.T1.md) | Reconcile books and finish narrow operator recovery | M2.T7 | 3–5 |
+| [M3.T4](M3.T4.md) | Integrate Solana attention, recovery and repayment evidence | M3.T1, M2.T11, M2.T7 | 2–3 |
+| [M4.T1](M4.T1.md) | Prove a separate consumer, live routes and upgrade recovery | M3.T1, M3.T4, M3.T3 | 4–6 |
+| [M4.T2](M4.T2.md) | Prepare the coherent public demonstration | M4.T1 | 1–2 |
 
-These are estimates, not a delivery commitment: **38–59 focused developer days** for
-the entire specified release, before job-hunting interruptions, learning time,
-testnet outages or an independent tester's availability. The original 5–6-week
-estimate is optimistic for this complete scope. Track actual time through the first
-three tasks and re-estimate; do not obtain a shorter date by claiming simulation
-proves recovery or cross-chain settlement. Sharing early progress does not depend
-on reaching the final release gate.
+These are estimates, not a delivery commitment: **61–92 focused developer days**
+for the expanded release, excluding learning time, job-hunting interruptions,
+service outages and an independent tester's availability. This replaces the earlier
+38–59-day EVM-only estimate: six Solana tasks add 18–28 days and five shared/consumer
+tasks each add one estimated day. Track actual time in the first three tasks and
+re-estimate; local-validator, simulated and fork evidence cannot close live gates.
+
+The six added tasks are source-program, discovery, manual submission, wallet
+submission, CCTP proof and recovery work. Shared foundations include Solana shapes
+from M1.T1 onward; this is part of the first D2/D6 release, not an unplanned later
+integration. Every task still follows three review checkpoints, **66 in total**.
 
 ## How we implement together
 
@@ -126,7 +139,8 @@ bun run check-journeys
 bun test
 ```
 
-Contract tasks also run their Foundry suite. `check-journeys -- --complete` belongs
+EVM contract tasks also run their Foundry suite; Solana program tasks run their
+pinned Rust/Anchor/local-validator suite with Bun for TypeScript tests. `check-journeys -- --complete` belongs
 to M4.T1's final release check: today it is
 expected to fail because the product tests are not implemented. Its passing result
 would establish citation coverage, not independently establish correctness.
@@ -144,6 +158,13 @@ invented metrics. Finish the task before asking to start the next one.
   and creation code before the contract exists there.
 - **ERC-3009:** USDC's signed transfer authorization; its one-use nonce is different
   from the relayer transaction nonce that orders transactions from the gas wallet.
+- **PDA / ATA:** a program-derived owner address and its associated token account; the
+  owner has no private key, and the token account holds that owner’s token balance.
+- **Finalized:** Solana’s source-confirmation boundary; Base credit still waits for Base safe.
+- **Recent blockhash:** part of a Solana signed transaction that bounds its lifetime;
+  replacing it changes the signed message.
+- **Rent funding:** SOL held to keep Solana accounts allocated, separate from transaction fees.
+- **CPI:** cross-program invocation, a call from our Solana program to another program.
 - **CCTP:** Circle's source-burn/destination-mint protocol; forwarding submits the mint.
 - **DBOS:** the workflow runtime that checkpoints work in Postgres for recovery.
 - **Outbox:** an immutable outgoing event saved in the same transaction as its state.
@@ -154,7 +175,7 @@ invented metrics. Finish the task before asking to start the next one.
 The [coverage resolution](../spec/coverage-resolution.md) links each of the three
 earlier findings to behavior and task owners. The [technical review](../spec/coverage-review-2026-10-17.md)
 traces the four technical-design clarifications to their implementation owners.
-The [current UX review](../spec/coverage-review-2026-10-17-ux.md) traces Vinay's
+The [earlier UX review](../spec/coverage-review-2026-10-17-ux.md) traces Vinay's
 approved D112–D116 refinements through the journey criteria and task checkpoints.
 Earlier reports retain their original revisions/hashes and are historical snapshots.
 
@@ -166,11 +187,13 @@ Earlier reports retain their original revisions/hashes and are historical snapsh
 | Distinguish status-read failures; announce meaningful changes | D115; J9.S1–S2 | M1.T1 contracts → M2.T4 transport → M3.T2/M3.T3 client |
 | Complete copy feedback and manual instructions | D116; J2.S1, J3.S1 | M3.T2 scoped controller → M3.T3 browser checks |
 
-M4.T1 checks all five in the installed consumer. Task ownership and the 48 planned
-review checkpoints are unchanged; these additions describe work within those checkpoints.
+M4.T1 checks all five in the installed consumer. The five UX improvements also apply to J13/J14 and the installed consumer.
+The [Solana coverage review](../spec/coverage-review-2026-10-18-solana.md) traces the
+expanded source scope, six new tasks and 66 checkpoints. Older review hashes are
+historical snapshots and are not refreshed to claim current coverage.
 
 Repository cleanup is limited to making this plan discoverable, preserving those
 reports, ignoring local output/scratch folders and correcting old package descriptions.
 The empty SDK exports and app scaffold are intentional starting points. Keep archived
-checkout work and spike evidence available; there is no dependency upgrade, rebuild,
+checkout work and spike evidence available; there is no dependency upgrade, runtime implementation,
 new preliminary spike phase or unrelated refactor in this planning change.
