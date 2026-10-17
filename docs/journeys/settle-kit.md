@@ -137,16 +137,16 @@ flowchart LR
 
 | Step | Bucket | Surface · state | Sees | Does | Next | Criteria |
 |---|---|---|---|---|---|---|
-| `J2.S1` Sees their Base deposit address | script | `deposit_widget` · show_address | QR code, the address in groups, 'USDC on Base only', minimum 2 USDC, 'you'll receive about X' | Returns the account's stored address, computing and storing it on first use | `J2.S2` | 12 |
+| `J2.S1` Sees their Base deposit address | script | `deposit_widget` · show_address | QR code, the address in groups, 'USDC on Base only', minimum 2 USDC, 'you'll receive about X' | Returns the account's stored address, computing and storing it on first use | `J2.S2` | 17 |
 | `J2.S2` Sends USDC on Base | human | `deposit_widget` · show_address | — | Scans the QR code with a wallet or withdraws from an exchange to the address | `J2.S3` | 4 |
 | `J2.S3` The transfer is recorded | script | `deposit_widget` · received | 'Received 10.00 USDC. Moving it to your account' | Reads the USDC transfer at or below Base's safe block and records the deposit | `J2.S4` | 8 |
 | `J2.S4` Sweeps to the recipient on Base | script | — | — | The gas wallet deploys the address's contract if needed and calls sweep(), which pays the sweep fee and forwards the rest | `J2.S5` | 14 |
-| `J2.S5` Verifies the arrival and credits | script | — | — | Reads the USDC arrival at the stored recipient at the safe block and credits the deposit | `J2.S6` | 10 |
+| `J2.S5` Verifies the arrival and credits | script | — | — | Reads the USDC arrival at the stored recipient at the safe block and credits the deposit | `J2.S6` | 11 |
 | `J2.S6` Sees it credited | script | `deposit_widget` · credited | '9.99 USDC credited' with a Base explorer link to the arrival | Shows the credited amount | exit `credited` | 2 |
 
 ### J2 acceptance criteria
 
-**`J2.S1`** Sees their Base deposit address · decisions D13, D20, D28, D33, D38, D39, D135, D134, D140, D43
+**`J2.S1`** Sees their Base deposit address · decisions D13, D20, D28, D33, D38, D39, D135, D134, D140, D43, D116
 
 - `J2.S1.c2` WHEN the account asks again THE SYSTEM SHALL return the same stored address and SHALL NOT issue a new one
 - `J2.S1.c3` IF the browser sends a recipient, minimum or lane THE SYSTEM SHALL NOT use it
@@ -160,6 +160,11 @@ flowchart LR
 - `J2.S1.c11` WHEN manual instructions are displayed, copied or encoded as QR THE SYSTEM SHALL use the same authenticated account and selected-chain stored address and expose the complete address and chain for inspection
 - `J2.S1.c12` IF incoming activity contains a zero-value transfer or lookalike counterparty THE SYSTEM SHALL NOT change, prefill or suggest a deposit destination from that activity
 - `J2.S1.c13` WHEN the account or chain changes THE SYSTEM SHALL clear the previous address and QR, disable copy until matching instructions load and ignore responses for the previous selection
+- `J2.S1.c14` WHEN copying the current account-and-chain address succeeds THE SYSTEM SHALL show copy-success feedback for that same address
+- `J2.S1.c15` IF clipboard copying is unavailable or fails THE SYSTEM SHALL NOT show copy-success feedback and SHALL expose the complete selectable stored address with manual-copy instructions
+- `J2.S1.c16` WHILE manual address or QR instructions are displayed THE SYSTEM SHALL keep the selected source chain visible beside those instructions
+- `J2.S1.c17` IF an address is copied or a QR code is scanned THE SYSTEM SHALL NOT record a received transfer or begin processing from that interaction alone
+- `J2.S1.c18` WHEN the account, chain or stored instruction record changes THE SYSTEM SHALL clear copy feedback and ignore copy completions for the previous selection
 
 **`J2.S2`** Sends USDC on Base · decisions D131
 
@@ -196,7 +201,7 @@ flowchart LR
 - `J2.S4.c18` IF an incoming transfer belongs to a verified exact-amount authorization event THE SYSTEM SHALL NOT assign it to a manual full-balance sweep or recovery
 - `J2.S4.c19` IF the deployment gas reserve, shared spend budget or bounded retry allowance cannot cover submission THE SYSTEM SHALL NOT broadcast and SHALL retain the original operation with a gas_unavailable or spend_limit reason
 
-**`J2.S5`** Verifies the arrival and credits · decisions D17, D21, D22, D23, D32, D121, D125, D230 · invariants I1, I10, I4
+**`J2.S5`** Verifies the arrival and credits · decisions D17, D21, D22, D23, D32, D121, D125, D230, D114 · invariants I1, I10, I4
 
 - `J2.S5.c2` IF no matching arrival is verified THE SYSTEM SHALL NOT credit the deposit
 - `J2.S5.c3` IF two workers try to credit the same deposit THE SYSTEM SHALL NOT credit it twice
@@ -208,6 +213,7 @@ flowchart LR
 - `J2.S5.c12` IF settlement is pending for at least 15 minutes after processing eligibility and the batch has no other attention reason THE SYSTEM SHALL NOT create a credit from elapsed time and SHALL enter needs_attention as delayed
 - `J2.S5.c13` WHEN internal settlement commits before host acknowledgment THE SYSTEM SHALL show "Received by the business; account update pending" and expose settlement and delivery states through useDeposits
 - `J2.S5.c14` WHEN a retry finds this sweep's committed credit and event THE SYSTEM SHALL return the existing result without another credit or attention transition
+- `J2.S5.c15` WHEN a manual deposit enters attention THE SYSTEM SHALL explain its known outcome and next actor or action in plain words with its existing copyable deposit reference, without asking for another transfer as recovery
 
 **`J2.S6`** Sees it credited · decisions D18, D124
 
@@ -241,16 +247,16 @@ flowchart LR
 
 | Step | Bucket | Surface · state | Sees | Does | Next | Criteria |
 |---|---|---|---|---|---|---|
-| `J3.S1` Sees their Arbitrum deposit address | script | `deposit_widget` · show_address | QR code, address, 'USDC on Arbitrum only', minimum 2 USDC, maximum automatic balance (1,000 USDC by default), estimated fees | Returns the account's stored Arbitrum address, computing and storing it on first use | `J3.S2` | 13 |
+| `J3.S1` Sees their Arbitrum deposit address | script | `deposit_widget` · show_address | QR code, address, 'USDC on Arbitrum only', minimum 2 USDC, maximum automatic balance (1,000 USDC by default), estimated fees | Returns the account's stored Arbitrum address, computing and storing it on first use | `J3.S2` | 18 |
 | `J3.S2` Sends USDC on Arbitrum | human | `deposit_widget` · show_address | — | Scans the QR code with a wallet or withdraws from an exchange on Arbitrum | `J3.S3` | 4 |
 | `J3.S3` The transfer is recorded | script | `deposit_widget` · received | 'Received 10.00 USDC on Arbitrum. Moving it to Base' | Reads the USDC transfer at or below Arbitrum's safe block and records the deposit | `J3.S4` | 8 |
 | `J3.S4` Sweeps through CCTP | script | — | — | — | uses `J4`; `J3.S5` | 0 |
-| `J3.S5` Verifies the mint on Base and credits | script | — | — | Reads the USDC minted to the stored recipient on Base at the safe block and credits the deposit | `J3.S6` | 12 |
+| `J3.S5` Verifies the mint on Base and credits | script | — | — | Reads the USDC minted to the stored recipient on Base at the safe block and credits the deposit | `J3.S6` | 13 |
 | `J3.S6` Sees it credited | script | `deposit_widget` · credited | '9.94 USDC credited' with explorer links to the Arbitrum burn and the Base mint | Shows the credited amount | exit `credited` | 2 |
 
 ### J3 acceptance criteria
 
-**`J3.S1`** Sees their Arbitrum deposit address · decisions D13, D20, D28, D33, D38, D39, D135, D134, D140, D43
+**`J3.S1`** Sees their Arbitrum deposit address · decisions D13, D20, D28, D33, D38, D39, D135, D134, D140, D43, D116
 
 - `J3.S1.c2` WHEN the account asks again THE SYSTEM SHALL return the same stored address and SHALL NOT issue a new one
 - `J3.S1.c3` IF the browser sends a recipient, minimum or lane THE SYSTEM SHALL NOT use it
@@ -265,6 +271,11 @@ flowchart LR
 - `J3.S1.c12` WHEN manual instructions are displayed, copied or encoded as QR THE SYSTEM SHALL use the same authenticated account and selected-chain stored address and expose the complete address and chain for inspection
 - `J3.S1.c13` IF incoming activity contains a zero-value transfer or lookalike counterparty THE SYSTEM SHALL NOT change, prefill or suggest a deposit destination from that activity
 - `J3.S1.c14` WHEN the account or chain changes THE SYSTEM SHALL clear the previous address and QR, disable copy until matching instructions load and ignore responses for the previous selection
+- `J3.S1.c15` WHEN copying the current account-and-chain address succeeds THE SYSTEM SHALL show copy-success feedback for that same address
+- `J3.S1.c16` IF clipboard copying is unavailable or fails THE SYSTEM SHALL NOT show copy-success feedback and SHALL expose the complete selectable stored address with manual-copy instructions
+- `J3.S1.c17` WHILE manual address or QR instructions are displayed THE SYSTEM SHALL keep the selected source chain visible beside those instructions
+- `J3.S1.c18` IF an address is copied or a QR code is scanned THE SYSTEM SHALL NOT record a received transfer or begin processing from that interaction alone
+- `J3.S1.c19` WHEN the account, chain or stored instruction record changes THE SYSTEM SHALL clear copy feedback and ignore copy completions for the previous selection
 
 **`J3.S2`** Sends USDC on Arbitrum · decisions D131
 
@@ -284,7 +295,7 @@ flowchart LR
 - `J3.S3.c8` WHEN safe unassigned funds first reach the stored minimum THE SYSTEM SHALL persist the processing-eligibility time for that batch and retain it through top-ups, retries and restarts
 - `J3.S3.c9` IF safe unassigned funds are below the stored minimum and no sweep is pending THE SYSTEM SHALL NOT start a sweep and SHALL show "Received X. Send Y more to reach the minimum"
 
-**`J3.S5`** Verifies the mint on Base and credits · decisions D17, D21, D22, D23, D32, D121, D125, D230, D138 · invariants I1, I10, I4
+**`J3.S5`** Verifies the mint on Base and credits · decisions D17, D21, D22, D23, D32, D121, D125, D230, D138, D114 · invariants I1, I10, I4
 
 - `J3.S5.c2` IF no matching mint is verified on Base THE SYSTEM SHALL NOT credit the deposit, whatever the burn or attestation shows
 - `J3.S5.c3` IF two workers try to credit the same deposit THE SYSTEM SHALL NOT credit it twice
@@ -298,6 +309,7 @@ flowchart LR
 - `J3.S5.c13` WHEN internal settlement commits before host acknowledgment THE SYSTEM SHALL show "Received by the business; account update pending" and expose settlement and delivery states through useDeposits
 - `J3.S5.c14` IF the verified mint is not linked to the recorded CCTP burn message or its net amount does not match the message amount less executed CCTP fees THE SYSTEM SHALL NOT credit
 - `J3.S5.c15` WHEN a retry finds this sweep's committed credit and event THE SYSTEM SHALL return the existing result without another credit or attention transition
+- `J3.S5.c16` WHEN a manual deposit enters attention THE SYSTEM SHALL explain its known outcome and next actor or action in plain words with its existing copyable deposit reference, without asking for another transfer as recovery
 
 **`J3.S6`** Sees it credited · decisions D18, D124
 
@@ -577,7 +589,7 @@ flowchart LR
 
 ```mermaid
 flowchart LR
-  J8_S1["Connects an existing wallet<br/><small>human · deposit_widget · connect_wallet</small>"]
+  J8_S1["Restores payment history and connects a wallet<br/><small>human · deposit_widget · connect_wallet</small>"]
   J8_S2["Edits either amount and prepares a quote<br/><small>script · deposit_widget · quote</small>"]
   J8_S3["Signs the displayed authorization<br/><small>human · deposit_widget · signing</small>"]
   J8_S4["Durably accepts the signed payment<br/><small>script · deposit_widget · submitting</small>"]
@@ -588,8 +600,12 @@ flowchart LR
   J8_S9["Leaves preparation without an accepted payment<br/><small>script · deposit_widget · not_submitted</small>"]
   J8_S10["Retains an exception for recovery<br/><small>script · deposit_widget · needs_attention</small>"]
   J8_S11["Closes an unsuccessful authorized payment<br/><small>script · deposit_widget · failed_no_debit</small>"]
-  J8_S1 -->|"supported wallet and network selected"| J8_S2
-  J8_S1 -->|"connection rejected or wallet unsupported"| J8_S9
+  J8_S1 -->|"authenticated history loaded and a new wallet payment is explicitly chosen on a supported network"| J8_S2
+  J8_S1 -->|"connection rejected or wallet unsupported and no restored attempt needs recovery"| J8_S9
+  J8_S1 -->|"restored accepted attempt still awaits source submission or source confirmation"| J8_S5
+  J8_S1 -->|"restored source-successful attempt awaits Base verification"| J8_S6
+  J8_S1 -->|"restored settlement awaits host acknowledgment or is already acknowledged"| J8_S8
+  J8_S1 -->|"restored accepted attempt is in attention"| J8_S10
   J8_S2 -->|"user accepts a valid displayed quote"| J8_S3
   J8_S2 -->|"invalid input, unavailable route or abandoned preparation"| J8_S9
   J8_S3 -->|"matching signature returned"| J8_S4
@@ -606,23 +622,22 @@ flowchart LR
 
 | Step | Bucket | Surface · state | Sees | Does | Next | Criteria |
 |---|---|---|---|---|---|---|
-| `J8.S1` Connects an existing wallet | human | `deposit_widget` · connect_wallet | — | — | `J8.S2` · supported wallet and network selected; `J8.S9` · connection rejected or wallet unsupported | 8 |
-| `J8.S2` Edits either amount and prepares a quote | script | `deposit_widget` · quote | — | — | `J8.S3` · user accepts a valid displayed quote; `J8.S9` · invalid input, unavailable route or abandoned preparation | 13 |
-| `J8.S3` Signs the displayed authorization | human | `deposit_widget` · signing | — | — | `J8.S4` · matching signature returned; `J8.S9` · signature rejected, account changed or quote expired | 4 |
+| `J8.S1` Restores payment history and connects a wallet | human | `deposit_widget` · connect_wallet | — | — | `J8.S2` · authenticated history loaded and a new wallet payment is explicitly chosen on a supported network; `J8.S9` · connection rejected or wallet unsupported and no restored attempt needs recovery; `J8.S5` · restored accepted attempt still awaits source submission or source confirmation; `J8.S6` · restored source-successful attempt awaits Base verification; `J8.S8` · restored settlement awaits host acknowledgment or is already acknowledged; `J8.S10` · restored accepted attempt is in attention | 14 |
+| `J8.S2` Edits either amount and prepares a quote | script | `deposit_widget` · quote | — | — | `J8.S3` · user accepts a valid displayed quote; `J8.S9` · invalid input, unavailable route or abandoned preparation | 15 |
+| `J8.S3` Signs the displayed authorization | human | `deposit_widget` · signing | — | — | `J8.S4` · matching signature returned; `J8.S9` · signature rejected, account changed or quote expired | 5 |
 | `J8.S4` Durably accepts the signed payment | script | `deposit_widget` · submitting | — | — | `J8.S5` · accepted operation recorded; `J8.S9` · confirmed rejected before acceptance | 8 |
 | `J8.S5` Relays an exact-amount source payment | script | — | — | — | `J8.S6` · source execution independently found and canonical at source safe; `J8.S10` · reverted, uncertain or delayed source execution needs attention; `J8.S11` · complete source-safe proof establishes failed_no_debit | 15 |
 | `J8.S6` Verifies the original Base arrival | script | `deposit_widget` · processing | — | — | `J8.S7` · verified backing covers the exact quoted credit; `J8.S10` · shortfall, forwarding failure, delay or evidence mismatch | 8 |
 | `J8.S7` Commits the exact credit and host allocation | script | — | — | — | `J8.S8` | 5 |
-| `J8.S8` Receives the quoted account credit | script | `deposit_widget` · account_update_pending | — | — | exit `credited` | 4 |
-| `J8.S9` Leaves preparation without an accepted payment | script | `deposit_widget` · not_submitted | — | — | exit `not_submitted` | 2 |
-| `J8.S10` Retains an exception for recovery | script | `deposit_widget` · needs_attention | — | — | exit `attention` | 5 |
+| `J8.S8` Receives the quoted account credit | script | `deposit_widget` · account_update_pending | — | — | exit `credited` | 5 |
+| `J8.S9` Leaves preparation without an accepted payment | script | `deposit_widget` · not_submitted | — | — | exit `not_submitted` | 3 |
+| `J8.S10` Retains an exception for recovery | script | `deposit_widget` · needs_attention | — | — | exit `attention` | 7 |
 | `J8.S11` Closes an unsuccessful authorized payment | script | `deposit_widget` · failed_no_debit | — | — | exit `failed_no_debit` | 5 |
 
 ### J8 acceptance criteria
 
-**`J8.S1`** Connects an existing wallet · decisions D10, D11, D41, D50, D231, D140, D128
+**`J8.S1`** Restores payment history and connects a wallet · decisions D10, D11, D41, D50, D231, D140, D128, D112, D115
 
-- `J8.S1.c1` WHEN the connected-wallet view opens THE SYSTEM SHALL show receive-first amount entry and an available manual address option
 - `J8.S1.c2` WHEN a wallet connects THE SYSTEM SHALL bind the payer address and supported native-USDC network to payment preparation
 - `J8.S1.c3` IF a wallet lacks the required typed-signature capability or refuses a network switch THE SYSTEM SHALL NOT request a seed, upgrade the account or submit a payment
 - `J8.S1.c4` WHEN wallet compatibility is unverified THE SYSTEM SHALL label that wallet unsupported for the gasless path and retain manual instructions
@@ -630,8 +645,15 @@ flowchart LR
 - `J8.S1.c6` WHEN the widget opens after reload or on another device THE SYSTEM SHALL fetch authenticated account history and restore accepted wallet attempts even when no transfer or cached payment ID exists
 - `J8.S1.c7` IF an unresolved attempt exists THE SYSTEM SHALL NOT present a blank history or describe a new payment as recovery for that attempt
 - `J8.S1.c8` WHEN live submission is unavailable due to host gas or spending limits THE SYSTEM SHALL show that reason before requesting a new payment signature
+- `J8.S1.c9` WHEN authenticated initial history loads without an unresolved accepted attempt THE SYSTEM SHALL present receive-first entry and the available manual address option
+- `J8.S1.c10` WHEN authenticated history contains an unresolved accepted attempt THE SYSTEM SHALL make its original payment reference and saved progress the primary view before a new-payment form
+- `J8.S1.c11` IF initial account history cannot be loaded because of a connection or update error THE SYSTEM SHALL NOT show an empty history or use a new-payment form as the recovery view and SHALL show a history-loading error with Retry
+- `J8.S1.c12` WHILE an authorized account's history is being retried after a connection or update error THE SYSTEM SHALL retain known account-scoped attempts and their original payment identities
+- `J8.S1.c13` IF a history response belongs to a previous account selection THE SYSTEM SHALL NOT restore its payment records in the current account view
+- `J8.S1.c14` WHILE an accepted attempt is unresolved THE SYSTEM SHALL keep both entry methods available without treating a method change or another transfer as recovery for that attempt
+- `J8.S1.c15` WHILE initial authenticated account history is loading THE SYSTEM SHALL show history loading as the primary view and SHALL NOT present a new-payment form as the primary view
 
-**`J8.S2`** Edits either amount and prepares a quote · decisions D110, D126, D140, D141, D22, D28, D111, D128 · invariants I12
+**`J8.S2`** Edits either amount and prepares a quote · decisions D110, D126, D140, D141, D22, D28, D111, D128, D113 · invariants I12
 
 - `J8.S2.c1` WHEN the user edits You receive THE SYSTEM SHALL call preparePayment with that receive amount as the only authoritative amount and display the computed total debit
 - `J8.S2.c2` WHEN the user edits You pay THE SYSTEM SHALL call preparePayment with that pay amount as the only authoritative amount and display the computed credit
@@ -646,13 +668,16 @@ flowchart LR
 - `J8.S2.c11` IF the quote requires an ordinary host top-up to cover its permitted Circle deductions THE SYSTEM SHALL NOT return executable signing data
 - `J8.S2.c12` WHEN a quote is shown THE SYSTEM SHALL distinguish the submission cutoff from the signed execution deadline and explain that acceptance does not extend that deadline
 - `J8.S2.c13` IF the signed execution deadline is not finite or does not follow the submission cutoff THE SYSTEM SHALL NOT issue the quote
+- `J8.S2.c14` WHEN an unaccepted quote expires THE SYSTEM SHALL preserve the authoritative amount direction and entered value, payer and source-chain selection, label the old totals expired and offer Review updated quote before another signature request
+- `J8.S2.c15` IF acceptance or source submission is pending or uncertain THE SYSTEM SHALL NOT use quote expiry or Review updated quote to replace the original payment or request new signing consent
 
-**`J8.S3`** Signs the displayed authorization · decisions D110, D231, D141, D126, D111 · invariants I12
+**`J8.S3`** Signs the displayed authorization · decisions D110, D231, D141, D126, D111, D113 · invariants I12
 
 - `J8.S3.c2` IF signing is rejected or the wallet account changes THE SYSTEM SHALL NOT submit the signature or imply that funds moved
 - `J8.S3.c3` IF the quote expired before submission THE SYSTEM SHALL NOT silently refresh or reprice the signed payment and SHALL require a new displayed quote and consent
 - `J8.S3.c4` WHEN the user signs THE SYSTEM SHALL require no prior USDC approval or payer ETH balance for this entry path
 - `J8.S3.c5` WHEN the user accepts the quote THE SYSTEM SHALL request an ERC-3009 authorization whose domain and nonce commitment bind payer, token, recipient, gross debit, fee split, quoted credit, burn amount, Circle maxFee, original validity window and payment identity
+- `J8.S3.c6` WHEN a live wallet signature is requested THE SYSTEM SHALL first explain that it authorizes the displayed USDC debit and that the business pays network gas
 
 **`J8.S4`** Durably accepts the signed payment · decisions D140, D141, D231, D139, D126, D128, D111 · invariants I1, I12
 
@@ -702,27 +727,31 @@ flowchart LR
 - `J8.S7.c4` WHEN a retry finds the committed payment credit and event THE SYSTEM SHALL return that same result without another credit or event
 - `J8.S7.c5` WHEN a quoted credit is committed THE SYSTEM SHALL reconcile total payer debit as quoted credit plus fixed processing fee and verify source USDC fees, actual Circle deductions, Base arrival and host funding without charging extra ETH gas to the payer
 
-**`J8.S8`** Receives the quoted account credit · decisions D18, D124, D140, D41
+**`J8.S8`** Receives the quoted account credit · decisions D18, D124, D140, D41, D114
 
 - `J8.S8.c1` WHEN settlement commits before the host acknowledges processing THE SYSTEM SHALL show account update pending with the locked credit and separate delivery state
 - `J8.S8.c2` WHEN the host acknowledges the committed credit event THE SYSTEM SHALL show the exact quoted credit, fixed processing fee and source and Base explorer evidence
 - `J8.S8.c4` IF the host has not acknowledged committed processing THE SYSTEM SHALL NOT show the account as credited
 - `J8.S8.c5` IF browser state is lost or the user changes device THE SYSTEM SHALL NOT create another payment and SHALL discover the original accepted attempt through authenticated listDeposits before querying getPayment
+- `J8.S8.c6` WHEN settlement is recorded but host account processing is unacknowledged THE SYSTEM SHALL identify the business account update as pending, show the existing copyable payment reference and warn against paying again to repair that update
 
-**`J8.S9`** Leaves preparation without an accepted payment · decisions D10, D110, D140, D141
+**`J8.S9`** Leaves preparation without an accepted payment · decisions D10, D110, D140, D141, D113, D114
 
 - `J8.S9.c1` WHEN preparation or signing ends before acceptance THE SYSTEM SHALL show no accepted payment and keep retry preparation and manual address instructions available
 - `J8.S9.c2` IF submission outcome is uncertain THE SYSTEM SHALL NOT enter this exit and SHALL query the original payment ID without prompting another transfer
+- `J8.S9.c3` WHEN signing is rejected before submission and no accepted attempt exists THE SYSTEM SHALL explain that this attempt was not submitted and offer review of the quote or the manual address option without claiming failed_no_debit evidence
 
-**`J8.S10`** Retains an exception for recovery · decisions D17, D54, D127, D140, D230, D111, D128 · invariants I10, I12
+**`J8.S10`** Retains an exception for recovery · decisions D17, D54, D127, D140, D230, D111, D128, D114 · invariants I10, I12
 
 - `J8.S10.c1` WHEN an accepted operation needs attention THE SYSTEM SHALL expose its payment ID, stage, original evidence and reason through getPayment, listAlerts and the durable attention event
 - `J8.S10.c2` IF a signed payment is pending or has uncertain outcome THE SYSTEM SHALL NOT present paying again as its recovery action
 - `J8.S10.c3` WHEN verified host funding resolves a quote shortfall THE SYSTEM SHALL resume original-payment verification and exact credit allocation through J6 without changing the locked quote
 - `J8.S10.c4` IF only source recovery or a host promise is known THE SYSTEM SHALL NOT mark the payer credited or refunded
 - `J8.S10.c5` WHEN reconciliation proves failed_no_debit THE SYSTEM SHALL close the payment attention episode using J8.S11 rules without treating it as settled or refunded
+- `J8.S10.c6` WHEN an accepted payment is pending or its execution outcome is uncertain THE SYSTEM SHALL explain that the original payment is being checked, warn against sending again and offer status refresh for that same payment
+- `J8.S10.c7` WHEN an accepted payment needs business intervention THE SYSTEM SHALL explain the next actor and action in plain words and expose its existing copyable payment reference without presenting an internal reason code as the payer's instructions
 
-**`J8.S11`** Closes an unsuccessful authorized payment · decisions D111, D140, D17 · invariants I1, I12
+**`J8.S11`** Closes an unsuccessful authorized payment · decisions D111, D140, D17, D114 · invariants I1, I12
 
 - `J8.S11.c1` WHEN a complete canonical source-safe scan through the authorization deadline finds no successful execution and the source-safe timestamp is at or beyond validBefore THE SYSTEM SHALL atomically record failed_no_debit and its evidence without a credit
 - `J8.S11.c2` WHEN canonical source-safe cancellation and a complete execution scan prove the original authorization cannot execute and did not pay THE SYSTEM SHALL record failed_no_debit without using the nonce-state boolean as payment proof
@@ -749,23 +778,30 @@ flowchart LR
 
 | Step | Bucket | Surface · state | Sees | Does | Next | Criteria |
 |---|---|---|---|---|---|---|
-| `J9.S1` Reads deposits with useDeposits | human | `deposit_hook` | — | — | `J9.S2` | 2 |
-| `J9.S2` Pays with usePayWithWallet | human | `wallet_payment_hook` | — | — | exit `ready` | 5 |
+| `J9.S1` Reads deposits with useDeposits | human | `deposit_hook` | — | — | `J9.S2` | 7 |
+| `J9.S2` Pays with usePayWithWallet | human | `wallet_payment_hook` | — | — | exit `ready` | 7 |
 
 ### J9 acceptance criteria
 
-**`J9.S1`** Reads deposits with useDeposits · decisions D18, D40, D41, D140, D111
+**`J9.S1`** Reads deposits with useDeposits · decisions D18, D40, D41, D140, D111, D112, D115
 
 - `J9.S1.c2` IF the account is unauthorized THE SYSTEM SHALL NOT expose its history, address or payment identifiers
 - `J9.S1.c3` WHEN useDeposits is mounted for an authorized account THE SYSTEM SHALL expose manual observations and accepted wallet attempts including pre-transfer pending and failed_no_debit items with settlement and host delivery distinguished
+- `J9.S1.c4` WHEN an authorized account's history or payment-status refresh fails because of a connection or update error THE SYSTEM SHALL expose the retained account-scoped state, a connection or update error and the last successful status retrieval time, or indicate that no status has loaded
+- `J9.S1.c5` WHEN a last-successful status retrieval time is displayed THE SYSTEM SHALL identify it as status retrieval rather than a new chain verification
+- `J9.S1.c6` WHEN the payer retries a failed status read THE SYSTEM SHALL refresh authenticated history or status for the original records without preparing or submitting a payment
+- `J9.S1.c7` IF a status read fails THE SYSTEM SHALL NOT advance or reset source, settlement or delivery state, reset processing-delay timers, or infer failed_no_debit, lost funds or credited status from that failure
+- `J9.S1.c8` WHEN the account changes THE SYSTEM SHALL clear the previous account's history, payment state, read error and retrieval time and ignore responses for that previous account
 
-**`J9.S2`** Pays with usePayWithWallet · decisions D41, D110, D140, D141, D231, D43
+**`J9.S2`** Pays with usePayWithWallet · decisions D41, D110, D140, D141, D231, D43, D115
 
 - `J9.S2.c1` WHEN usePayWithWallet prepares, signs or submits THE SYSTEM SHALL use the same server quote and payment operation rules as Deposit
 - `J9.S2.c2` IF custom UI passes changed amounts or destination data with a prepared payment THE SYSTEM SHALL NOT bypass consent validation
 - `J9.S2.c3` WHEN the consumer themes Deposit THE SYSTEM SHALL apply documented CSS variables without requiring Tailwind or @repo/ui
 - `J9.S2.c4` WHEN the widget is used by keyboard or assistive technology THE SYSTEM SHALL expose labeled amount inputs, actionable errors and status announcements without requiring color to interpret payment state
 - `J9.S2.c5` WHEN Deposit displays manual instructions THE SYSTEM SHALL apply D43 to address text, copy and QR through one account-and-chain-scoped state and preserve the test-mode QR watermark
+- `J9.S2.c6` WHEN a meaningful displayed payment status or error changes THE SYSTEM SHALL expose an accessible status announcement without moving keyboard focus
+- `J9.S2.c7` IF a poll produces no change to displayed status or error THE SYSTEM SHALL NOT repeat its status announcement
 
 ## J10 · Operator checks and recovers processing
 

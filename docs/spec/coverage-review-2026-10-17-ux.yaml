@@ -1,0 +1,163 @@
+# UX follow-up review; earlier review artifacts remain unchanged.
+format: "settle-kit-coverage-review-v1"
+reviewed_revision: "0b895108e668bfcd49a1a20134f05355ed34091f"
+reviewed_date: "2026-10-17"
+source_state: "UX-planning worktree; base revision only; per-source SHA-256 pins manually re-reviewed contents"
+observations:
+  - id: O1
+    statement: "The accepted scope has no open owner product question; the current plan explicitly says product implementation has not started."
+    sources:
+      - {"ref":"docs/decisions.md","locator":"No owner product decision remains open.","sha256":"01c1a3129fc52c932b955eb62add65654b04667853f8cb6d110ca6edfdfccb77"}
+      - {"ref":"docs/spec/README.md","locator":"Product implementation has not started.","sha256":"9b67ba86d9602b92936f4b4a53e0fb123dc2af823690232b6c9816f15f8c78e8"}
+  - id: O2
+    statement: "Core, server and React entry points remain empty exports; no product runtime was implemented or exercised in this planning change."
+    sources:
+      - {"ref":"packages/core/src/index.ts","locator":"export {};","sha256":"8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"}
+      - {"ref":"packages/server/src/index.ts","locator":"export {};","sha256":"8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"}
+      - {"ref":"packages/react/src/index.ts","locator":"export {};","sha256":"8e609bb71c20b858c77f0e9f90bb1319db8477b13f9f965f1a1e18524bf50881"}
+  - id: O3
+    statement: "Existing spikes record the MetaMask Base payment and retain combined-route, browser-edge, upgrade and onboarding gates. Those experiments were read, not rerun."
+    sources:
+      - {"ref":"docs/spikes.md","locator":"**Live MetaMask payment passed on Base Sepolia.**","sha256":"c1a175667a16596baaf7da1430318c5c6de4da0997ce0aa5862daca4453dc687"}
+      - {"ref":"docs/spikes.md","locator":"### Implementation acceptance checks (D57)","sha256":"c1a175667a16596baaf7da1430318c5c6de4da0997ce0aa5862daca4453dc687"}
+  - id: O4
+    statement: "Positive asset/native rescue is mapped to fixed-recipient execution, source-safe verification, duplicate handling and an unresolved repayment case; non-USDC rescue does not advance USDC attribution."
+    sources:
+      - {"ref":"docs/decisions.md","locator":"| D33 |","sha256":"01c1a3129fc52c932b955eb62add65654b04667853f8cb6d110ca6edfdfccb77"}
+      - {"ref":"docs/journeys/settle-kit.yaml","locator":"id: J12.S3","sha256":"89af28e0e978ab250217d64ed19845bfe96fe26b595cfecb85724961504d0f27"}
+      - {"ref":"docs/tasks/M1.T3.md","locator":"Implement guarded recovery","sha256":"8b286a1248d482e4bec8373749ddcc4c2570d0248fe5fb869e719f7ae5685707"}
+      - {"ref":"docs/tasks/M3.T1.md","locator":"asset_rescue","sha256":"bdec540a6cc80825367dcb66cf8cfc04d1058c843b4461dc7db4d8bc85698085"}
+  - id: O5
+    statement: "D129 and J12 retain authenticated chain_verified or host_reported repayment with beneficiary confirmation, immutable evidence, atomic closure and repeat safety."
+    sources:
+      - {"ref":"docs/decisions.md","locator":"| D129 |","sha256":"01c1a3129fc52c932b955eb62add65654b04667853f8cb6d110ca6edfdfccb77"}
+      - {"ref":"docs/journeys/settle-kit.yaml","locator":"id: J12.S4","sha256":"89af28e0e978ab250217d64ed19845bfe96fe26b595cfecb85724961504d0f27"}
+      - {"ref":"docs/journeys/settle-kit.yaml","locator":"id: J12.S5","sha256":"89af28e0e978ab250217d64ed19845bfe96fe26b595cfecb85724961504d0f27"}
+      - {"ref":"docs/tasks/M3.T1.md","locator":"Close recovery cases","sha256":"bdec540a6cc80825367dcb66cf8cfc04d1058c843b4461dc7db4d8bc85698085"}
+  - id: O6
+    statement: "Address-protection acceptance and task checks bind display, copy and QR to the authenticated account/chain and suppress stale or lookalike destinations."
+    sources:
+      - {"ref":"docs/decisions.md","locator":"| D43 |","sha256":"01c1a3129fc52c932b955eb62add65654b04667853f8cb6d110ca6edfdfccb77"}
+      - {"ref":"docs/journeys/settle-kit.yaml","locator":"id: J2.S1","sha256":"89af28e0e978ab250217d64ed19845bfe96fe26b595cfecb85724961504d0f27"}
+      - {"ref":"docs/journeys/settle-kit.yaml","locator":"id: J3.S1","sha256":"89af28e0e978ab250217d64ed19845bfe96fe26b595cfecb85724961504d0f27"}
+      - {"ref":"docs/tasks/M3.T3.md","locator":"Keep address text, copy and QR synchronized","sha256":"97d248a2da27f4228db5b7216e9458687f32e7d89b5c6b3aba13db65e5e4c2e4"}
+  - id: O7
+    statement: "The native graph schema, reuse calls, stable IDs and validator remain authoritative; no portable schema or checker replaces them."
+    sources:
+      - {"ref":".agents/skills/journeys/schema.md","locator":"bucket: script","sha256":"68cbe8f5760d7b94f999034d70587fb44fec3a6ee801836fd71e16f39ade5cea"}
+      - {"ref":"docs/decisions.md","locator":"| ID | Decision | Why | Rejected | Date | Supersedes |","sha256":"01c1a3129fc52c932b955eb62add65654b04667853f8cb6d110ca6edfdfccb77"}
+      - {"ref":"docs/journeys/settle-kit.yaml","locator":"uses: J4","sha256":"89af28e0e978ab250217d64ed19845bfe96fe26b595cfecb85724961504d0f27"}
+      - {"ref":"scripts/journey.ts","locator":"export function","sha256":"05ba1a9b5b47b54e8502842188fcdd755dd457e13af473b2c4d887190e941b58"}
+  - id: O8
+    statement: "The plan retains 12 journeys, 56 steps and 16 primary task owners. All task specs have three planned review checkpoints and explicit scope and handoff boundaries."
+    sources:
+      - {"ref":"docs/journeys/settle-kit.yaml","locator":"tasks:","sha256":"89af28e0e978ab250217d64ed19845bfe96fe26b595cfecb85724961504d0f27"}
+      - {"ref":"docs/tasks/README.md","locator":"16 tasks owning all 56 steps across 12 journeys","sha256":"a5780ea56c7461ee459e39a817eb92dabf981a80e98fba923a1bd1d27780340d"}
+      - {"ref":"docs/plans/2026-10-15-deposit-sdk-technical-design.md","locator":"Design only; no product implementation is claimed.","sha256":"0c7509cb75a3a1d434fc8d3b556681b2976c6f8884e96f8ce6d8e75256fdde11"}
+      - {"ref":"docs/tasks/M1.T1.md","locator":"Primary journey ownership:","sha256":"6c7632b6b47421d66993a1ef62c65a50797d591d1c089b72c482bf5caefc3b2e"}
+      - {"ref":"docs/tasks/M1.T2.md","locator":"Primary journey ownership:","sha256":"c6f7bac050c8b3286136386c2ecefd107fe002573e958faa941f5caab6113e29"}
+      - {"ref":"docs/tasks/M1.T3.md","locator":"Primary journey ownership:","sha256":"8b286a1248d482e4bec8373749ddcc4c2570d0248fe5fb869e719f7ae5685707"}
+      - {"ref":"docs/tasks/M1.T4.md","locator":"Primary journey ownership:","sha256":"456499d0e1b47de6b84b8f884700c93c8af16c374beba0b312c0b8cf9a071db0"}
+      - {"ref":"docs/tasks/M2.T1.md","locator":"Primary journey ownership:","sha256":"1b17e3959f3826022c2c09e9b318e5cd39ba8e1c6c9b1d74d60621b48abe7956"}
+      - {"ref":"docs/tasks/M2.T2.md","locator":"Primary journey ownership:","sha256":"b30fce76b9abe42372565417721639b1cbec996c844b2e67eeb34c0a927ed454"}
+      - {"ref":"docs/tasks/M2.T3.md","locator":"Primary journey ownership:","sha256":"b391645af956aa9c43dffdc5c055d278f13c6f73dc962fc44f044c0743fdf94f"}
+      - {"ref":"docs/tasks/M2.T4.md","locator":"Primary journey ownership:","sha256":"182d204420bd4c4306b9115dc4e823a4dc15cef2e23f0c80600b731c180e3f84"}
+      - {"ref":"docs/tasks/M2.T5.md","locator":"Primary journey ownership:","sha256":"3b1ad95802cfef61f39b49b87da2989289ff9b1c5cbcf74453ff6c6d0fca601f"}
+      - {"ref":"docs/tasks/M2.T6.md","locator":"Primary journey ownership:","sha256":"fe8b8ea98a6b13f0a7bad4e34978cb50ad4f6a11a4b9428c8130826073fa936a"}
+      - {"ref":"docs/tasks/M2.T7.md","locator":"Primary journey ownership:","sha256":"6546533691b4c9a21017ba2c800b42d6795943b623d2c6729c14b4c735b26f51"}
+      - {"ref":"docs/tasks/M3.T1.md","locator":"Primary journey ownership:","sha256":"bdec540a6cc80825367dcb66cf8cfc04d1058c843b4461dc7db4d8bc85698085"}
+      - {"ref":"docs/tasks/M3.T2.md","locator":"Primary journey ownership:","sha256":"778055338f9560ea1dd167e99334dc4dc5f9ec0f60bac86c42f583cfb9038633"}
+      - {"ref":"docs/tasks/M3.T3.md","locator":"Primary journey ownership:","sha256":"97d248a2da27f4228db5b7216e9458687f32e7d89b5c6b3aba13db65e5e4c2e4"}
+      - {"ref":"docs/tasks/M4.T1.md","locator":"Primary journey ownership:","sha256":"5d63335265d7f0d631de8784bb0a795e08ab6ca982c35d61e7e498a60b0bf742"}
+      - {"ref":"docs/tasks/M4.T2.md","locator":"Primary journey ownership:","sha256":"0b16bd6ebb38d010fff8d381640b1d7ff1be28c08e7f589cce91d416d7852913"}
+  - id: O9
+    statement: "Earlier review artifacts retain their original findings, source revisions and hashes as historical evidence rather than being rewritten to claim current freshness."
+    sources:
+      - {"ref":"docs/spec/coverage-review.md","locator":"two unresolved goals","sha256":"9710263a0168914c5dc94d8c1c638fa51bdf3bcdd65e2a39ed517d503245d41e"}
+      - {"ref":"docs/spec/coverage-resolution.md","locator":"This follow-up adds J12","sha256":"62266b9d212285c1d1fc9978fb16da25161dae05679e2a4b2b34f7242e82cbb5"}
+      - {"ref":"docs/spec/coverage-review.yaml","locator":"status: unresolved","sha256":"add802290ec7e83f232bc88cb407f2c32d1ccc57affef34c32717c69957a600c"}
+      - {"ref":"docs/spec/coverage-review-2026-10-16.md","locator":"working-tree snapshot","sha256":"e601782a52e4a80cf8c8776ff081dd75110d2b4d5f005d85d6db47a5c42089df"}
+  - id: O10
+    statement: "The design now carries a contract-derived unique operation tag in protected composed hook data and assigns creation, consent and verification to explicit tasks. Deployed compatibility remains an unmet implementation gate."
+    sources:
+      - {"ref":"docs/plans/2026-10-15-deposit-sdk-technical-design.md","locator":"Every Arbitrum burn carries a bytes32 operation tag","sha256":"0c7509cb75a3a1d434fc8d3b556681b2976c6f8884e96f8ce6d8e75256fdde11"}
+      - {"ref":"docs/journeys/settle-kit.yaml","locator":"c18: \"WHEN an Arbitrum manual burn executes","sha256":"89af28e0e978ab250217d64ed19845bfe96fe26b595cfecb85724961504d0f27"}
+      - {"ref":"docs/journeys/settle-kit.yaml","locator":"c8: \"IF an Arbitrum destination message lacks","sha256":"89af28e0e978ab250217d64ed19845bfe96fe26b595cfecb85724961504d0f27"}
+      - {"ref":"docs/tasks/M2.T5.md","locator":"repeated equal-amount burns","sha256":"3b1ad95802cfef61f39b49b87da2989289ff9b1c5cbcf74453ff6c6d0fca601f"}
+  - id: O11
+    statement: "The wallet path now explicitly persists recipient issuance before signing and reuses a recoverable factory deployment action before original-authorization submission."
+    sources:
+      - {"ref":"docs/plans/2026-10-15-deposit-sdk-technical-design.md","locator":"### First wallet payment and contract deployment","sha256":"0c7509cb75a3a1d434fc8d3b556681b2976c6f8884e96f8ce6d8e75256fdde11"}
+      - {"ref":"docs/journeys/settle-kit.yaml","locator":"c18: \"WHEN an accepted wallet payment targets an undeployed","sha256":"89af28e0e978ab250217d64ed19845bfe96fe26b595cfecb85724961504d0f27"}
+      - {"ref":"docs/tasks/M2.T4.md","locator":"Wire the first wallet payment end to end","sha256":"182d204420bd4c4306b9115dc4e823a4dc15cef2e23f0c80600b731c180e3f84"}
+  - id: O12
+    statement: "SDK submission mutual exclusion is separate from observed per-drain settlement, so an externally executed later drain is retained while an older command is open."
+    sources:
+      - {"ref":"docs/plans/2026-10-15-deposit-sdk-technical-design.md","locator":"The one-open-command constraint limits SDK-initiated sweeps","sha256":"0c7509cb75a3a1d434fc8d3b556681b2976c6f8884e96f8ce6d8e75256fdde11"}
+      - {"ref":"docs/journeys/settle-kit.yaml","locator":"c14: \"WHEN another caller executes a later drain","sha256":"89af28e0e978ab250217d64ed19845bfe96fe26b595cfecb85724961504d0f27"}
+      - {"ref":"docs/tasks/M2.T3.md","locator":"Recover A without losing an external drain B","sha256":"b391645af956aa9c43dffdc5c055d278f13c6f73dc962fc44f044c0743fdf94f"}
+  - id: O13
+    statement: "The repayment procedure accepts verified over-limit USDC recovery and asset-rescue case kinds without requiring a rescue event for USDC."
+    sources:
+      - {"ref":"docs/plans/2026-10-15-deposit-sdk-technical-design.md","locator":"either J7's over_limit_usdc","sha256":"0c7509cb75a3a1d434fc8d3b556681b2976c6f8884e96f8ce6d8e75256fdde11"}
+      - {"ref":"docs/journeys/settle-kit.yaml","locator":"c6: \"WHEN the verified case comes from J7","sha256":"89af28e0e978ab250217d64ed19845bfe96fe26b595cfecb85724961504d0f27"}
+      - {"ref":"docs/tasks/M3.T1.md","locator":"both over_limit_usdc and asset_rescue","sha256":"bdec540a6cc80825367dcb66cf8cfc04d1058c843b4461dc7db4d8bc85698085"}
+  - id: O14
+    statement: "The implementation protocol defaults to one checkpoint per turn, focused checks and an actual-code walkthrough followed by a pause for Vinay, with an explicit longer-run override."
+    sources:
+      - {"ref":"AGENTS.md","locator":"implement one checkpoint","sha256":"70ad8170a2a2137d5331e95108c87bfdb752279d6ddd5f813574fd497d246e76"}
+      - {"ref":"docs/tasks/README.md","locator":"one checkpoint per turn","sha256":"a5780ea56c7461ee459e39a817eb92dabf981a80e98fba923a1bd1d27780340d"}
+      - {"ref":"docs/tasks/README.md","locator":"Do not require Vinay to pass a quiz.","sha256":"a5780ea56c7461ee459e39a817eb92dabf981a80e98fba923a1bd1d27780340d"}
+  - id: O15
+    statement: "D112 specifies pending-first recovery, unavailable history, retained authorized attempts and stale-account suppression."
+    sources:
+      - {"ref":"docs/decisions.md","locator":"| D112 |","sha256":"01c1a3129fc52c932b955eb62add65654b04667853f8cb6d110ca6edfdfccb77"}
+      - {"ref":"docs/journeys/settle-kit.yaml","locator":"c10: \"WHEN authenticated history contains an unresolved accepted attempt","sha256":"89af28e0e978ab250217d64ed19845bfe96fe26b595cfecb85724961504d0f27"}
+      - {"ref":"docs/tasks/M3.T2.md","locator":"Implement D112 history-first entry","sha256":"778055338f9560ea1dd167e99334dc4dc5f9ec0f60bac86c42f583cfb9038633"}
+  - id: O16
+    statement: "D113 specifies spending/gas disclosure before signing and expired-quote review with preserved inputs, fresh consent and no replacement of accepted or uncertain attempts."
+    sources:
+      - {"ref":"docs/decisions.md","locator":"| D113 |","sha256":"01c1a3129fc52c932b955eb62add65654b04667853f8cb6d110ca6edfdfccb77"}
+      - {"ref":"docs/journeys/settle-kit.yaml","locator":"c14: \"WHEN an unaccepted quote expires","sha256":"89af28e0e978ab250217d64ed19845bfe96fe26b595cfecb85724961504d0f27"}
+      - {"ref":"docs/tasks/M1.T4.md","locator":"Repeat an expired preparation key","sha256":"456499d0e1b47de6b84b8f884700c93c8af16c374beba0b312c0b8cf9a071db0"}
+      - {"ref":"docs/tasks/M3.T3.md","locator":"D113","sha256":"97d248a2da27f4228db5b7216e9458687f32e7d89b5c6b3aba13db65e5e4c2e4"}
+  - id: O17
+    statement: "D114 specifies known outcome, next actor/action and existing account-scoped references for manual/wallet exceptions; accepted-attempt no-debit recovery retains D111 proof."
+    sources:
+      - {"ref":"docs/decisions.md","locator":"| D114 |","sha256":"01c1a3129fc52c932b955eb62add65654b04667853f8cb6d110ca6edfdfccb77"}
+      - {"ref":"docs/journeys/settle-kit.yaml","locator":"c7: \"WHEN an accepted payment needs business intervention","sha256":"89af28e0e978ab250217d64ed19845bfe96fe26b595cfecb85724961504d0f27"}
+      - {"ref":"docs/tasks/M2.T6.md","locator":"Expose the existing manual deposit reference","sha256":"fe8b8ea98a6b13f0a7bad4e34978cb50ad4f6a11a4b9428c8130826073fa936a"}
+      - {"ref":"docs/tasks/M3.T1.md","locator":"Keep detailed operator reasons","sha256":"bdec540a6cc80825367dcb66cf8cfc04d1058c843b4461dc7db4d8bc85698085"}
+  - id: O18
+    statement: "D115 separates authorized connection/read failure and retrieval freshness from payment outcomes, preserves account protection and announces only meaningful changes without moving focus."
+    sources:
+      - {"ref":"docs/decisions.md","locator":"| D115 |","sha256":"01c1a3129fc52c932b955eb62add65654b04667853f8cb6d110ca6edfdfccb77"}
+      - {"ref":"docs/journeys/settle-kit.yaml","locator":"c6: \"WHEN the payer retries a failed status read","sha256":"89af28e0e978ab250217d64ed19845bfe96fe26b595cfecb85724961504d0f27"}
+      - {"ref":"docs/journeys/settle-kit.yaml","locator":"c7: \"IF a poll produces no change","sha256":"89af28e0e978ab250217d64ed19845bfe96fe26b595cfecb85724961504d0f27"}
+      - {"ref":"docs/tasks/M4.T1.md","locator":"D112–D116","sha256":"5d63335265d7f0d631de8784bb0a795e08ab6ca982c35d61e7e498a60b0bf742"}
+  - id: O19
+    statement: "D116 specifies successful-copy feedback, selectable-address fallback, persistent source-chain labeling and stale-copy suppression; copying or scanning cannot begin money processing."
+    sources:
+      - {"ref":"docs/decisions.md","locator":"| D116 |","sha256":"01c1a3129fc52c932b955eb62add65654b04667853f8cb6d110ca6edfdfccb77"}
+      - {"ref":"docs/journeys/settle-kit.yaml","locator":"c17: \"IF an address is copied or a QR code is scanned","sha256":"89af28e0e978ab250217d64ed19845bfe96fe26b595cfecb85724961504d0f27"}
+      - {"ref":"docs/journeys/settle-kit.yaml","locator":"c19: \"WHEN the account, chain or stored instruction record changes","sha256":"89af28e0e978ab250217d64ed19845bfe96fe26b595cfecb85724961504d0f27"}
+      - {"ref":"docs/tasks/M3.T3.md","locator":"D116","sha256":"97d248a2da27f4228db5b7216e9458687f32e7d89b5c6b3aba13db65e5e4c2e4"}
+coverage:
+  - {"id":"C1","actor":"developer","goal":"Configure and independently integrate the SDK","status":"mapped","journeys":["J1","J11"],"policy":["D5","D37","D44","D142"],"refs":["J1.S2.c12","J11.S1.c5","J1.S2.c6","J1.S2.c13","J11.S1.c8"]}
+  - {"id":"C2","actor":"user","goal":"Obtain stable account-bound manual addresses","status":"mapped","journeys":["J2","J3"],"policy":["D26","D134","D135","D116"],"refs":["J2.S1.c2","J2.S1.c5","J3.S1.c7","J2.S1.c14","J2.S1.c15","J3.S1.c17","J3.S1.c19"],"observations":["O19"]}
+  - {"id":"C3","actor":"user","goal":"Deposit manually and distinguish provisional from verified progress","status":"mapped","journeys":["J2","J3"],"policy":["D10","D17","D18","D28","D114","D115"],"refs":["J2.S3.c5","J2.S3.c9","J3.S3.c6","J2.S5.c15","J3.S5.c16","J9.S1.c4","J9.S1.c7"],"observations":["O17","O18"]}
+  - {"id":"C4","actor":"engine","goal":"Settle and attribute manual funds on both routes","status":"mapped","journeys":["J2","J3","J4"],"policy":["D21","D33","D38","D121"],"refs":["J2.S4.c7","J2.S5.c8","J3.S5.c14","J4.S2.c18","J6.S1.c14"],"observations":["O10","O12"]}
+  - {"id":"C5","actor":"user","goal":"Consent and submit an exact-amount wallet payment","status":"mapped","journeys":["J8"],"policy":["D110","D126","D140","D141","D231","D113"],"refs":["J8.S2.c10","J8.S3.c5","J8.S4.c7","J8.S2.c4","J8.S2.c8","J8.S3.c2","J8.S4.c9","J8.S5.c18","J8.S6.c8","J8.S2.c14","J8.S2.c15","J8.S3.c6","J8.S9.c3"],"observations":["O10","O11","O16"]}
+  - {"id":"C6","actor":"user","goal":"Recover accepted attempts after reload or uncertain submission","status":"mapped","journeys":["J8","J6"],"policy":["D111","D139","D140","D112","D114","D115"],"refs":["J8.S1.c6","J8.S4.c5","J6.S2.c14","J8.S11.c3","J8.S11.c1","J8.S11.c4","J8.S1.c9","J8.S1.c10","J8.S1.c11","J8.S1.c12","J8.S1.c13","J8.S1.c14","J8.S10.c6","J9.S1.c6","J9.S1.c8"],"observations":["O15","O17","O18"]}
+  - {"id":"C7","actor":"host","goal":"Commit balance once and recover event delivery","status":"mapped","journeys":["J5","J6","J10"],"policy":["D124","D45","D230"],"refs":["J5.S2.c5","J5.S2.c6","J6.S2.c9","J10.S3.c1"]}
+  - {"id":"C8","actor":"engine","goal":"Discover missed activity and resume across interruptions and upgrades","status":"mapped","journeys":["J6","J1","J11"],"policy":["D34","D35","D36","D131"],"refs":["J6.S1.c10","J6.S2.c11","J1.S5a.c11","J11.S1.c11","J6.S1.c6","J1.S5a.c12","J1.S5a.c13","J6.S1.c14"],"observations":["O12"]}
+  - {"id":"C9","actor":"engine","goal":"Follow the original CCTP message through delay and throttling","status":"mapped","journeys":["J4","J8"],"policy":["D38","D56","D138"],"refs":["J4.S3.c6","J4.S3.c7","J8.S6.c2","J4.S2.c18","J8.S6.c8"],"observations":["O10"]}
+  - {"id":"C10","actor":"developer","goal":"Investigate missing backing and acknowledge canonical recovery","status":"mapped","journeys":["J6","J10"],"policy":["D125","D35","D51","D54"],"refs":["J6.S3.c7","J10.S2.c6","J6.S3.c8"]}
+  - {"id":"C11","actor":"developer","goal":"Recover over-limit or unsupported assets and close host repayment cases","status":"mapped","policy":["D27","D28","D33","D51","D54","D129"],"refs":["J7.S2.c1","J7.S3.c1","J7.S3.c5","J12.S1.c3","J12.S2.c1","J12.S2.c3","J12.S3.c1","J12.S3.c3","J12.S4.c1","J12.S4.c2","J12.S4.c3","J12.S4.c4","J12.S4.c5","J12.S5.c1","J12.S5.c2","J12.S5.c3","J12.S6.c2","J12.S4.c6"],"observations":["O4","O5","O13"],"journeys":["J7","J12"]}
+  - {"id":"C12","actor":"host","goal":"Fund exceptional shortfalls and bound relayer spending","status":"mapped","journeys":["J8","J10","J6"],"policy":["D126","D127","D128"],"refs":["J8.S5.c14","J8.S5.c16","J10.S2.c3","J10.S2.c4","J6.S2.c16","J1.S2.c9","J8.S4.c8"]}
+  - {"id":"C13","actor":"developer","goal":"Use accessible themed or headless UI with the promised payer protections","status":"mapped","policy":["D40","D41","D42","D43","D112","D113","D114","D115","D116"],"refs":["J2.S1.c11","J2.S1.c12","J2.S1.c13","J3.S1.c12","J3.S1.c13","J3.S1.c14","J9.S2.c3","J9.S2.c4","J9.S2.c5","J2.S1.c14","J2.S1.c15","J2.S1.c16","J2.S1.c17","J2.S1.c18","J2.S5.c15","J3.S1.c15","J3.S1.c16","J3.S1.c17","J3.S1.c18","J3.S1.c19","J3.S5.c16","J8.S1.c9","J8.S1.c10","J8.S1.c11","J8.S1.c12","J8.S1.c13","J8.S1.c14","J8.S1.c15","J8.S2.c14","J8.S2.c15","J8.S3.c6","J8.S8.c6","J8.S9.c3","J8.S10.c6","J8.S10.c7","J9.S1.c4","J9.S1.c5","J9.S1.c6","J9.S1.c7","J9.S1.c8","J9.S2.c6","J9.S2.c7"],"observations":["O6","O15","O16","O17","O18","O19"],"journeys":["J2","J3","J9","J8"]}
+  - {"id":"C14","actor":"developer","goal":"Inspect actionable alerts and honest scan status","status":"mapped","journeys":["J10","J6"],"policy":["D51","D54"],"refs":["J10.S1.c1","J6.S3.c11","J6.S3.c12","J6.S3.c9","J10.S1.c2"]}
+  - {"id":"C15","actor":"developer","goal":"Demonstrate separate consumer and accurately bounded release evidence","status":"mapped","journeys":["J11"],"policy":["D5","D50","D52","D53","D57","D142","D112","D113","D114","D115","D116"],"refs":["J11.S1.c2","J11.S1.c7","J11.S1.c9","J11.S2.c4","J11.S1.c11","J11.S2.c2"],"observations":["O1","O2","O3","O8","O14","O15","O16","O17","O18","O19"]}
+  - {"id":"C16","actor":"host","goal":"Checkout orders and withdrawals","status":"excluded","exclusions":["X11","X17"],"reason":"Explicitly outside the deposit release"}
+  - {"id":"C17","actor":"developer","goal":"SDK recovery buttons and embedded dashboard","status":"excluded","exclusions":["X6","X15"],"reason":"Contract functions and documented operator procedures remain in scope; the SDK UI/tooling does not"}
+  - {"id":"C18","actor":"developer","goal":"Serverless deployment and framework adapters","status":"excluded","exclusions":["X14"],"reason":"Supported setup is one documented long-running process"}

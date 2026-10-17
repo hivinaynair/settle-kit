@@ -255,6 +255,22 @@ response may update consent. Account, wallet, network or input changes invalidat
 unsigned consent. Accepted attempts reload from server history. Address text, QR and
 copy share the same scoped record and loading guard (D43, D110, D140; J2, J3, J8, J9).
 
+The D112–D116 UX contract is owned by the decision rows and journey criteria. Keep
+client retrieval state separate from persisted payment state: M1.T1 defines the read
+result/freshness/reference shapes; M2.T4 supplies errors distinctly from empty results;
+M3.T2 owns the account-scoped controller and presentation mapping; M3.T3 renders and
+tests the widget interactions. M1.T4 preserves immutable expired preparation results,
+M2.T6/M3.T1 supply existing references and reason/stage data, and M4.T1 checks the
+installed consumer. These responsibilities use the existing D140 methods.
+
+Use one controller policy for entry recovery, expired-quote review and status refresh.
+Its pending/read-error cases must not fall through to fresh preparation or submission.
+Retrieval time, connection errors and copy feedback are client metadata rather than
+ledger transitions. Scope asynchronous read/copy completions to the current account,
+chain and instruction record. Keep the accessible announcement value separate from
+the changing retrieval timestamp so unchanged polls do not repeat announcements
+(J8.S1, J8.S2, J8.S3, J8.S8–S11, J9.S1–S2; D112–D116).
+
 Display observation, source confirmation, Base verification and host acknowledgment
 as separate progress. `source_succeeded` is not `credited`; rejected signing is not
 `failed_no_debit`. Only the complete D111 evidence scan permits that terminal state.
