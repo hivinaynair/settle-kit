@@ -41,6 +41,10 @@ yarn-error.log*
 *.pem
 lefthook-local.yml
 
+# Local generated documents and scratch work; keep reproducible evidence under docs/.
+/output/
+/tmp/
+
 .env*
 
 # Local browser-spike wallets, signed transactions and private evidence

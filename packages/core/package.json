@@ -1,7 +1,7 @@
 {
   "name": "@settle-kit/core",
   "version": "0.0.0",
-  "description": "Headless deposit sessions: routes, fills, typed errors. No React, no DOM.",
+  "description": "Shared native-USDC deposit, quote and payment types for Settle Kit.",
   "type": "module",
   "license": "MIT",
   "exports": {
