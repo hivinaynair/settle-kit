@@ -152,9 +152,22 @@ invented metrics. Finish the task before asking to start the next one.
 ## Planning readiness and cleanup
 
 The [coverage resolution](../spec/coverage-resolution.md) links each of the three
-earlier findings to behavior and task owners. The [current review](../spec/coverage-review-2026-10-17.md)
-also traces the four technical-design clarifications to their implementation owners.
+earlier findings to behavior and task owners. The [technical review](../spec/coverage-review-2026-10-17.md)
+traces the four technical-design clarifications to their implementation owners.
+The [current UX review](../spec/coverage-review-2026-10-17-ux.md) traces Vinay's
+approved D112–D116 refinements through the journey criteria and task checkpoints.
 Earlier reports retain their original revisions/hashes and are historical snapshots.
+
+| UX work | Policy and acceptance locations | Task handoff |
+|---|---|---|
+| Return to an unfinished payment; handle unavailable history | D112; J8.S1, J9.S1 | M1.T1 contracts → M2.T4 transport → M3.T2 controller → M3.T3 widget |
+| Explain spending consent and review expired quotes | D113; J8.S2–S3, J8.S9 | M1.T4 quote result → M3.T2 controller → M3.T3 widget |
+| Explain exceptions and expose the existing reference | D114; J2.S5, J3.S5, J8.S8–S11 | M2.T4/M2.T6/M3.T1 read models → M3.T2/M3.T3 presentation |
+| Distinguish status-read failures; announce meaningful changes | D115; J9.S1–S2 | M1.T1 contracts → M2.T4 transport → M3.T2/M3.T3 client |
+| Complete copy feedback and manual instructions | D116; J2.S1, J3.S1 | M3.T2 scoped controller → M3.T3 browser checks |
+
+M4.T1 checks all five in the installed consumer. Task ownership and the 48 planned
+review checkpoints are unchanged; these additions describe work within those checkpoints.
 
 Repository cleanup is limited to making this plan discoverable, preserving those
 reports, ignoring local output/scratch folders and correcting old package descriptions.

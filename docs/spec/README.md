@@ -17,8 +17,10 @@ open. S14–S16 conclude exploratory spiking; the live MetaMask result and remai
 implementation acceptance checks are recorded in [spikes](../spikes.md).
 Product implementation has not started.
 
-The [current design/coverage review](coverage-review-2026-10-17.md) records the four
-technical clarifications and their task owners. All 16 tasks now have three learning
+The [technical review](coverage-review-2026-10-17.md) records the four design
+clarifications and their task owners. The [current UX review](coverage-review-2026-10-17-ux.md)
+records the approved D112–D116 refinements and their acceptance/task mappings.
+All 16 tasks have three learning
 checkpoints, focused checks and a code walkthrough. Follow the
 [review-and-pause protocol](../tasks/README.md#how-we-implement-together).
 
