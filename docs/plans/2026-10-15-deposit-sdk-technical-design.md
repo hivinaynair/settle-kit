@@ -3,7 +3,7 @@
 2026-10-15 · Reviewed and clarified 2026-10-17. Design only; no product implementation is claimed.
 
 Build one self-hosted deposit engine, three TypeScript packages and a usable consumer.
-[Decisions](../decisions.md) own policy; the [journey spine](../journeys/settle-kit.yaml)
+[Decisions](../decisions.md) own policy; the [journey spine](../journeys/settle-kit.md)
 owns acceptance behavior. This document assigns technical responsibilities, durable
 identities and transaction boundaries. The [task plan](../tasks/README.md) assigns work.
 The superseded checkout plan in `docs/archive` is not a dependency.

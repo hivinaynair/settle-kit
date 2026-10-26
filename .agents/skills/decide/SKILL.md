@@ -1,37 +1,59 @@
 ---
 name: decide
-description: Clarify vague tickets or ideas into Settle Kit decisions, scope and open questions. Use for uncertain requirements or decision handoffs; skip trivial edits and fully specified implementation.
+description: Settle what to build before code. Frames a raw idea or vague ticket, records the owner's decisions and non-goals, and asks the next blocking product question. Use when an idea or ticket needs sharpening, requirements are uncertain, or decisions need a handoff.
 ---
 
-# decide
+# Decide
 
-Input: a ticket, idea or discussion plus project context. Output: `docs/decisions.md`,
-preserving its sections and native table. Follow the Spec process in `AGENTS.md`.
+You help the **owner** settle what to build. The owner decides product rules:
+who may do what, and what a person sees. The **builder** decides how to build them.
+The owner may not be the person you are working with: on a company ticket it is
+often a PM or designer.
+Record owner decisions in `docs/decisions.md` using the [record format](references/record-format.md).
+If the project already keeps a decision record, add to it in its own format.
 
-1. Read existing decisions and the relevant design, tasks and request sources. Scope
-   to the requested feature; reuse settled answers and re-read shared files before edits.
-2. Establish users, problem, intended outcome, scope and constraints before detailing
-   a solution. Extract known answers; flag contradictions and assumptions. Ask what
-   observable result would satisfy an unclear ticket; invent neither metrics nor policy.
-3. Keep approved decisions, observations, recommendations and unknowns distinct.
-   Cite policy authority and evidence sources without inventing approval. Code, agent
-   suggestions and silence do not approve policy. Identify the answer owner; the
-   implementing engineer may not own product choices. Observations belong in the
-   sourced coverage review when needed, not new D rows or fields in the native spine.
-4. Record approved answers once as D decisions or X exclusions, with rationale,
-   genuinely rejected alternatives and date. Keep missing user-visible, business or
-   money rules as Qs with recommendation, alternatives, blocked work and answer owner
-   (unknown if necessary). Ask the question that unblocks most work, one at a time
-   unless a batch is requested; continue independent work. Internal technical choices
-   belong to the builder. Prepare stakeholder questions without contacting anyone.
-5. Follow the host's ID lifecycle: before the first slice 1 task merges, edit a changed
-   decision in place and update every citation together; afterward append a superseding
-   row. Never reuse retired IDs or silently rewrite criteria to fit changed policy.
-   Preserve the table format; do not import the portable checker's Status column.
-6. Check scope: each requested feature is in scope or explicitly excluded with a reason;
-   "later" is out. End with accepted scope, blockers and next action. A journeys handoff
-   separates ready scope from blocked paths; do not wait on unrelated questions or
-   reopen completed planning merely because implementation proof is pending.
+## Steps
 
-Done: enough approved policy for the requested slice, or explicit blockers. Planning
-alone does not authorize implementation, commits or publishing.
+1. **Read.** Read the request, the existing record and the code or docs it touches.
+   Done when you can say what is decided, what the code does today, and what is missing.
+
+2. **Frame** (raw ideas and vague tickets). When the request does not yet say who it
+   is for, what problem it solves and what outcome would satisfy it, settle five
+   things: problem, primary user, first usable outcome, non-goals and success signal.
+   For a ticket, take what the ticket and project already establish, and separate
+   firm requirements from suggested solutions, assumptions and contradictions; ask
+   only for what is missing, and leave a success signal open rather than invent one.
+   Done when each is an accepted line under `## Frame`; non-goals are X lines. A
+   specified feature goes straight to Ask.
+
+3. **Ask.** First compare the request with known facts and accepted decisions, and
+   name every conflict; a request that changes an accepted decision is a question
+   too ("Replace D52 with …?"). Then find the missing rules that change what a person
+   can do or see in the first slice, including who can see shared data, existing
+   data, and changes made outside the app. Everything the owner has not said becomes
+   a short Q line: the question and your recommendation, no background, tagged
+   `Blocks: <IDs>` when the answer changes the slice or `Default` when your
+   recommendation is safe to accept, and naming who answers (`Owner: PM`, or
+   `Owner: unknown`). Your preference stays a recommendation until that person
+   accepts it; prepare questions for them rather than contacting them yourself.
+   Reuse an existing **failure default** if the record has one; otherwise ask for one
+   as a `Default` ("when an action fails or its result is unknown, the person sees a
+   retryable error and no partial change is kept"). Ask the highest-impact blocking
+   question first and offer the defaults as one batch. Done when no open question
+   blocks the first slice.
+
+4. **Record.** Write each answer as an accepted D line: one rule, under 30 words,
+   with a why only when it is not obvious. Mark the question resolved with just
+   `Answered by D<n>`; the decision holds the content. When an answer replaces an accepted
+   decision, end the new line with `Supersedes: D<n>`, mark the old one superseded and
+   restate any part that still holds. What the code does today is an observation:
+   once a journey file exists, record it there as an O line. Done when every answer
+   from this session is a line.
+
+5. **Report.** Reply with the accepted scope, which paths are ready to map and which
+   are blocked on named questions, and the next step, usually the journeys skill.
+
+Retries, transactions, idempotency, timeouts, storage and naming are builder
+choices; they belong in tasks. One line per decision: link tickets, ADRs or docs
+for longer reasoning. Stop when the first slice is unblocked; excluding or
+deferring something is a complete answer.

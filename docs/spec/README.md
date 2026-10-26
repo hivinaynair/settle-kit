@@ -7,7 +7,7 @@ their IDs. Shared rules: the Spec process section of
 | Step | Question it answers | Artifact | How to write it | Your part |
 |---|---|---|---|---|
 | 1 Decide | What are we building, and what did we rule out? | [`docs/decisions.md`](../decisions.md) | [decide skill](../../.agents/skills/decide/SKILL.md) | Answer open questions, confirm the list |
-| 2 Journeys | What exactly happens, step by step, including every failure? What must always hold? | `docs/journeys/settle-kit.yaml` | [journeys skill](../../.agents/skills/journeys/SKILL.md) | Agree the invariants, walk each journey, challenge branches |
+| 2 Journeys | What exactly happens, step by step, including every failure? What must always hold? | [`docs/journeys/settle-kit.md`](../journeys/settle-kit.md) | [journeys skill](../../.agents/skills/journeys/SKILL.md) | Agree the invariants, walk each journey, challenge branches |
 
 **Current status (2026-10-17):** the [technical design](../plans/2026-10-15-deposit-sdk-technical-design.md)
 and [16 task specs](../tasks/README.md) assign all 56 steps across 12 journeys.
@@ -26,12 +26,13 @@ checkpoints, focused checks and a code walkthrough. Follow the
 name the criterion or invariant they prove (`it("J2.S4.c1: …")`, `it("I1: …")`).
 Passing the planning checker does not establish implementation or live-route coverage.
 
+Goals (what each actor needs) live in the journey file's `## Goals`. The dated
+coverage reviews in this folder are historical; their YAML pins the retired YAML spine.
+
 | Command | Does |
 |---|---|
-| `bun run journeys:validate` | Check the spine while drafting (warnings are advice) |
-| `bun run journeys:render` | Regenerate the `.md` view (tables, flowcharts, criteria) |
-| `bun run check-journeys` | Merge bar: spine valid with no warnings, `.md` fresh, test citations real |
-| `bun run check-journeys -- --complete` | Release gate: every criterion of a served step and every invariant has a test; no open questions cited |
+| `bun run check-journeys` | Merge bar: journeys valid against decisions, one task per step, test citations real (`-- --verbose` lists all advice) |
+| `bun run check-journeys -- --complete` | Release gate: every criterion of an owned step and every invariant has a test; no open questions cited |
 
 The earlier checkout-first plan (design doc, tasks T1–T9, handoffs) is in
 [`docs/archive/`](../archive/): input for decisions, not the current spec.
