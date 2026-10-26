@@ -1,0 +1,1148 @@
+#!/usr/bin/env bun
+import { realpath } from "node:fs/promises";
+import { dirname, extname, isAbsolute, relative, resolve, sep } from "node:path";
+
+// Deliberately dependency-free. Parsing and validation are exported for tests.
+export const checkNames = ["denied", "invalid", "failed", "repeated"];
+// Criteria: "When X: Y", "If X: never Y", "While X: Y", "Always: Y" or "Never: Y";
+// the longer EARS form "WHEN X THE SYSTEM SHALL Y" also works.
+const ears =
+  /^(?:(?:(?:WHEN|IF|WHILE) .+ )?THE SYSTEM SHALL(?: NOT)? .+|(?:When|If|While) [^:]+: \S.*|(?:Always|Never):? \S.*)$/;
+const boilerplate =
+  /\bTHE SYSTEM SHALL(?: NOT)?\b|^(?:WHEN|IF|WHILE|When|If|While|Always:?|Never:?)\s/g;
+const words = (text: string) => text.split(/\s+/).filter(Boolean).length;
+const separator = /\s+(?:—|–|--?)\s+/;
+const keys = [
+  "Decisions",
+  "Approved",
+  "Retired",
+  "Scope",
+  "Actor",
+  "Exits",
+  "Checks",
+  "Screen",
+  "Sees",
+  "Basis",
+  "Guards",
+];
+const list = (v: string) =>
+  v
+    .split(",")
+    .map((x) => x.trim())
+    .filter((x) => x && !/^(—|-|none)$/i.test(x));
+
+export type Decision = {
+  id: string;
+  status: string;
+  text: string;
+  supersedes: string[];
+  answer?: string;
+};
+export type Edge = { to?: string; exit?: string; when?: string };
+export type Step = {
+  id: string;
+  title: string;
+  kind: string;
+  screen?: string;
+  sees?: string;
+  basis: string[];
+  guards: string[];
+  criteria: [string, string][];
+  edges: Edge[];
+};
+export type Check = { status: "covered" | "n/a" | "open"; refs: string[]; reason: string };
+export type Journey = {
+  id: string;
+  title: string;
+  actor?: string;
+  exits: string[];
+  basis: string[];
+  checks: Record<string, Check>;
+  steps: Step[];
+};
+export type Goal = {
+  id: string;
+  actor: string;
+  goal: string;
+  status: "mapped" | "excluded" | "unresolved" | "elsewhere";
+  journeys: string[];
+  decision?: string;
+  reason?: string;
+};
+export type Source = { ref?: string; revision?: string; locator?: string };
+export type Spec = {
+  feature: string;
+  decisions?: string;
+  approval?: { id: string; hash: string };
+  retired: string[];
+  scope: string[];
+  checks: Record<string, Check>;
+  actors: { id: string; name: string }[];
+  goals: Goal[];
+  invariants: { id: string; rule: string; basis: string[] }[];
+  observations: { id: string; statement: string; sources: Source[] }[];
+  journeys: Journey[];
+};
+
+// The hook supplies its exported index root. Resolve symlinks before any content
+// read so a staged file cannot pull in content from outside the snapshot.
+async function snapshotRead(path: string, root?: string): Promise<string> {
+  if (!root) return path;
+  const [base, target] = await Promise.all([realpath(root), realpath(path)]);
+  const fromRoot = relative(base, target);
+  if (fromRoot === ".." || fromRoot.startsWith(`..${sep}`) || isAbsolute(fromRoot))
+    throw Error(`Path escapes staged snapshot: ${path}`);
+  return target;
+}
+
+// Reads "- D1 accepted — Text" lines and table rows with ID, Status and Decision
+// columns, so existing table records work unchanged. Everything else is prose.
+export function parseDecisions(markdown: string) {
+  const decisions = new Map<string, Decision>(),
+    errors: string[] = [];
+  const add = (id: string, status: string, text: string, supersedes: string, where: string) => {
+    if (decisions.has(id)) errors.push(`${where}: duplicate decision ${id}`);
+    const valid = id.startsWith("Q")
+      ? ["open", "deferred", "resolved", "retired"]
+      : ["draft", "accepted", "superseded", "retired"];
+    if (!valid.includes(status)) errors.push(`${where}: ${id} has invalid status ${status}`);
+    if (!text) errors.push(`${where}: ${id} has no text`);
+    const answer = id.startsWith("Q")
+      ? text
+          .match(/\b(?:answered|resolved) by\s+(D\d+)|^(D\d+):/i)
+          ?.slice(1)
+          .find(Boolean)
+      : undefined;
+    decisions.set(id, { id, status, text, supersedes: list(supersedes), answer });
+  };
+  let headers: string[] = [];
+  markdown.split("\n").forEach((raw, i) => {
+    const line = raw.trim(),
+      where = `decisions line ${i + 1}`;
+    if (line.startsWith("|")) {
+      const cells = line
+        .split("|")
+        .slice(1, -1)
+        .map((c) => c.trim());
+      if (cells[0] === "ID") {
+        headers = cells;
+        return;
+      }
+      if (!/^[DXQ]\d+$/.test(cells[0] ?? "")) return;
+      // Tables without a Status column (indexes, crosswalks) are prose.
+      const textColumn = ["Decision", "Answer", "Question"].find((h) => headers.includes(h));
+      if (headers.includes("Status") && textColumn) {
+        const cell = (h: string) => cells[headers.indexOf(h)] ?? "";
+        add(
+          cells[0],
+          cell("Status"),
+          cell(textColumn),
+          headers.includes("Supersedes") ? cell("Supersedes") : "",
+          where,
+        );
+      }
+      return;
+    }
+    // "- D1 accepted — Text": an ID, a status word, then a dash. Bullets that merely start with an ID are prose.
+    const m = line.match(/^[-*]\s+([DXQ]\d+)\s+([a-z]+)\s+(?:—|–|-)\s+(.*)$/);
+    if (m)
+      add(
+        m[1],
+        m[2],
+        m[3].trim(),
+        m[3].match(/\bSupersedes:\s*([DX]\d+(?:\s*,\s*[DX]\d+)*)/)?.[1] ?? "",
+        where,
+      );
+  });
+  if (!decisions.size)
+    errors.push(
+      'No decisions found: use "- D1 accepted — ..." lines or a table with ID, Status and Decision columns',
+    );
+  for (const d of decisions.values()) {
+    for (const old of d.supersedes) {
+      if (old === d.id || !decisions.has(old))
+        errors.push(`${d.id}: supersedes unknown decision ${old}`);
+      // A draft replacement leaves the old decision in force until the owner accepts it.
+      else if (d.status === "accepted" && decisions.get(old)?.status !== "superseded")
+        errors.push(`${old}: mark replaced decision superseded`);
+    }
+    if (d.answer && !decisions.has(d.answer))
+      errors.push(`${d.id}: answered by unknown decision ${d.answer}`);
+  }
+  return { decisions, errors };
+}
+
+function parseCheck(value: string): Check {
+  const m = value.match(/^(n\/a|open)\b\s*(?:(?:—|–|--?|:)\s*(.*))?$/i);
+  if (m)
+    return { status: m[1].toLowerCase() as Check["status"], refs: [], reason: (m[2] ?? "").trim() };
+  const [refs, ...note] = value.split(separator);
+  return { status: "covered", refs: list(refs), reason: note.join(" ") };
+}
+
+// "D117–D125, X6–X8, I1–I4, D130": ranges expand to each ID.
+function expandScope(value: string) {
+  return list(value).flatMap((part) => {
+    const m = part.match(/^([DXI])(\d+)\s*(?:–|-)\s*\1?(\d+)$/);
+    if (!m) return [part];
+    return Array.from(
+      { length: Math.max(0, Number(m[3]) - Number(m[2]) + 1) },
+      (_, i) => `${m[1]}${Number(m[2]) + i}`,
+    );
+  });
+}
+
+export function parseJourneys(markdown: string) {
+  const spec: Spec = {
+    feature: "",
+    retired: [],
+    scope: [],
+    checks: {},
+    actors: [],
+    goals: [],
+    invariants: [],
+    observations: [],
+    journeys: [],
+  };
+  const errors: string[] = [];
+  let section = "header",
+    inChecks = false;
+  let journey: Journey | undefined, step: Step | undefined;
+  const setKey = (key: string, value: string): boolean => {
+    if (section === "header") {
+      if (key === "Decisions") spec.decisions = value;
+      else if (key === "Retired") spec.retired = list(value);
+      else if (key === "Scope") spec.scope = expandScope(value);
+      else if (key === "Checks" && !value) inChecks = true;
+      else if (key === "Approved") {
+        const m = value.match(/^(D\d+)\s+([0-9a-f]{8})$/);
+        if (!m) return false;
+        spec.approval = { id: m[1], hash: m[2] };
+      } else return false;
+    } else if (journey && !step) {
+      if (key === "Actor") journey.actor = value;
+      else if (key === "Exits") journey.exits = list(value);
+      else if (key === "Checks" && !value) inChecks = true;
+      else if (key === "Basis") journey.basis = expandScope(value);
+      else return false;
+    } else if (step) {
+      if (key === "Screen") step.screen = value;
+      else if (key === "Sees") step.sees = value;
+      else if (key === "Basis") step.basis = expandScope(value);
+      else if (key === "Guards") step.guards = expandScope(value);
+      else return false;
+    } else return false;
+    return true;
+  };
+  for (const [index, raw] of markdown.split("\n").entries()) {
+    const line = raw.trim(),
+      at = `line ${index + 1}`;
+    const bad = () => errors.push(`${at}: cannot parse "${line}"`);
+    if (!line || line.startsWith("<!--")) continue;
+    const title = line.match(/^# (.+)$/);
+    if (title) {
+      if (!spec.feature) spec.feature = title[1].trim();
+      continue;
+    }
+    const heading = line.match(/^## (.+)$/);
+    if (heading) {
+      journey = step = undefined;
+      inChecks = false;
+      const name = heading[1].trim(),
+        j = name.match(/^(J\d+):\s*(.+)$/);
+      if (j) {
+        journey = { id: j[1], title: j[2], exits: [], basis: [], checks: {}, steps: [] };
+        spec.journeys.push(journey);
+        section = "journey";
+      } else
+        section = ["Actors", "Goals", "Invariants", "Observations"].includes(name)
+          ? name.toLowerCase()
+          : "prose";
+      continue;
+    }
+    if (section === "prose") continue;
+    const stepHeading = line.match(/^### (.+)$/);
+    if (stepHeading) {
+      inChecks = false;
+      const s = stepHeading[1].match(/^(J\d+\.S\d+[a-z]?)\s+(.+?)\s+\((person|system|external)\)$/);
+      if (!journey || !s) {
+        bad();
+        continue;
+      }
+      step = { id: s[1], title: s[2], kind: s[3], basis: [], guards: [], criteria: [], edges: [] };
+      journey.steps.push(step);
+      continue;
+    }
+    // "Key: value · Key: value" with a known key is structure; any other text is prose.
+    const first = line.match(/^([A-Z][a-z]+):/);
+    if (first && keys.includes(first[1])) {
+      for (const part of line.split(/\s+·\s+/)) {
+        const kv = part.match(/^([A-Z][a-z]+):\s*(.*)$/);
+        if (!kv || !keys.includes(kv[1])) {
+          bad();
+          break;
+        }
+        if (!setKey(kv[1], kv[2].trim())) {
+          errors.push(`${at}: ${kv[1]} is not valid here`);
+          break;
+        }
+      }
+      continue;
+    }
+    if (/^(→|->)/.test(line)) {
+      const e = line.match(
+        /^(?:→|->)\s*(?:exit\s+([\w-]+)|(J\d+\.S\d+[a-z]?))(?:\s+when\s+(.+))?$/,
+      );
+      if (step && e) step.edges.push({ exit: e[1], to: e[2], when: e[3]?.trim() });
+      else bad();
+      continue;
+    }
+    if (!/^[-*]\s/.test(line)) continue;
+    const actor = section === "actors" && line.match(/^[-*]\s+([\w-]+):\s*(.+)$/);
+    const goal =
+      section === "goals" && line.match(/^[-*]\s+(C\d+)\s+([\w-]+):\s*(.+?)\s*(?:→|->)\s*(.+)$/);
+    const invariant =
+      section === "invariants" && line.match(/^[-*]\s+(I\d+)\s*\(([^)]*)\):\s*(.+)$/);
+    const observation = section === "observations" && line.match(/^[-*]\s+(O\d+):\s*(.+)$/);
+    const check = !step && inChecks && line.match(/^[-*]\s+([\w/-]+):\s*(.*)$/);
+    const criterion = step && line.match(/^[-*]\s+(c\d+):\s*(.+)$/);
+    if (actor) spec.actors.push({ id: actor[1], name: actor[2] });
+    else if (goal) {
+      const [, id, owner, text, target] = goal;
+      const excluded = target.match(/^excluded\s+(X\d+)$/),
+        other = target.match(/^(unresolved|elsewhere)\b\s*(?:—|–|--?|:)?\s*(.*)$/);
+      if (excluded)
+        spec.goals.push({
+          id,
+          actor: owner,
+          goal: text,
+          status: "excluded",
+          journeys: [],
+          decision: excluded[1],
+        });
+      else if (other)
+        spec.goals.push({
+          id,
+          actor: owner,
+          goal: text,
+          status: other[1] as Goal["status"],
+          journeys: [],
+          reason: other[2],
+        });
+      else if (list(target).every((j) => /^J\d+$/.test(j)))
+        spec.goals.push({ id, actor: owner, goal: text, status: "mapped", journeys: list(target) });
+      else bad();
+    } else if (invariant)
+      spec.invariants.push({
+        id: invariant[1],
+        basis: expandScope(invariant[2]),
+        rule: invariant[3],
+      });
+    else if (observation) {
+      const [statement, ...sources] = observation[2].split(/\s*Source:\s*/);
+      spec.observations.push({
+        id: observation[1],
+        statement: statement.trim(),
+        sources: sources.map((s) => {
+          const src = s.replace(/;\s*$/, "").match(/^(\S+)@(\S+)\s+(.+)$/);
+          return src ? { ref: src[1], revision: src[2], locator: src[3] } : {};
+        }),
+      });
+    } else if (check) {
+      // Checks in the header are defaults for every journey; a journey's own check overrides.
+      const target = journey ? journey.checks : spec.checks;
+      if (target[check[1]]) errors.push(`${journey?.id ?? "Header"}: duplicate ${check[1]} check`);
+      target[check[1]] = parseCheck(check[2].trim());
+    } else if (step && criterion) step.criteria.push([criterion[1], criterion[2]]);
+    else bad();
+  }
+  return { spec, errors };
+}
+
+// Every decision the spec cites, following resolved questions to their answers.
+function cited(spec: Spec, decisions: Map<string, Decision>) {
+  const ids = new Set<string>();
+  const visit = (id: string) => {
+    if (!/^[DXQ]\d+$/.test(id) || ids.has(id)) return;
+    ids.add(id);
+    const answer = decisions.get(id)?.answer;
+    if (answer) visit(answer);
+  };
+  for (const inv of spec.invariants) inv.basis.forEach(visit);
+  for (const j of spec.journeys) {
+    j.basis.forEach(visit);
+    for (const st of j.steps) st.basis.forEach(visit);
+    for (const c of Object.values(j.checks)) c.refs.forEach(visit);
+  }
+  for (const c of Object.values(spec.checks)) c.refs.forEach(visit);
+  for (const g of spec.goals) if (g.decision) visit(g.decision);
+  return [...ids].sort();
+}
+
+// Covers the parsed structure and the text of every cited decision, so editing
+// policy or journeys invalidates an approval; editing prose does not.
+export function approvalHash(spec: Spec, decisions: Map<string, Decision>) {
+  const rest = { ...spec, approval: undefined };
+  const policy = cited(spec, decisions).map((id) => {
+    const d = decisions.get(id);
+    return d ? [id, d.status, d.text] : [id];
+  });
+  return new Bun.CryptoHasher("sha256")
+    .update(JSON.stringify([rest, policy]))
+    .digest("hex")
+    .slice(0, 8);
+}
+
+// Lays each step beside the full text it rests on, so a reader can judge meaning:
+// does the policy support every criterion, and does anything contradict it?
+export function reviewPacket(spec: Spec, decisions: Map<string, Decision>) {
+  const observations = new Map(spec.observations.map((o) => [o.id, o.statement]));
+  const invariants = new Map(spec.invariants.map((i) => [i.id, i.rule]));
+  const criteria = new Map(
+    spec.journeys.flatMap((j) =>
+      j.steps.flatMap((st) => st.criteria.map(([k, v]) => [`${st.id}.${k}`, v] as const)),
+    ),
+  );
+  const describe = (id: string): string => {
+    if (observations.has(id)) return `${id} (observed): ${observations.get(id)}`;
+    if (invariants.has(id)) return `${id} (invariant): ${invariants.get(id)}`;
+    if (criteria.has(id)) return `${id}: ${criteria.get(id)}`;
+    const d = decisions.get(id);
+    if (!d) return `${id}: step or unknown reference`;
+    return `${id} (${d.status}): ${d.text}${d.answer ? `\n  - ${describe(d.answer)}` : ""}`;
+  };
+  const out = [
+    `# Review: ${spec.feature}`,
+    "",
+    "For each step: does every criterion follow from what it rests on, is each criterion one behavior,",
+    "and does any cited text contradict another? Fix the spec or raise a question; do not just note it.",
+    "",
+  ];
+  if (spec.invariants.length) out.push("## Invariants", "");
+  for (const i of spec.invariants)
+    out.push(`### ${i.id}: ${i.rule}`, ...i.basis.map((b) => `- ${describe(b)}`), "");
+  for (const j of spec.journeys) {
+    out.push(`## ${j.id}: ${j.title}`, "");
+    for (const st of j.steps) {
+      out.push(
+        `### ${st.id} ${st.title} (${st.kind})`,
+        "Rests on:",
+        ...[...new Set([...j.basis, ...st.basis])].map((b) => `- ${describe(b)}`),
+      );
+      if (st.guards.length) out.push("Guards:", ...st.guards.map((g) => `- ${describe(g)}`));
+      out.push("Criteria:", ...st.criteria.map(([k, v]) => `- ${st.id}.${k}: ${v}`), "");
+    }
+    out.push("Checks:");
+    for (const name of checkNames) {
+      const c = j.checks[name] ?? spec.checks[name];
+      out.push(
+        `- ${name}: ${!c ? "missing" : c.status === "covered" ? "" : `${c.status} — ${c.reason}`}`,
+      );
+      for (const ref of c?.refs ?? []) out.push(`  - ${describe(ref)}`);
+    }
+    out.push("");
+  }
+  return out.join("\n");
+}
+
+export function validate(
+  spec: Spec,
+  decisions: Map<string, Decision>,
+  ready = false,
+  approving = false,
+) {
+  const errors: string[] = [],
+    warnings: string[] = [],
+    rules = new Set<string>();
+  const screens = new Map<string, string[]>();
+  const err = (m: string) => errors.push(m);
+  const gate = (m: string) => (ready ? errors : warnings).push(m);
+  const ids = new Set<string>();
+  const add = (id: string) => {
+    if (ids.has(id)) err(`Duplicate ID ${id}`);
+    ids.add(id);
+  };
+  // Length budgets keep each line to one short fact; reported once per kind.
+  const long = { criteria: [] as string[], sees: [] as string[] };
+  const rule = (text: string, id: string) => {
+    add(id);
+    rules.add(id);
+    if (!ears.test(text))
+      err(
+        `${id}: expected "When <condition>: <behavior>", "If <condition>: never <effect>", "Always: …" or "Never: …"`,
+      );
+    else if (words(text.replace(boilerplate, " ")) > 20) long.criteria.push(id);
+    else if ((text.match(/\bSHALL\b/g) ?? []).length > 1)
+      warnings.push(`${id}: more than one SHALL; split it into one behavior per criterion`);
+    else if (
+      /\b(promptly|as needed|quickly|appropriately|properly|gracefully)\b/i.test(
+        text.replace(/"[^"]*"|`[^`]*`/g, ""),
+      )
+    )
+      warnings.push(`${id}: vague requirement; name an observable outcome`);
+  };
+  // Draft and open citations are reported once per decision, not once per citation.
+  const unresolved = new Map<string, string[]>();
+  const policy = (id: string, owner: string) => {
+    const d = decisions.get(id);
+    if (!d) err(`${owner}: unknown decision ${id}`);
+    else if (d.status === "resolved" && d.answer) policy(d.answer, owner);
+    else if (d.status === "resolved")
+      err(`${owner}: ${id} is resolved; add "Answered by D<n>" to it`);
+    else if (["superseded", "retired"].includes(d.status)) err(`${owner}: inactive decision ${id}`);
+    else if (d.status !== "accepted") unresolved.set(id, [...(unresolved.get(id) ?? []), owner]);
+  };
+  const observationIds = new Set(spec.observations.map((o) => o.id));
+  const basis = (refs: string[], owner: string) => {
+    if (!refs.length) {
+      err(`${owner}: needs a Basis (decisions or observations)`);
+      return;
+    }
+    for (const ref of refs) {
+      if (/^O\d+$/.test(ref)) {
+        if (!observationIds.has(ref)) err(`${owner}: unknown observation ${ref}`);
+      } else if (/^[DXQ]\d+$/.test(ref)) policy(ref, owner);
+      else err(`${owner}: invalid basis ${ref}`);
+    }
+    if (ready && !refs.some((r) => /^[DX]\d+$/.test(r) || decisions.get(r)?.answer))
+      err(
+        refs.some((r) => r.startsWith("O"))
+          ? `${owner}: observations are not approved policy; cite an accepted decision`
+          : `${owner}: needs an accepted decision in Basis`,
+      );
+  };
+
+  if (!spec.feature) err('Missing "# Feature" title');
+  const actorIds = new Set<string>();
+  if (!spec.actors.length) err("Actors section needs at least one actor");
+  for (const a of spec.actors) {
+    if (actorIds.has(a.id)) err(`Duplicate actor ${a.id}`);
+    actorIds.add(a.id);
+  }
+  for (const o of spec.observations) {
+    add(o.id);
+    if (!o.statement) err(`${o.id}: missing observation statement`);
+    if (!o.sources.length || o.sources.some((s) => !s.ref || !s.revision || !s.locator))
+      err(`${o.id}: each observation needs "Source: path@revision locator"`);
+  }
+  const invariantIds = new Set<string>();
+  for (const inv of spec.invariants) {
+    invariantIds.add(inv.id);
+    rule(inv.rule, inv.id);
+    basis(inv.basis, inv.id);
+  }
+
+  const journeyIds = new Set<string>(),
+    stepIds = new Set<string>();
+  if (!spec.journeys.length) err('Needs at least one "## J1: Title" journey');
+  for (const j of spec.journeys) {
+    add(j.id);
+    journeyIds.add(j.id);
+    if (!j.actor || !actorIds.has(j.actor))
+      err(`${j.id}: unknown actor ${j.actor ?? "(missing Actor:)"}`);
+    if (!j.exits.length) err(`${j.id}: needs Exits`);
+    if (new Set(j.exits).size !== j.exits.length) err(`${j.id}: duplicate exits`);
+    if (!j.steps.length) {
+      err(`${j.id}: needs at least one step`);
+      continue;
+    }
+    const graph = new Map<string, string[]>(),
+      terminals = new Set<string>();
+    for (const st of j.steps) {
+      add(st.id);
+      stepIds.add(st.id);
+      graph.set(st.id, []);
+      if (!st.id.startsWith(`${j.id}.`)) err(`${st.id}: wrong journey prefix`);
+      if (st.kind === "person" && !st.screen) err(`${st.id}: person step needs a Screen`);
+      for (const screen of st.screen?.split(/\s*;\s*/) ?? [])
+        screens.set(screen, [...(screens.get(screen) ?? []), st.id]);
+      basis([...new Set([...j.basis, ...st.basis])], st.id);
+      if (st.sees && words(st.sees) > 12) long.sees.push(st.id);
+      for (const inv of st.guards)
+        if (!invariantIds.has(inv)) err(`${st.id}: unknown invariant ${inv}`);
+      if (!st.criteria.length)
+        err(`${st.id}: needs criteria ("- c1: WHEN ... THE SYSTEM SHALL ...")`);
+      for (const [key, text] of st.criteria) rule(text, `${st.id}.${key}`);
+      if (!st.edges.length) err(`${st.id}: needs a "→ J<n>.S<n>" or "→ exit <name>" line`);
+      for (const e of st.edges) {
+        if (st.edges.length > 1 && !e.when) err(`${st.id}: each of several branches needs a when`);
+        if (e.to) {
+          if (j.steps.some((s) => s.id === e.to)) graph.get(st.id)?.push(e.to);
+          else err(`${st.id}: missing target ${e.to}`);
+        } else if (!e.exit || !j.exits.includes(e.exit)) err(`${st.id}: unknown exit ${e.exit}`);
+        else terminals.add(st.id);
+      }
+    }
+    const reached = new Set<string>(),
+      pending = [j.steps[0].id];
+    for (let id = pending.pop(); id !== undefined; id = pending.pop()) {
+      if (reached.has(id)) continue;
+      reached.add(id);
+      pending.push(...(graph.get(id) ?? []));
+    }
+    for (const id of graph.keys())
+      if (!reached.has(id)) err(`${id}: unreachable from ${j.steps[0].id}`);
+    const canExit = new Set(terminals);
+    let changed = true;
+    while (changed) {
+      changed = false;
+      for (const [id, edges] of graph)
+        if (!canExit.has(id) && edges.some((e) => canExit.has(e))) {
+          canExit.add(id);
+          changed = true;
+        }
+    }
+    for (const id of graph.keys()) if (!canExit.has(id)) err(`${id}: no path to an exit`);
+  }
+
+  // Owner outcome checks. Refs may cite any step, criterion, invariant or decision.
+  for (const name of Object.keys(spec.checks))
+    if (!checkNames.includes(name)) err(`Header: unknown check ${name}`);
+  for (const j of spec.journeys) {
+    for (const name of Object.keys(j.checks))
+      if (!checkNames.includes(name)) err(`${j.id}: unknown check ${name}`);
+    for (const name of checkNames) {
+      const c = j.checks[name] ?? spec.checks[name];
+      if (!c) {
+        gate(`${j.id}: missing ${name} check`);
+        continue;
+      }
+      if (c.status !== "covered" && !c.reason) err(`${j.id}/${name}: ${c.status} needs a reason`);
+      if (c.status === "open") gate(`${j.id}/${name}: check is open`);
+      if (c.status === "covered" && !c.refs.length)
+        err(`${j.id}/${name}: needs refs, n/a — reason, or open — reason`);
+      for (const ref of c.refs) {
+        if (/^[DXQ]\d+$/.test(ref)) policy(ref, `${j.id}/${name}`);
+        else if (!rules.has(ref) && !stepIds.has(ref))
+          err(`${j.id}/${name}: unknown check ref ${ref}`);
+      }
+    }
+  }
+
+  if (!spec.goals.length) gate("Missing Goals section (coverage inventory)");
+  const mapped = new Set<string>();
+  for (const g of spec.goals) {
+    add(g.id);
+    if (!actorIds.has(g.actor)) err(`${g.id}: unknown actor ${g.actor}`);
+    if (g.status === "mapped")
+      for (const id of g.journeys)
+        journeyIds.has(id) ? mapped.add(id) : err(`${g.id}: missing mapped journey ${id}`);
+    if (g.status !== "mapped" && g.status !== "excluded" && !g.reason)
+      err(`${g.id}: ${g.status} goal needs a reason`);
+    if (g.status === "unresolved") gate(`${g.id}: unresolved goal`);
+    if (g.status === "excluded") {
+      const d = g.decision ? decisions.get(g.decision) : undefined;
+      if (!d || ["superseded", "retired"].includes(d.status))
+        err(`${g.id}: exclusion must cite an active X decision`);
+      else if (d.status !== "accepted") gate(`${g.id}: exclusion ${g.decision} is not accepted`);
+    }
+  }
+  if (spec.goals.length)
+    for (const id of journeyIds) if (!mapped.has(id)) gate(`${id}: journey missing from Goals`);
+
+  // Listed first: an open owner decision matters more than any other warning.
+  (ready ? errors : warnings).unshift(
+    ...[...unresolved].map(
+      ([id, owners]) =>
+        `${id} is ${decisions.get(id)?.status}; cited by ${owners.slice(0, 8).join(", ")}${owners.length > 8 ? ` and ${owners.length - 8} more` : ""}`,
+    ),
+  );
+
+  if (new Set(spec.retired).size !== spec.retired.length) err("Duplicate retired IDs");
+  for (const id of spec.retired) {
+    if (!/^([IOC]\d+|J\d+(\.S\d+[a-z]?(\.c\d+)?)?)$/.test(id)) err(`Invalid retired ID ${id}`);
+    if (ids.has(id)) err(`Retired ID reused: ${id}`);
+  }
+
+  // Every accepted decision in Scope must be cited somewhere, so a decided rule cannot go unmapped.
+  const citedIds = new Set(cited(spec, decisions));
+  const longDecisions = [...citedIds].filter((id) => {
+    const text = decisions.get(id)?.text ?? "";
+    return id.startsWith("Q")
+      ? words(text) > 40
+      : words(text.replace(/\bWhy:.*$/, "").replace(/\bSupersedes:.*$/, "")) > 30;
+  });
+  const listed = (ids: string[]) =>
+    ids.slice(0, 8).join(", ") + (ids.length > 8 ? ` and ${ids.length - 8} more` : "");
+  if (long.criteria.length)
+    warnings.push(`Over 20 words, split or shorten: ${listed(long.criteria)}`);
+  if (long.sees.length) warnings.push(`Sees over 12 words: ${listed(long.sees)}`);
+  if (longDecisions.length)
+    warnings.push(`Cited decisions over 30 words (questions over 40): ${listed(longDecisions)}`);
+  for (const id of spec.scope) {
+    const d = decisions.get(id);
+    if (!/^[DX]\d+$/.test(id) || !d) err(`Scope: unknown decision ${id}`);
+    else if (d.status === "accepted" && id !== spec.approval?.id && !citedIds.has(id))
+      gate(`Scope: ${id} is accepted but no goal, step, invariant or check cites it`);
+  }
+
+  if (!approving) {
+    const a = spec.approval;
+    if (!a) {
+      if (ready) err("Not approved: after owner sign-off, add an accepted D and run approve");
+    } else if (decisions.get(a.id)?.status !== "accepted")
+      gate(`Approval ${a.id} is not an accepted decision`);
+    else if (a.hash !== approvalHash(spec, decisions))
+      gate(
+        `Approval ${a.id} is stale: the journeys or the decisions they cite changed since sign-off; re-approve`,
+      );
+  }
+  return { errors, warnings, rules, screens };
+}
+
+// Task plans: "## T1 Title" sections with "Covers:" and "Needs:" lines, an optional
+// index table with a Needs column, and a Source line linking the journeys file with
+// the approval it was built on: "Source: [journeys](../journeys/x.md), approved by D11 b6fa08c8".
+export type TaskTest = { ids: string[]; path?: string; locator: string };
+export type Task = {
+  id: string;
+  covers: string[];
+  coversLine?: boolean;
+  needs: string[];
+  indexNeeds?: string[];
+  indexed?: boolean;
+  repeated: string[];
+  section: boolean;
+  verify: boolean;
+  tests: TaskTest[];
+  notes: string[];
+  evidence?: string;
+  status?: string;
+  parallel?: string;
+};
+const taskId = /\bT(?:\d+|-[A-Za-z0-9][\w-]*)\b/g;
+const specRef = /\b(?:J\d+(?:\.S\d+[a-z]?(?:\.c\d+)?)?|I\d+)\b/g;
+// Parenthetical notes such as "I2 (issuing links)" or "(after T-REMINDERS)" are prose.
+const refsIn = (text: string, pattern: RegExp) =>
+  text.replace(/\([^)]*\)/g, "").match(pattern) ?? [];
+export function parseTasks(markdown: string) {
+  const tasks = new Map<string, Task>(),
+    errors: string[] = [];
+  const source: { path?: string; approval?: string } = {};
+  const get = (id: string, section: boolean) => {
+    const existing = tasks.get(id);
+    if (existing && section && existing.section) errors.push(`Duplicate task ${id}`);
+    const task = existing ?? {
+      id,
+      covers: [],
+      needs: [],
+      repeated: [],
+      section,
+      verify: false,
+      tests: [],
+      notes: [],
+    };
+    task.section ||= section;
+    tasks.set(id, task);
+    return task;
+  };
+  // "- J1.S2.c1, J1.S2.c2: path/to/file.test.ts › test name" or "- J1.S2.c3: manual › what to do".
+  const addTest = (task: Task, text: string) => {
+    const m = text.match(/^([^:]+):\s*(.+)$/);
+    const ids = m ? refsIn(m[1], specRef) : [];
+    if (!m || !ids.length) {
+      errors.push(`${task.id}: cannot read test "${text}"`);
+      return;
+    }
+    const [where, ...rest] = m[2].split(/\s+(?:›|>)\s+/);
+    const unquote = (v: string) => v.trim().replace(/^[`"']|[`"']$/g, "");
+    task.tests.push({
+      ids,
+      path: /^manual$/i.test(where.trim()) ? undefined : unquote(where),
+      locator: unquote(rest.join(" › ")),
+    });
+  };
+  let current: Task | undefined,
+    headers: string[] = [],
+    block: "verify" | "tests" | "notes" | undefined,
+    group: string | undefined;
+  for (const raw of markdown.split("\n")) {
+    const line = raw.trim();
+    // "Verify:", "Tests:" and "Builder notes:" may introduce a list on the following lines.
+    // Tests group under a file bullet: "- path/to/file.test.ts" then "  - J1.S1.c1: test name".
+    if (current && block === "tests" && /^[-*]\s/.test(line)) {
+      const item = line.replace(/^[-*]\s+/, ""),
+        nested = /^\s+[-*]\s/.test(raw);
+      if (nested && group !== undefined) addTest(current, `${item.replace(/:/, `: ${group} ›`)}`);
+      else if (/^[^:]+:\s/.test(item) && refsIn(item.split(":")[0], specRef).length)
+        addTest(current, item);
+      else group = item.replace(/^[`"']|[`"':]+$/g, "");
+      continue;
+    }
+    if (current && block === "notes" && /^[-*]\s/.test(line)) {
+      current.notes.push(line.replace(/^[-*]\s+/, ""));
+      continue;
+    }
+    if (current && block === "verify" && line)
+      current.verify ||= !/^[A-Z][a-z]+\b[^:]*:\s*$/.test(line) && !line.startsWith("#");
+    if (line) block = undefined;
+    const src =
+      !current &&
+      line.match(/^Source:.*?\]\(([^)]+\.md)[^)]*\)(?:.*?\bapproved by D\d+\s+([0-9a-f]{8}))?/i);
+    if (src) {
+      source.path = src[1];
+      source.approval = src[2];
+      continue;
+    }
+    if (line.startsWith("|")) {
+      const cells = line
+        .split("|")
+        .slice(1, -1)
+        .map((c) => c.trim());
+      const cell = (h: string) =>
+        headers.includes(h) ? (cells[headers.indexOf(h)] ?? "") : undefined;
+      if (cells[0] === "ID") headers = cells;
+      else if (/^T(?:\d+|-[\w-]+)$/.test(cells[0] ?? "")) {
+        const task = get(cells[0], false);
+        task.indexed = true;
+        const needs = cell("Needs");
+        if (needs !== undefined) task.indexNeeds = refsIn(needs, taskId);
+        task.status ??= cell("Status");
+        task.parallel ??= cell("Parallel");
+      }
+      continue;
+    }
+    const heading = line.match(/^## (T(?:\d+|-[\w-]+))\b/);
+    if (heading) {
+      current = get(heading[1], true);
+      continue;
+    }
+    if (line.startsWith("## ")) {
+      current = undefined;
+      continue;
+    }
+    const field =
+      current &&
+      line.match(
+        /^(Covers|Needs|Verify|Tests|Evidence|Status|Parallel|Builder notes)\b(?:\s*\([^)]*\))?:\s*(.*)$/,
+      );
+    if (current && field) {
+      if (field[1] === "Covers") {
+        current.covers.push(...refsIn(field[2], specRef));
+        current.coversLine = true;
+      } else if (field[1] === "Needs") {
+        current.needs.push(...refsIn(field[2], taskId));
+        if (current.indexed) current.repeated.push("Needs");
+      } else if (field[1] === "Verify") {
+        current.verify ||= field[2].trim().length > 0;
+        if (!field[2].trim()) block = "verify";
+      } else if (field[1] === "Tests") {
+        group = undefined;
+        if (field[2].trim()) addTest(current, field[2].trim());
+        else block = "tests";
+      } else if (field[1] === "Builder notes") {
+        if (field[2].trim()) current.notes.push(field[2].trim());
+        else block = "notes";
+      } else if (field[1] === "Evidence") current.evidence = field[2].trim();
+      else if (field[1] === "Status") {
+        current.status = field[2].trim();
+        if (current.indexed) current.repeated.push("Status");
+      } else {
+        current.parallel = field[2].trim();
+        if (current.indexed) current.repeated.push("Parallel");
+      }
+    }
+  }
+  for (const t of tasks.values()) {
+    if (
+      t.indexNeeds &&
+      t.section &&
+      t.needs.length &&
+      [...new Set(t.indexNeeds)].sort().join() !== [...new Set(t.needs)].sort().join()
+    )
+      errors.push(
+        `${t.id}: index Needs (${t.indexNeeds.join(", ") || "—"}) and section Needs (${t.needs.join(", ")}) disagree`,
+      );
+    if (!t.needs.length) t.needs = t.indexNeeds ?? [];
+  }
+  return { tasks: [...tasks.values()], source, errors };
+}
+
+export function validateTasks(
+  tasks: Task[],
+  source: { approval?: string },
+  spec: Spec,
+  decisions: Map<string, Decision>,
+) {
+  const errors: string[] = [],
+    warnings: string[] = [];
+  const journeys = new Map(spec.journeys.map((j) => [j.id, j]));
+  const steps = new Map(spec.journeys.flatMap((j) => j.steps.map((st) => [st.id, st] as const)));
+  const targets = [
+    ...spec.journeys.flatMap((j) =>
+      j.steps.flatMap((st) => st.criteria.map(([k]) => `${st.id}.${k}`)),
+    ),
+    ...spec.invariants.map((i) => i.id),
+  ];
+  const owners = new Map(targets.map((id) => [id, [] as string[]]));
+  const ids = new Set(tasks.map((t) => t.id));
+  const fileTests: { task: string; ids: string[]; path: string; locator: string }[] = [];
+  for (const t of tasks) {
+    if (!t.section) warnings.push(`${t.id}: listed in the index but has no "## ${t.id}" section`);
+    else if (!t.coversLine)
+      errors.push(
+        `${t.id}: needs a Covers line naming journeys, steps, criteria or invariants (or "none" for delivery work)`,
+      );
+    for (const ref of new Set(t.covers)) {
+      const covered =
+        journeys.get(ref)?.steps.flatMap((st) => st.criteria.map(([k]) => `${st.id}.${k}`)) ??
+        steps.get(ref)?.criteria.map(([k]) => `${ref}.${k}`) ??
+        (owners.has(ref) ? [ref] : undefined);
+      if (!covered) errors.push(`${t.id}: covers unknown ${ref}`);
+      for (const id of covered ?? []) owners.get(id)?.push(t.id);
+    }
+    for (const need of new Set(t.needs)) {
+      if (need === t.id) errors.push(`${t.id}: needs itself`);
+      else if (!ids.has(need))
+        errors.push(
+          `${t.id}: needs unknown task ${need}; name work outside this plan in its Blocked reason`,
+        );
+    }
+    if (t.section && !t.verify)
+      errors.push(`${t.id}: needs a Verify line with a command or exact check`);
+    // Every criterion and invariant a task owns names the test that proves it.
+    const owned = new Set(
+      t.covers.flatMap(
+        (ref) =>
+          journeys.get(ref)?.steps.flatMap((st) => st.criteria.map(([k]) => `${st.id}.${k}`)) ??
+          steps.get(ref)?.criteria.map(([k]) => `${ref}.${k}`) ??
+          (owners.has(ref) ? [ref] : []),
+      ),
+    );
+    const tested = new Set(t.tests.flatMap((test) => test.ids));
+    for (const test of t.tests) {
+      if (!test.locator)
+        errors.push(
+          `${t.id}: test for ${test.ids.join(", ")} needs a name or manual step after "›"`,
+        );
+      for (const id of test.ids)
+        if (!owned.has(id)) errors.push(`${t.id}: names a test for ${id}, which it does not cover`);
+    }
+    if (t.section && !/^blocked/i.test(t.status ?? ""))
+      for (const id of owned)
+        if (!tested.has(id)) errors.push(`${id}: ${t.id} names no test for it`);
+    if (/^done\b/i.test(t.status ?? "")) {
+      if (!t.evidence)
+        errors.push(`${t.id}: Done needs an Evidence line with the command run and its result`);
+      else if (/\b[1-9]\d*\s+skip/i.test(t.evidence))
+        errors.push(`${t.id}: Evidence shows skipped tests; a skipped test proves nothing`);
+    }
+    // Done and Built both claim the code exists, so their named tests must exist too.
+    if (/^(done|built)\b/i.test(t.status ?? ""))
+      for (const test of t.tests)
+        if (test.path)
+          fileTests.push({ task: t.id, ids: test.ids, path: test.path, locator: test.locator });
+    // A task blocked on a question needs that question to exist and still be open.
+    for (const q of /^blocked/i.test(t.status ?? "")
+      ? ((t.status ?? "").match(/\bQ\d+\b/g) ?? [])
+      : []) {
+      const d = decisions.get(q);
+      if (!d) warnings.push(`${t.id}: blocked on ${q}, which is not in the decision record`);
+      else if (!["open", "deferred"].includes(d.status))
+        warnings.push(`${t.id}: blocked on ${q}, which is ${d.status}; unblock the task`);
+    }
+    if (/^blocked\s*$/i.test(t.status ?? ""))
+      warnings.push(`${t.id}: Blocked needs a reason, such as "Blocked (Q4)"`);
+    if (/^start now/i.test(t.parallel ?? "") && t.needs.length)
+      warnings.push(`${t.id}: marked start now but needs ${t.needs.join(", ")}`);
+  }
+  // Say each fact once: Needs, Parallel and Status live in the index when there is one.
+  const repeats = tasks
+    .filter((t) => t.repeated.length)
+    .map((t) => `${t.id} (${[...new Set(t.repeated)].join(", ")})`);
+  if (repeats.length)
+    warnings.push(`Repeated from the index; keep them only there: ${repeats.join(", ")}`);
+  const longNames = tasks.flatMap((t) =>
+    t.tests.filter((x) => words(x.locator) > 10).map(() => t.id),
+  );
+  const longNotes = tasks.flatMap((t) => t.notes.filter((n) => words(n) > 25).map(() => t.id));
+  if (longNames.length)
+    warnings.push(`Test names over 10 words: ${[...new Set(longNames)].join(", ")}`);
+  if (longNotes.length)
+    warnings.push(`Builder notes over 25 words: ${[...new Set(longNotes)].join(", ")}`);
+  const blocked = new Set(tasks.filter((t) => /^blocked/i.test(t.status ?? "")).map((t) => t.id));
+  const onlyBlocked = [...owners]
+    .filter(([, by]) => by.length && by.every((id) => blocked.has(id)))
+    .map(([id]) => id);
+  if (onlyBlocked.length) warnings.push(`Owned only by blocked tasks: ${onlyBlocked.join(", ")}`);
+  for (const [id, by] of owners) {
+    if (!by.length) errors.push(`${id}: no task covers it`);
+    else if (new Set(by).size > 1 && !id.startsWith("I"))
+      warnings.push(`${id}: covered by ${[...new Set(by)].join(" and ")}; give one task ownership`);
+  }
+  // Dependency cycles make the order impossible.
+  const state = new Map<string, "open" | "done">(),
+    byId = new Map(tasks.map((t) => [t.id, t]));
+  const visit = (id: string, path: string[]) => {
+    if (state.get(id) === "done") return;
+    if (state.get(id) === "open") {
+      errors.push(`Dependency cycle: ${[...path.slice(path.indexOf(id)), id].join(" → ")}`);
+      return;
+    }
+    state.set(id, "open");
+    for (const need of byId.get(id)?.needs ?? []) if (byId.has(need)) visit(need, [...path, id]);
+    state.set(id, "done");
+  };
+  for (const t of tasks) visit(t.id, []);
+  // The plan must be built on the journeys' current approval.
+  const current = approvalHash(spec, decisions);
+  if (!spec.approval) warnings.push("Journeys are not approved; plan only what the owner asks for");
+  else if (spec.approval.hash !== current)
+    errors.push(
+      `Journeys approval ${spec.approval.id} is stale; re-approve the journeys before planning`,
+    );
+  else if (!source.approval)
+    warnings.push(
+      `Stamp the approval in the Source line: "approved by ${spec.approval.id} ${spec.approval.hash}"`,
+    );
+  else if (source.approval !== spec.approval.hash)
+    errors.push(
+      `Plan was built on approval ${source.approval}; the journeys are now approved as ${spec.approval.hash}. Re-plan the affected tasks and update the Source line`,
+    );
+  // One row per criterion and invariant: who builds it, what proves it, where it stands.
+  const byTask = new Map(tasks.map((t) => [t.id, t]));
+  const report = targets.map((id) => {
+    const by = [...new Set(owners.get(id) ?? [])];
+    const tests = by.flatMap(
+      (owner) => byTask.get(owner)?.tests.filter((x) => x.ids.includes(id)) ?? [],
+    );
+    return {
+      id,
+      task: by.join(", ") || "—",
+      test: tests.map((x) => `${x.path ?? "manual"} › ${x.locator}`).join("; ") || "—",
+      manual: tests.length > 0 && tests.every((x) => !x.path),
+      status: by.map((owner) => byTask.get(owner)?.status || "—").join("; ") || "—",
+    };
+  });
+  return {
+    errors,
+    warnings,
+    fileTests,
+    report,
+    covered: targets.length - [...owners.values()].filter((by) => !by.length).length,
+    total: targets.length,
+  };
+}
+
+if (import.meta.main) {
+  try {
+    const usage =
+      "Usage: bun journeys.ts check feature.md [--ready] [--verbose] [--review] | approve feature.md D<n> | tasks tasks.md [--status]";
+    const [cmd, input, ...rest] = process.argv.slice(2);
+    if ([".yaml", ".yml"].includes(extname(input ?? "")))
+      throw Error(
+        `${input} uses the retired YAML format; write the journeys as Markdown (see references/format.md)`,
+      );
+    if (!["check", "approve", "tasks"].includes(cmd) || !input || extname(input) !== ".md")
+      throw Error(usage);
+    const snapshotRoot = process.env.JOURNEYS_SNAPSHOT_ROOT;
+    const read = async (path: string) => Bun.file(await snapshotRead(path, snapshotRoot)).text();
+    if (cmd === "tasks") {
+      const plan = parseTasks(await read(input));
+      if (!plan.source.path)
+        throw Error(
+          'Add a Source line linking the journeys file: "Source: [journeys](../journeys/<feature>.md), approved by D<n> <hash>"',
+        );
+      const journeysPath = resolve(dirname(input), plan.source.path);
+      const parsedSpec = parseJourneys(await read(journeysPath));
+      const record = parsedSpec.spec.decisions
+        ? parseDecisions(await read(resolve(dirname(journeysPath), parsedSpec.spec.decisions)))
+        : { decisions: new Map<string, Decision>(), errors: [] };
+      for (const flag of rest) if (flag !== "--status") throw Error(`Unknown option ${flag}`);
+      const result = validateTasks(plan.tasks, plan.source, parsedSpec.spec, record.decisions);
+      // A Done task's named tests must exist. Paths are relative to where the check runs: the repository root.
+      for (const test of result.fileTests) {
+        const file = Bun.file(resolve(test.path));
+        if (!(await file.exists()))
+          result.errors.push(
+            `${test.task}: test file ${test.path} for ${test.ids.join(", ")} does not exist`,
+          );
+        else if (!(await file.text()).includes(test.locator))
+          result.errors.push(
+            `${test.task}: ${test.path} has no test "${test.locator}" for ${test.ids.join(", ")}`,
+          );
+      }
+      if (rest.includes("--status")) {
+        console.log("| Criterion | Task | Test | Status |\n|---|---|---|---|");
+        for (const row of result.report)
+          console.log(
+            `| ${row.id} | ${row.task} | ${row.test.replaceAll("|", "/")} | ${row.status} |`,
+          );
+      }
+      for (const w of result.warnings) console.error(`warn: ${w}`);
+      const errors = [
+        ...plan.errors,
+        ...parsedSpec.errors.map((e) => `journeys ${e}`),
+        ...record.errors,
+        ...result.errors,
+      ];
+      if (errors.length) throw Error(errors.join("\n"));
+      const named = result.report.filter((row) => row.test !== "—"),
+        manual = named.filter((row) => row.manual).length,
+        done = result.report.filter((row) => /^done\b/i.test(row.status)).length;
+      console.log(
+        `ok: tasks ${input}; ${plan.tasks.length} tasks; ${result.covered} of ${result.total} criteria and invariants have an owner, ${named.length} a named test (${manual} manual only), ${done} done with evidence.${plan.source.approval ? ` Built on approval ${plan.source.approval}.` : ""} Tests were not run.`,
+      );
+      process.exit(0);
+    }
+    const text = await read(input);
+    const { spec, errors: parseErrors } = parseJourneys(text);
+    const parsed = spec.decisions
+      ? parseDecisions(await read(resolve(dirname(input), spec.decisions)))
+      : { decisions: new Map<string, Decision>(), errors: [] };
+    if (cmd === "approve") {
+      const id = rest[0];
+      if (!/^D\d+$/.test(id ?? "") || rest.length !== 1) throw Error(usage);
+      const errors = [
+        ...parseErrors,
+        ...parsed.errors,
+        ...validate(spec, parsed.decisions, true, true).errors,
+      ];
+      if (parsed.decisions.get(id)?.status !== "accepted")
+        errors.push(`${id}: record the owner's sign-off as an accepted decision first`);
+      if (errors.length) throw Error(errors.join("\n"));
+      const stamp = `Approved: ${id} ${approvalHash(spec, parsed.decisions)}`,
+        lines = text.split("\n");
+      const existing = lines.findIndex((l) => /^Approved:/.test(l.trim()));
+      if (existing >= 0) lines[existing] = stamp;
+      else {
+        const decisionsLine = lines.findIndex((l) => /^Decisions:/.test(l.trim()));
+        if (decisionsLine >= 0) lines.splice(decisionsLine + 1, 0, stamp);
+        else lines.splice(lines.findIndex((l) => /^# /.test(l)) + 1, 0, "", stamp);
+      }
+      await Bun.write(input, lines.join("\n"));
+      console.log(
+        `ok: ${input} approved by ${id}. Changing the journeys or the decisions they cite makes this approval stale.`,
+      );
+    } else {
+      for (const flag of rest)
+        if (!["--ready", "--verbose", "--review"].includes(flag))
+          throw Error(`Unknown option ${flag}`);
+      if (rest.includes("--review")) {
+        console.log(reviewPacket(spec, parsed.decisions));
+        process.exit(0);
+      }
+      const ready = rest.includes("--ready");
+      const result = validate(spec, parsed.decisions, ready);
+      const shown = rest.includes("--verbose") ? result.warnings : result.warnings.slice(0, 8);
+      for (const w of shown) console.error(`warn: ${w}`);
+      if (shown.length < result.warnings.length)
+        console.error(
+          `warn: ${result.warnings.length - shown.length} more warnings; use --verbose for all.`,
+        );
+      const errors = [...parseErrors, ...parsed.errors, ...result.errors];
+      if (errors.length) throw Error(errors.join("\n"));
+      const screens = [...result.screens]
+        .map(([screen, steps]) => `${screen} (${steps.join(", ")})`)
+        .join("; ");
+      console.log(
+        `ok: ${ready ? "ready" : "draft"} check ${input}; ${result.rules.size} rules; ${result.warnings.length} warnings.${ready ? ` Approved by ${spec.approval?.id}.` : ""} Tests were not run.`,
+      );
+      if (screens) console.log(`screens: ${screens}`);
+    }
+  } catch (e) {
+    for (const line of String(e instanceof Error ? e.message : e).split("\n"))
+      console.error(`ERROR: ${line}`);
+    process.exit(1);
+  }
+}

@@ -11,8 +11,8 @@ pre-commit:
       run: bun run check-tokens
 
     journeys:
-      glob: "{docs/journeys/*.yaml,docs/decisions.md}"
-      run: bun run journeys:render && git add docs/journeys/*.md 2>/dev/null; bun run check-journeys
+      glob: "{docs/journeys/*.md,docs/decisions.md,docs/tasks/*.md}"
+      run: bun run check-journeys
 
     check-types:
       glob: "*.{ts,tsx}"

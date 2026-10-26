@@ -77,7 +77,7 @@ Implementation has not started. See [planning status](docs/spec/README.md).
 | Location | Purpose |
 |---|---|
 | [`docs/decisions.md`](docs/decisions.md) | Scope, trade-offs, money rules and the agreed API |
-| [`docs/journeys/settle-kit.md`](docs/journeys/settle-kit.md) | Generated journeys, acceptance criteria and invariants |
+| [`docs/journeys/settle-kit.md`](docs/journeys/settle-kit.md) | Journeys, acceptance criteria and invariants |
 | [`docs/examples/minimal-host.md`](docs/examples/minimal-host.md) | Proposed host integration, explicitly labeled pseudocode |
 | [`scripts/spikes/`](scripts/spikes/) | Isolated experiments and reproducible evidence |
 | [`packages/core`](packages/core) | Placeholder for shared deposit/quote types and errors |

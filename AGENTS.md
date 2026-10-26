@@ -7,7 +7,7 @@ What we build and why: `docs/decisions.md`.
 
 ## Read first
 
-- Spec: read `docs/decisions.md`, `docs/journeys/settle-kit.yaml`, the technical design
+- Spec: read `docs/decisions.md`, `docs/journeys/settle-kit.md`, the technical design
   at `docs/plans/2026-10-15-deposit-sdk-technical-design.md` and `docs/tasks/README.md`.
   Planning is complete; product implementation has not started (`docs/spec/README.md`). The earlier
   checkout-first plan (design doc, tasks T1–T9, handoffs) is in `docs/archive/`: input
@@ -24,13 +24,15 @@ What we build and why: `docs/decisions.md`.
 ## Spec process
 
 Two artifacts drive the spec, written in this order. How to write them:
-`.agents/skills/decide/` and `.agents/skills/journeys/`. Overview: `docs/spec/README.md`.
+`.agents/skills/decide/` and `.agents/skills/journeys/`; new task plans use
+`.agents/skills/tasks/`. Overview: `docs/spec/README.md`.
 
 | Fact | Its one home |
 |---|---|
 | What we build, what we ruled out, open questions | `docs/decisions.md` (IDs `D7`, `X1`, `Q2`) |
-| Exactly how it behaves: steps, branches, EARS rules | `docs/journeys/settle-kit.yaml` (IDs `J2.S4`, criteria `J2.S4.c1`) |
-| Rules that must always hold (money, security) | the same spine's `invariants:` (IDs `I1`) |
+| Exactly how it behaves: steps, branches, criteria | `docs/journeys/settle-kit.md` (IDs `J2.S4`, criteria `J2.S4.c1`) |
+| Rules that must always hold (money, security) | the same file's `## Invariants` (IDs `I1`) |
+| Which task builds which step | each task's "Primary journey ownership:" line in `docs/tasks/` |
 | Live evidence (fills, tx links, timings) | `docs/spikes.md` |
 
 - Other docs (design doc, task specs, PRs) link these IDs; they never restate them.
@@ -41,13 +43,13 @@ Two artifacts drive the spec, written in this order. How to write them:
   a time, with a recommendation and the rejected options.
 - No guessing: a missing business, money or user-visible rule becomes an open question in
   `docs/decisions.md`. Internal technical choices (names, layout, helpers) are the builder's.
-- Journeys: never hand-edit the generated `.md`; never renumber or reuse a step,
-  criterion or invariant ID.
-- Journey steps list the decisions they rely on (`decisions: [D21]`) and the invariants
-  they could break (`invariants: [I1]`); `check-journeys` rejects unknown or superseded IDs,
-  and `--complete` rejects steps citing open questions. A step that touches money needs
-  an `IF … THE SYSTEM SHALL NOT …` criterion. Criteria use numbers and units, not vague
-  words (`check-journeys` flags *promptly*, *as needed* and similar).
+- Journeys: one Markdown file, edited directly; format in
+  `.agents/skills/journeys/references/format.md`. Never renumber or reuse a step, criterion
+  or invariant ID; list removed ones under `Retired:`.
+- Steps cite the decisions they rely on (`Basis: D21`) and the invariants they could break
+  (`Guards: I1`); `check-journeys` rejects unknown or superseded IDs, a step owned by two
+  tasks, and `--complete` rejects steps citing open questions. Criteria use numbers and
+  units, not vague words. Length and open-check warnings are advice, not merge blockers.
 - Tests: every test in `apps/` and `packages/` proves something traced, named after it:
   - a journey criterion, most tests: `it("J2.S4.c1: …")`;
   - an invariant, tested with many generated orderings, duplicates and crash points
@@ -56,7 +58,7 @@ Two artifacts drive the spec, written in this order. How to write them:
     mocks: the decision it enforces, `it("D21: …")`, preferably one table-driven test.
 
   Anything else is not tested directly. A test asserts exactly the rule it names; a
-  reviewer checks that. `check-journeys` enforces the naming once a journey spine exists.
+  reviewer checks that. `check-journeys` enforces the naming.
   PRs list the step IDs they serve.
 - Writing: lead with the point, plain words, explain a term on first use, keep fact,
   decision and assumption apart, no `TBD`.
